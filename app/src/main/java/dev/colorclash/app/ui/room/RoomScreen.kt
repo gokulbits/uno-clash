@@ -23,13 +23,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.colorclash.app.session.Session
 import dev.colorclash.app.ui.components.BigButton
+import dev.colorclash.app.colorClash
 import dev.colorclash.app.ui.game.GameScreen
+import dev.colorclash.app.ui.game.RoundResult
 import dev.colorclash.app.ui.game.describe
+import dev.colorclash.app.ui.game.fx.TableFx
+import dev.colorclash.protocol.EventView
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.net.client.ClientStatus
 import kotlinx.coroutines.delay
@@ -46,15 +51,26 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
     var confirmLeave by remember { mutableStateOf(false) }
     var startError by remember { mutableStateOf<String?>(null) }
     var log by remember { mutableStateOf(emptyList<String>()) }
+    var history by remember { mutableStateOf(emptyList<RoundResult>()) }
     var notice by remember { mutableStateOf<String?>(null) }
+    val app = LocalContext.current.colorClash
+    val feedbackSettings by app.prefs.feedback.collectAsState()
+    val fx = remember(session) { TableFx() }
 
     // Collected here rather than in the game screen so the first updates of a round aren't missed.
     LaunchedEffect(session) {
         session.client.updates.collect { update ->
+            fx.submit(update)
             val lines = update.events.mapNotNull { describe(it, update.view) }
             if (lines.isNotEmpty()) log = (log + lines).takeLast(LOG_LINES)
+            for (event in update.events) {
+                if (event is EventView.RoundStarted && event.round == 1) history = emptyList()
+                if (event is EventView.RoundWon) history = history + RoundResult(update.view.round, event.player, event.points)
+            }
         }
     }
+    LaunchedEffect(fx) { fx.run(app.feedback) }
+    LaunchedEffect(game == null) { if (game == null) fx.reset() }
     LaunchedEffect(session) {
         session.client.notices.collectLatest {
             notice = it
@@ -76,10 +92,15 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
             is ClientStatus.Closed -> EndCard("Room closed", s.reason, onLeave)
             else -> when {
                 game != null -> GameScreen(
-                    view = game!!,
+                    // The animated view lags the latest one by an effect or two; fall back to it until the first lands.
+                    view = fx.displayed ?: game!!,
+                    fx = fx,
                     log = log,
+                    history = history,
                     notice = notice,
                     isHost = session.isHost,
+                    feedback = feedbackSettings,
+                    onFeedbackChange = app.prefs::updateFeedback,
                     onIntent = session.client::send,
                     onNextRound = { session.hosting?.host?.startNextRound() },
                     onBackToLobby = { session.hosting?.host?.returnToLobby() },

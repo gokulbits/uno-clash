@@ -1,5 +1,7 @@
 package dev.colorclash.app.ui.game
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,14 +13,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -31,6 +37,8 @@ import dev.colorclash.protocol.PhaseKind
 import dev.colorclash.protocol.PlayerView
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.CardColor
+
+private const val MAX_HISTORY_ROWS = 5
 
 /** Dims the table and holds a choice the player has to make. */
 @Composable
@@ -114,40 +122,71 @@ fun SwapPicker(view: PlayerView, onPick: (Int) -> Unit) {
     }
 }
 
+/** One finished round, collected on this phone as RoundWon events arrive. */
+data class RoundResult(val round: Int, val winner: Int, val points: Int)
+
 /** Shown between rounds and at the end. The host moves things along; everyone else waits. */
 @Composable
 fun ScoreBoard(
     view: PlayerView,
     headline: String,
+    history: List<RoundResult>,
     isHost: Boolean,
     onNextRound: () -> Unit,
     onBackToLobby: () -> Unit,
     onLeave: () -> Unit,
 ) {
     val gameOver = view.phase == PhaseKind.GAME_OVER
+    val target = view.settings.rules.targetScore
+    val pop = remember { Animatable(0.6f) }
+    LaunchedEffect(view.round, view.phase) { pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 300f)) }
+
     Overlay {
-        Text(if (gameOver) "🏆" else "🎉", fontSize = 48.sp)
+        Text(if (gameOver) "🏆" else "🎉", fontSize = 48.sp, modifier = Modifier.scale(pop.value))
         Text(headline, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
         view.roundPoints?.let { Text("+$it points", color = GameTheme.yellow, fontWeight = FontWeight.Black) }
 
         view.seats.sortedByDescending { it.score }.forEachIndexed { rank, seat ->
             val isWinner = seat.info.seat == view.winner
-            Row(
+            Column(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .background(if (isWinner) GameTheme.cardColors[rank % 4].copy(alpha = 0.8f) else GameTheme.panel)
+                    .background(if (isWinner) GameTheme.panelStrong else GameTheme.panel)
                     .padding(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("${rank + 1}", fontWeight = FontWeight.Black, color = GameTheme.mutedText)
-                AvatarBadge(seat.info.avatar, size = 34.dp)
-                Text(seat.info.name + if (seat.info.seat == view.you) " (you)" else "", Modifier.weight(1f), fontWeight = FontWeight.Bold)
-                Text("${seat.score}", fontWeight = FontWeight.Black)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("${rank + 1}", fontWeight = FontWeight.Black, color = GameTheme.mutedText)
+                    AvatarBadge(seat.info.avatar, size = 34.dp)
+                    Text(seat.info.name + if (seat.info.seat == view.you) " (you)" else "", Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                    Text("${seat.score}", fontWeight = FontWeight.Black)
+                }
+                // How close each player is to the target score.
+                Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(GameTheme.panel)) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth((seat.score.toFloat() / target).coerceIn(0f, 1f) * pop.value.coerceAtMost(1f))
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(GameTheme.cardColors[seat.info.seat % 4]),
+                    )
+                }
             }
         }
-        Text("Playing to ${view.settings.rules.targetScore}", color = GameTheme.mutedText)
+        Text("Playing to $target", color = GameTheme.mutedText)
+
+        if (history.isNotEmpty()) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                history.takeLast(MAX_HISTORY_ROWS).forEach { result ->
+                    Text(
+                        "Round ${result.round}: ${view.nameOf(result.winner)} +${result.points}",
+                        color = GameTheme.mutedText,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        }
 
         when {
             isHost && gameOver -> {

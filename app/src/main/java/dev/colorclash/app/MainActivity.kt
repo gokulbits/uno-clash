@@ -26,6 +26,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        colorClash.sound.setMusicWanted(true)
+    }
+
+    override fun onStop() {
+        colorClash.sound.setMusicWanted(false)
+        super.onStop()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         linkFrom(intent)?.let { incomingLink = it }

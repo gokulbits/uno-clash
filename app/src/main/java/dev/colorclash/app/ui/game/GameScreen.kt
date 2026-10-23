@@ -12,11 +12,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,9 +25,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,8 +37,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,8 +46,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -58,7 +60,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.colorclash.app.data.FeedbackSettings
 import dev.colorclash.app.ui.components.AvatarBadge
+import dev.colorclash.app.ui.game.fx.Anchor
+import dev.colorclash.app.ui.game.fx.FxLayer
+import dev.colorclash.app.ui.game.fx.TableFx
+import dev.colorclash.app.ui.settings.QuickSettingsDialog
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.PhaseKind
 import dev.colorclash.protocol.PlayerIntent
@@ -75,25 +82,33 @@ private val TABLE_CARD_WIDTH = 92.dp
 @Composable
 fun GameScreen(
     view: PlayerView,
+    fx: TableFx,
     log: List<String>,
+    history: List<RoundResult>,
     notice: String?,
     isHost: Boolean,
+    feedback: FeedbackSettings,
+    onFeedbackChange: (FeedbackSettings) -> Unit,
     onIntent: (PlayerIntent) -> Unit,
     onNextRound: () -> Unit,
     onBackToLobby: () -> Unit,
     onLeave: () -> Unit,
 ) {
     val controls = tableControls(view)
+    var showSettings by remember { mutableStateOf(false) }
+
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().graphicsLayer { translationX = fx.shake.value }) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onLeave) { Text("‹ Leave", color = GameTheme.text) }
                 Text("Round ${view.round}", Modifier.weight(1f), color = GameTheme.mutedText, textAlign = TextAlign.Center)
-                Text("${view.seats[view.you].score} pts", Modifier.padding(end = 16.dp), fontWeight = FontWeight.Bold)
+                Text("${view.seats[view.you].score} pts", fontWeight = FontWeight.Bold)
+                TextButton(onClick = { showSettings = true }) { Text("⚙", fontSize = 20.sp, color = GameTheme.text) }
             }
 
             OpponentsArc(
                 view = view,
+                fx = fx,
                 catchTarget = controls.catchTarget,
                 onCatch = { onIntent(PlayerIntent.Catch(it)) },
                 modifier = Modifier.fillMaxWidth().height(200.dp),
@@ -101,6 +116,7 @@ fun GameScreen(
 
             CenterTable(
                 view = view,
+                fx = fx,
                 controls = controls,
                 onDraw = { onIntent(PlayerIntent.Draw) },
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -120,13 +136,15 @@ fun GameScreen(
 
             ActionBar(view, controls, onIntent)
 
-            Hand(view, onPlay = { onIntent(PlayerIntent.Play(it)) })
+            Hand(view, fx, onPlay = { onIntent(PlayerIntent.Play(it)) })
         }
+
+        FxLayer(fx)
 
         if (controls.pickingColor) ColorPicker(view.hand, onPick = { onIntent(PlayerIntent.ChooseColor(it)) })
         if (controls.pickingSwapTarget) SwapPicker(view, onPick = { onIntent(PlayerIntent.SwapWith(it)) })
         if (view.phase == PhaseKind.ROUND_OVER || view.phase == PhaseKind.GAME_OVER) {
-            ScoreBoard(view, controls.headline, isHost, onNextRound, onBackToLobby, onLeave)
+            ScoreBoard(view, controls.headline, history, isHost, onNextRound, onBackToLobby, onLeave)
         }
 
         notice?.let {
@@ -141,10 +159,12 @@ fun GameScreen(
             )
         }
     }
+
+    if (showSettings) QuickSettingsDialog(feedback, onFeedbackChange, onDismiss = { showSettings = false })
 }
 
 @Composable
-private fun OpponentsArc(view: PlayerView, catchTarget: Int?, onCatch: (Int) -> Unit, modifier: Modifier) {
+private fun OpponentsArc(view: PlayerView, fx: TableFx, catchTarget: Int?, onCatch: (Int) -> Unit, modifier: Modifier) {
     val opponents = opponentOrder(view)
     val positions = arcPositions(opponents.size)
     BoxWithConstraints(modifier) {
@@ -152,8 +172,8 @@ private fun OpponentsArc(view: PlayerView, catchTarget: Int?, onCatch: (Int) -> 
         val seatWidth = 76.dp
         val seatHeight = 112.dp
         opponents.forEachIndexed { i, seat ->
-            val (fx, fy) = positions[i]
-            val x = maxWidth * fx - seatWidth / 2
+            val (fx0, fy) = positions[i]
+            val x = maxWidth * fx0 - seatWidth / 2
             val y = (maxHeight - seatHeight) * fy.coerceIn(0f, 1f)
             OpponentSeat(
                 seat = view.seats[seat],
@@ -162,7 +182,7 @@ private fun OpponentsArc(view: PlayerView, catchTarget: Int?, onCatch: (Int) -> 
                 turnSeconds = view.settings.turnTimerSeconds,
                 canCatch = catchTarget == seat,
                 onCatch = { onCatch(seat) },
-                modifier = Modifier.offset(x, y).width(seatWidth),
+                modifier = Modifier.offset(x, y).width(seatWidth).then(fx.anchor(Anchor.Seat(seat))),
             )
         }
     }
@@ -181,7 +201,12 @@ private fun OpponentSeat(
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(contentAlignment = Alignment.Center) {
             if (isCurrent) TurnRing(turnMillisLeft, turnSeconds, size = 58.dp)
-            AvatarBadge(seat.info.avatar, size = 46.dp, ring = if (isCurrent) GameTheme.yellow else null)
+            AvatarBadge(
+                seat.info.avatar,
+                size = 46.dp,
+                ring = if (isCurrent) GameTheme.yellow else null,
+                modifier = if (isCurrent) Modifier.scale(pulse()) else Modifier,
+            )
             Text(
                 seat.cardCount.toString(),
                 Modifier
@@ -211,6 +236,7 @@ private fun OpponentSeat(
             canCatch -> Text(
                 "CATCH!",
                 Modifier
+                    .scale(pulse(1.15f))
                     .clip(RoundedCornerShape(10.dp))
                     .background(GameTheme.red)
                     .clickable(onClick = onCatch)
@@ -227,11 +253,13 @@ private fun OpponentSeat(
 }
 
 @Composable
-private fun CenterTable(view: PlayerView, controls: TableControls, onDraw: () -> Unit, modifier: Modifier) {
+private fun CenterTable(view: PlayerView, fx: TableFx, controls: TableControls, onDraw: () -> Unit, modifier: Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Box(
                 Modifier
+                    .then(fx.anchor(Anchor.DrawPile))
+                    .scale(if (controls.canDraw) pulse(1.05f) else 1f)
                     .clip(RoundedCornerShape(14.dp))
                     .then(if (controls.canDraw) Modifier.border(3.dp, GameTheme.yellow, RoundedCornerShape(14.dp)) else Modifier)
                     .clickable(enabled = controls.canDraw, onClick = onDraw),
@@ -246,12 +274,13 @@ private fun CenterTable(view: PlayerView, controls: TableControls, onDraw: () ->
 
             Text(
                 if (view.direction == Direction.CLOCKWISE) "↻" else "↺",
+                Modifier.graphicsLayer { rotationZ = fx.arrowSpin.value },
                 fontSize = 40.sp,
                 color = GameTheme.text,
                 fontWeight = FontWeight.Black,
             )
 
-            Box(contentAlignment = Alignment.Center) {
+            Box(contentAlignment = Alignment.Center, modifier = fx.anchor(Anchor.DiscardPile)) {
                 // A halo in the active color, which matters most after a wild.
                 Box(
                     Modifier
@@ -259,13 +288,14 @@ private fun CenterTable(view: PlayerView, controls: TableControls, onDraw: () ->
                         .clip(RoundedCornerShape(20.dp))
                         .background(GameTheme.cardColor(view.activeColor).copy(alpha = if (view.activeColor == null) 0f else 0.55f)),
                 )
-                CardFace(view.topCard, TABLE_CARD_WIDTH)
+                CardFace(view.topCard, TABLE_CARD_WIDTH, Modifier.graphicsLayer { rotationZ = TableFx.discardTilt(view.topCard) })
             }
         }
         Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (view.isYourTurn && view.phase.isLive()) TurnRing(view.turnMillisLeft, view.settings.turnTimerSeconds, size = 26.dp)
             Text(
                 controls.headline,
+                Modifier.scale(if (view.isYourTurn && view.phase.isLive()) pulse(1.04f) else 1f),
                 style = MaterialTheme.typography.titleLarge,
                 color = if (view.isYourTurn) GameTheme.yellow else GameTheme.text,
                 textAlign = TextAlign.Center,
@@ -291,16 +321,11 @@ private fun ActionBar(view: PlayerView, controls: TableControls, onIntent: (Play
             ActionButton("Catch ${view.nameOf(target)}!", GameTheme.red) { onIntent(PlayerIntent.Catch(target)) }
         }
         if (controls.canCallLastCard) {
-            val pulse = rememberInfiniteTransition(label = "lastCard")
-            val scale by pulse.animateFloat(
-                initialValue = 1f,
-                targetValue = if (controls.urgeLastCard) 1.12f else 1f,
-                animationSpec = infiniteRepeatable(tween(450), RepeatMode.Reverse),
-                label = "lastCardScale",
-            )
-            ActionButton("LAST CARD!", GameTheme.yellow, Modifier.scale(scale), textColor = Color.Black) {
-                onIntent(PlayerIntent.CallLastCard)
-            }
+            ActionButton(
+                "LAST CARD!", GameTheme.yellow,
+                Modifier.scale(if (controls.urgeLastCard) pulse(1.12f) else 1f),
+                textColor = Color.Black,
+            ) { onIntent(PlayerIntent.CallLastCard) }
         }
     }
 }
@@ -317,51 +342,52 @@ private fun ActionButton(text: String, color: Color, modifier: Modifier = Modifi
     }
 }
 
+/**
+ * Your hand as an overlapping fan. Each item only takes a slice of width and lets its card
+ * spill over the next, so the lazy row can animate cards in, out and around as the hand changes.
+ */
 @Composable
-private fun Hand(view: PlayerView, onPlay: (Int) -> Unit) {
-    val cards = sortHand(view.hand)
+private fun Hand(view: PlayerView, fx: TableFx, onPlay: (Int) -> Unit) {
+    val cards = sortHand(view.hand).filter { it.id !in fx.hiddenCards }
     val mid = (cards.size - 1) / 2f
     val tilt = if (cards.size <= 1) 0f else (30f / cards.size).coerceAtMost(5f)
-    val overlap = if (cards.size > 6) (-34).dp else (-22).dp
-    // Centered while it fits, scrolls sideways once the hand gets big.
-    Box(
-        Modifier.fillMaxWidth().height(HAND_CARD_WIDTH * CARD_ASPECT + 44.dp),
-        contentAlignment = Alignment.BottomCenter,
+    val slice = if (cards.size > 6) HAND_CARD_WIDTH - 36.dp else HAND_CARD_WIDTH - 22.dp
+    LazyRow(
+        Modifier
+            .fillMaxWidth()
+            .height(HAND_CARD_WIDTH * CARD_ASPECT + 48.dp)
+            .then(fx.anchor(Anchor.Seat(view.you))),
+        contentPadding = PaddingValues(start = 24.dp, end = 24.dp + HAND_CARD_WIDTH - slice, top = 24.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.Bottom,
     ) {
-        Row(
-            Modifier
-                .horizontalScroll(rememberScrollState())
-                .padding(start = 28.dp, end = 28.dp, top = 20.dp, bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(overlap),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            cards.forEachIndexed { i, card ->
-                key(card.id) {
-                    HandCard(
-                        card = card,
-                        playable = card.id in view.playable,
-                        rotation = (i - mid) * tilt,
-                        drop = (abs(i - mid) * abs(i - mid) * 1.2f).dp.coerceAtMost(18.dp),
-                        onPlay = { onPlay(card.id) },
-                    )
-                }
+        itemsIndexed(cards, key = { _, card -> card.id }) { i, card ->
+            Box(Modifier.animateItem().width(slice)) {
+                HandCard(
+                    card = card,
+                    playable = card.id in view.playable,
+                    rotation = (i - mid) * tilt,
+                    drop = (abs(i - mid) * abs(i - mid) * 1.2f).dp.coerceAtMost(18.dp),
+                    onPlay = { onPlay(card.id) },
+                    modifier = Modifier.wrapContentWidth(Alignment.Start, unbounded = true).then(fx.anchor(Anchor.HandCard(card.id))),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun HandCard(card: Card, playable: Boolean, rotation: Float, drop: Dp, onPlay: () -> Unit) {
+private fun HandCard(card: Card, playable: Boolean, rotation: Float, drop: Dp, onPlay: () -> Unit, modifier: Modifier) {
     var dragY by remember { mutableFloatStateOf(0f) }
     val playThreshold = with(LocalDensity.current) { 70.dp.toPx() }
     val lift = if (playable) (-14).dp else 0.dp
     Box(
-        Modifier
+        modifier
             .offset(y = drop + lift)
             .graphicsLayer {
                 rotationZ = rotation
                 translationY = dragY
-                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1.2f)
+                transformOrigin = TransformOrigin(0.5f, 1.2f)
             }
             .then(
                 if (playable) {
@@ -401,10 +427,22 @@ fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp) {
         drawArc(
             color, startAngle = -90f, sweepAngle = 360f * progress.value, useCenter = false,
             topLeft = Offset(stroke / 2, stroke / 2),
-            size = androidx.compose.ui.geometry.Size(this.size.width - stroke, this.size.height - stroke),
+            size = Size(this.size.width - stroke, this.size.height - stroke),
             style = Stroke(stroke, cap = StrokeCap.Round),
         )
     }
+}
+
+@Composable
+private fun pulse(to: Float = 1.08f): Float {
+    val transition = rememberInfiniteTransition(label = "pulse")
+    val scale by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = to,
+        animationSpec = infiniteRepeatable(tween(520), RepeatMode.Reverse),
+        label = "pulseScale",
+    )
+    return scale
 }
 
 private fun PhaseKind.isLive() = this != PhaseKind.ROUND_OVER && this != PhaseKind.GAME_OVER

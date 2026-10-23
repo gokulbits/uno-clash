@@ -10,15 +10,31 @@ data class SavedSession(val host: String, val port: Int, val roomCode: String, v
 
 data class Profile(val name: String, val avatar: Int)
 
+data class FeedbackSettings(val sound: Boolean = true, val music: Boolean = true, val haptics: Boolean = true)
+
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("color_clash", Context.MODE_PRIVATE)
 
     private val _profile = MutableStateFlow(Profile(sp.getString(KEY_NAME, null) ?: "", sp.getInt(KEY_AVATAR, 0)))
     val profile: StateFlow<Profile> = _profile.asStateFlow()
 
+    private val _feedback = MutableStateFlow(
+        FeedbackSettings(sp.getBoolean(KEY_SOUND, true), sp.getBoolean(KEY_MUSIC, true), sp.getBoolean(KEY_HAPTICS, true)),
+    )
+    val feedback: StateFlow<FeedbackSettings> = _feedback.asStateFlow()
+
     fun updateProfile(profile: Profile) {
         _profile.value = profile
         sp.edit().putString(KEY_NAME, profile.name).putInt(KEY_AVATAR, profile.avatar).apply()
+    }
+
+    fun updateFeedback(settings: FeedbackSettings) {
+        _feedback.value = settings
+        sp.edit()
+            .putBoolean(KEY_SOUND, settings.sound)
+            .putBoolean(KEY_MUSIC, settings.music)
+            .putBoolean(KEY_HAPTICS, settings.haptics)
+            .apply()
     }
 
     var lastSession: SavedSession?
@@ -42,6 +58,9 @@ class Prefs(context: Context) {
     private companion object {
         const val KEY_NAME = "name"
         const val KEY_AVATAR = "avatar"
+        const val KEY_SOUND = "sound"
+        const val KEY_MUSIC = "music"
+        const val KEY_HAPTICS = "haptics"
         const val KEY_HOST = "last_host"
         const val KEY_PORT = "last_port"
         const val KEY_CODE = "last_code"

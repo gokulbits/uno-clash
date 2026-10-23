@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,17 +46,20 @@ fun HomeScreen(
     onJoin: () -> Unit,
     onPractice: () -> Unit,
     onRejoin: (SavedSession) -> Unit,
+    onSettings: () -> Unit,
 ) {
     val nameOk = profile.name.isNotBlank()
     Column(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 32.dp),
+            .padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Spacer(Modifier.height(12.dp))
+        TextButton(onClick = onSettings, modifier = Modifier.align(Alignment.End)) {
+            Text("⚙ Settings", color = GameTheme.text)
+        }
         Logo()
         Spacer(Modifier.height(12.dp))
 

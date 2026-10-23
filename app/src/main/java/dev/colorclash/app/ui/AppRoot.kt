@@ -27,12 +27,13 @@ import dev.colorclash.app.ui.home.HomeScreen
 import dev.colorclash.app.ui.join.JoinScreen
 import dev.colorclash.app.ui.join.ScanScreen
 import dev.colorclash.app.ui.room.RoomScreen
+import dev.colorclash.app.ui.settings.SettingsScreen
 import dev.colorclash.app.ui.theme.GAME_TITLE
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.JoinLink
 import kotlinx.coroutines.launch
 
-private enum class Screen { HOME, JOIN, SCAN }
+private enum class Screen { HOME, JOIN, SCAN, SETTINGS }
 
 private const val PRACTICE_BOTS = 3
 
@@ -42,6 +43,7 @@ fun AppRoot(app: ColorClashApp, incomingLink: JoinLink?, onLinkHandled: () -> Un
     val sessions = app.sessions
     val session by sessions.session.collectAsState()
     val profile by app.prefs.profile.collectAsState()
+    val feedback by app.prefs.feedback.collectAsState()
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -114,6 +116,7 @@ fun AppRoot(app: ColorClashApp, incomingLink: JoinLink?, onLinkHandled: () -> Un
                 },
                 onPractice = { withPermissions(Permissions.hosting()) { sessions.host(bots = PRACTICE_BOTS) } },
                 onRejoin = { saved -> withPermissions(Permissions.network()) { sessions.rejoin(saved) } },
+                onSettings = { screen = Screen.SETTINGS },
             )
             Screen.JOIN -> {
                 BackHandler { screen = Screen.HOME }
@@ -127,6 +130,16 @@ fun AppRoot(app: ColorClashApp, incomingLink: JoinLink?, onLinkHandled: () -> Un
                     onScan = { screen = Screen.SCAN },
                     onJoinCode = { code -> withPermissions(Permissions.network()) { sessions.joinByCode(code) } },
                     onJoinAddress = { ip, port, code -> withPermissions(Permissions.network()) { sessions.join(listOf(ip), port, code) } },
+                )
+            }
+            Screen.SETTINGS -> {
+                BackHandler { screen = Screen.HOME }
+                SettingsScreen(
+                    profile = profile,
+                    onProfileChange = app.prefs::updateProfile,
+                    feedback = feedback,
+                    onFeedbackChange = app.prefs::updateFeedback,
+                    onBack = { screen = Screen.HOME },
                 )
             }
             Screen.SCAN -> {
