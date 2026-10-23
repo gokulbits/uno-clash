@@ -24,15 +24,18 @@ class ChaosProxy(private val targetPort: Int) : AutoCloseable {
         thread(isDaemon = true, name = "chaos-accept") {
             while (open) {
                 val client = runCatching { server.accept() }.getOrNull() ?: break
-                val upstream = runCatching { Socket("127.0.0.1", targetPort) }.getOrNull()
-                if (upstream == null) {
-                    client.close()
-                    continue
+                var upstream: Socket? = null
+                try {
+                    val up = Socket("127.0.0.1", targetPort).also { upstream = it }
+                    links += client
+                    links += up
+                    pump(client.getInputStream(), up.getOutputStream(), client, up)
+                    pump(up.getInputStream(), client.getOutputStream(), client, up)
+                } catch (_: Exception) {
+                    // Refused, or cut by dropAll mid-setup. Lose this connection, not the whole proxy.
+                    runCatching { client.close() }
+                    runCatching { upstream?.close() }
                 }
-                links += client
-                links += upstream
-                pump(client.getInputStream(), upstream.getOutputStream(), client, upstream)
-                pump(upstream.getInputStream(), client.getOutputStream(), client, upstream)
             }
         }
     }
