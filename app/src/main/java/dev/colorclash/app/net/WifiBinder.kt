@@ -36,7 +36,13 @@ class WifiBinder(context: Context) {
             }
         }
         callback = cb
-        cm.registerNetworkCallback(request, cb)
+        // Requesting (rather than just listening) tells the system we need this Wi-Fi, so it doesn't
+        // drop a hotspot that has no internet in favour of mobile data halfway through a game.
+        try {
+            cm.requestNetwork(request, cb)
+        } catch (e: SecurityException) {
+            cm.registerNetworkCallback(request, cb)
+        }
         return withTimeoutOrNull(1_500.milliseconds) { ready.await() } != null
     }
 

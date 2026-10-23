@@ -20,7 +20,7 @@ import dev.colorclash.app.R
  * The server itself is owned by [SessionManager]; this only holds the foreground slot and the locks.
  */
 class HostService : Service() {
-    private var wifiLock: WifiManager.WifiLock? = null
+    private val wifiLocks = mutableListOf<WifiManager.WifiLock>()
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -38,23 +38,29 @@ class HostService : Service() {
     }
 
     override fun onDestroy() {
-        wifiLock?.takeIf { it.isHeld }?.release()
+        wifiLocks.forEach { if (it.isHeld) it.release() }
+        wifiLocks.clear()
         wakeLock?.takeIf { it.isHeld }?.release()
         super.onDestroy()
     }
 
-    @Suppress("DEPRECATION") // HIGH_PERF is the best we can ask for before API 29
+    /**
+     * LOW_LATENCY only counts while the screen is on and we're in front. HIGH_PERF covers screen-off
+     * up to Android 13; from 14 it does nothing and the foreground service has to carry it alone.
+     */
+    @Suppress("DEPRECATION")
     private fun acquireLocks() {
-        if (wifiLock == null) {
+        if (wifiLocks.isEmpty()) {
             val wifi = applicationContext.getSystemService(WifiManager::class.java)
-            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                WifiManager.WIFI_MODE_FULL_LOW_LATENCY
-            } else {
-                WifiManager.WIFI_MODE_FULL_HIGH_PERF
+            val modes = buildList {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) add(WifiManager.WIFI_MODE_FULL_LOW_LATENCY)
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) add(WifiManager.WIFI_MODE_FULL_HIGH_PERF)
             }
-            wifiLock = wifi.createWifiLock(mode, "ColorClash:host").apply {
-                setReferenceCounted(false)
-                acquire()
+            modes.forEach { mode ->
+                wifiLocks += wifi.createWifiLock(mode, "ColorClash:host:$mode").apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
             }
         }
         if (wakeLock == null) {

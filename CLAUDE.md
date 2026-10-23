@@ -52,7 +52,15 @@ python tools/sfx/generate_sounds.py      # regenerate res/raw sounds (stdlib onl
 - Commit messages under 10 words, plain. No AI co-author lines. Don't push; the owner pushes.
 - Short, human comments. Don't build features outside the brief; list ideas at the end of a phase instead.
 
+## Network resilience
+
+- `ChaosTest` (`:net`) puts a `ChaosProxy` in front of clients: one test plays a full game through ~100
+  dropped connections, another freezes a link without closing it. Run them after touching
+  `GameClient`/`HostServer`/`GameHost`.
+- `GameClient` never waits on Ktor's close or handshake: each connection runs in its own job, and the
+  reconnect loop moves on as soon as the read loop stops (a dead link otherwise hangs for ages).
+- What can only be checked on phones lives in `docs/DEVICE_TESTING.md`.
+
 ## Status
 
-Phases 1–5 done (rules, networking, app shell, game screen, animation/sound/settings).
-Phase 6 (real-device hardening checklist, README expansion) is next.
+All six phases are done. Remaining risk is real-device behaviour; work from `docs/DEVICE_TESTING.md` results.

@@ -44,6 +44,20 @@ time you host or join. The game can't work without it.
 During play: tap a highlighted card (or drag it up) to play it, tap the draw pile to draw, and hit
 **LAST CARD!** before you're down to one. If someone forgets, a **CATCH!** button appears on their seat.
 
+## Troubleshooting
+
+| Problem | Try |
+| --- | --- |
+| Room doesn't show under *Rooms nearby* | Normal on many routers, which block discovery. Scan the QR or type the room code instead. |
+| "Couldn't reach the host" on a shared Wi-Fi | Guest or office networks often stop phones talking to each other. Use the host's hotspot instead. |
+| Joined the hotspot but can't connect | Make sure the phone actually stayed on the hotspot Wi-Fi (some phones hop to mobile data when Wi-Fi has no internet), then type the room code. |
+| Host's game stops when its screen is off | Some makers (Samsung, Xiaomi, OnePlus, Huawei…) kill background apps hard. On the host phone set the app's battery usage to **Unrestricted**: Settings › Apps › Color Clash › Battery. See [dontkillmyapp.com](https://dontkillmyapp.com). |
+| Someone's app was closed mid-game | Open it again and tap **Rejoin game** on the home screen. Within 60 s nobody notices; after that a bot was keeping the seat warm. |
+| "Install the same build on every phone" | Everyone needs the exact same APK version. |
+| The host's app was closed | The game can't move to another phone; start a new room. |
+
+Before a big game night, run through the [device test checklist](docs/DEVICE_TESTING.md) once with your phones.
+
 ## Build
 
 Requirements: JDK 17 or newer (21 recommended) and the Android SDK. Gradle is downloaded by the wrapper.

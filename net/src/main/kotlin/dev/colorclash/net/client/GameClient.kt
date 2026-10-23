@@ -17,13 +17,12 @@ import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -31,6 +30,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -101,6 +101,7 @@ class GameClient(
     @Volatile private var session: DefaultClientWebSocketSession? = null
     @Volatile private var leaving = false
     private var loop: Job? = null
+    @Volatile private var sessionJob: Job? = null
     private var everConnected = false
     private var attempt = 0
     private var lostAt: TimeMark? = null
@@ -123,6 +124,7 @@ class GameClient(
 
     fun close() {
         loop?.cancel()
+        sessionJob?.cancel()
         http.close()
         if (_status.value !is ClientStatus.Failed) _status.value = ClientStatus.Closed("Closed")
     }
@@ -141,14 +143,7 @@ class GameClient(
     private suspend fun connectLoop(target: Target) {
         _status.value = ClientStatus.Connecting
         while (true) {
-            val outcome = try {
-                runSession(target)
-            } catch (e: CancellationException) {
-                currentCoroutineContext().ensureActive()
-                Outcome.Dropped
-            } catch (e: Exception) {
-                Outcome.Dropped
-            }
+            val outcome = nextSessionOutcome(target)
             when (outcome) {
                 is Outcome.Rejected -> {
                     _status.value = ClientStatus.Failed(outcome.message, outcome.error)
@@ -178,10 +173,42 @@ class GameClient(
         }
     }
 
-    private suspend fun runSession(target: Target): Outcome {
+    /**
+     * Runs one connection in its own job and returns as soon as it's over. On a dead link Ktor's
+     * polite teardown (and even the opening handshake) can hang for a long time, so we never wait
+     * for it: the old job is cancelled and left to finish in the background.
+     */
+    private suspend fun nextSessionOutcome(target: Target): Outcome {
+        val opened = CompletableDeferred<Unit>()
+        val result = CompletableDeferred<Outcome>()
+        val job = scope.launch {
+            try {
+                runSession(target, opened, result)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Connection refused, reset, unreachable...
+            } finally {
+                result.complete(Outcome.Dropped)
+            }
+        }
+        sessionJob = job
+        val handshake = withTimeoutOrNull(config.connectTimeout + config.pingTimeout) {
+            select {
+                opened.onAwait { true }
+                result.onAwait { false }
+            }
+        }
+        val outcome = if (handshake == null) Outcome.Dropped else result.await()
+        job.cancel()
+        return outcome
+    }
+
+    private suspend fun runSession(target: Target, opened: CompletableDeferred<Unit>, result: CompletableDeferred<Outcome>) {
         var outcome: Outcome = Outcome.Dropped
         http.webSocket(host = target.host, port = target.port, path = WS_PATH) {
             session = this
+            opened.complete(Unit)
             val out = Channel<ClientMessage>(Channel.UNLIMITED)
             out.trySend(ClientMessage.Hello(PROTOCOL_VERSION, target.roomCode, target.name, target.avatar, sessionToken))
             val writer = launch { for (message in out) send(Frame.Text(Codec.encode(message))) }
@@ -216,9 +243,9 @@ class GameClient(
                 pinger.cancel()
                 writer.cancel()
                 out.close()
+                result.complete(outcome)
             }
         }
-        return outcome
     }
 
     /** Returns an outcome when this message ends the session. */

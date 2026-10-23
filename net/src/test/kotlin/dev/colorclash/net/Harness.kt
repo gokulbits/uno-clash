@@ -20,7 +20,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlin.random.Random
@@ -60,10 +62,16 @@ class Harness(hostConfig: HostConfig = fastHost, seed: Long = 42) : AutoCloseabl
 
     suspend fun start(): Harness = apply { port = server.start() }
 
-    fun client(name: String, token: String? = null, room: String = ROOM, config: ClientConfig = fastClient): GameClient =
+    fun client(
+        name: String,
+        token: String? = null,
+        room: String = ROOM,
+        config: ClientConfig = fastClient,
+        viaPort: Int = port,
+    ): GameClient =
         GameClient(scope, config).also {
             clients += it
-            it.connect("127.0.0.1", port, room, name, sessionToken = token)
+            it.connect("127.0.0.1", viaPort, room, name, sessionToken = token)
         }
 
     suspend fun awaitHost(timeout: Duration = 10.seconds, predicate: (HostStatus) -> Boolean): HostStatus =
@@ -84,13 +92,23 @@ suspend fun GameClient.awaitConnected() = awaitStatus { it == ClientStatus.Conne
 
 /**
  * Plays for [client] whenever it has something to do. Pauses while [running] is false so a
- * test can freeze the table and poke at it.
+ * test can freeze the table and poke at it. Like a person tapping again when nothing happened,
+ * it retries now and then in case a move was lost with a dropped connection.
  */
 fun CoroutineScope.autoPlay(client: GameClient, running: StateFlow<Boolean> = MutableStateFlow(true)): Job = launch {
-    combine(client.game, running) { view, go -> view.takeIf { go } }.collectLatest { view ->
+    val retry = flow {
+        var tick = 0
+        while (true) {
+            emit(tick++)
+            delay(RETRY_EVERY)
+        }
+    }
+    combine(client.game, running, retry) { view, go, _ -> view.takeIf { go } }.collectLatest { view ->
         view?.let(::decide)?.let(client::send)
     }
 }
+
+private val RETRY_EVERY = 400.milliseconds
 
 /** A simple player that only looks at its own view, like a real phone would. */
 fun decide(view: PlayerView): PlayerIntent? {
