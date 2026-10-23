@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,8 +28,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.colorclash.app.session.Session
 import dev.colorclash.app.ui.components.BigButton
+import dev.colorclash.app.ui.game.GameScreen
+import dev.colorclash.app.ui.game.describe
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.net.client.ClientStatus
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+
+private const val LOG_LINES = 3
 
 /** Everything once you're in a room: connecting, lobby, game, and the ways it can end. */
 @Composable
@@ -38,6 +45,23 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
     val game by session.client.game.collectAsState()
     var confirmLeave by remember { mutableStateOf(false) }
     var startError by remember { mutableStateOf<String?>(null) }
+    var log by remember { mutableStateOf(emptyList<String>()) }
+    var notice by remember { mutableStateOf<String?>(null) }
+
+    // Collected here rather than in the game screen so the first updates of a round aren't missed.
+    LaunchedEffect(session) {
+        session.client.updates.collect { update ->
+            val lines = update.events.mapNotNull { describe(it, update.view) }
+            if (lines.isNotEmpty()) log = (log + lines).takeLast(LOG_LINES)
+        }
+    }
+    LaunchedEffect(session) {
+        session.client.notices.collectLatest {
+            notice = it
+            delay(2_000)
+            notice = null
+        }
+    }
 
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -51,7 +75,16 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
             is ClientStatus.Failed -> EndCard("Couldn't stay connected", s.message, onLeave)
             is ClientStatus.Closed -> EndCard("Room closed", s.reason, onLeave)
             else -> when {
-                game != null -> GamePlaceholder(game!!, session, onLeave = { confirmLeave = true })
+                game != null -> GameScreen(
+                    view = game!!,
+                    log = log,
+                    notice = notice,
+                    isHost = session.isHost,
+                    onIntent = session.client::send,
+                    onNextRound = { session.hosting?.host?.startNextRound() },
+                    onBackToLobby = { session.hosting?.host?.returnToLobby() },
+                    onLeave = { confirmLeave = true },
+                )
                 lobby != null -> LobbyScreen(
                     lobby = lobby!!,
                     hosting = session.hosting,
