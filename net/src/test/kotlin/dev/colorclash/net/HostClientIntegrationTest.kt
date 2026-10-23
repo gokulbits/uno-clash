@@ -108,8 +108,9 @@ class HostClientIntegrationTest {
                 synchronized(updates) { updates.drop(seenBeforeDrop).first { it.events.isEmpty() } }
             }
             assertEquals(seat, resync.view.you)
-            assertEquals(h.host.status.value.game?.hand(seat), resync.view.hand)
-            assertTrue(h.host.status.value.seats[seat].connected)
+            // The host publishes its status just after messaging clients, so wait for it.
+            val hostView = h.awaitHost { it.seats[seat].connected }
+            assertEquals(hostView.game?.hand(seat), resync.view.hand)
 
             running.value = true
             h.awaitHost(60.seconds) { it.stage == HostStage.GAME_OVER }
