@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The game only ever talks ws:// to other phones on the same Wi-Fi or hotspot. Network security
+  config can't match IP ranges (domain-config needs exact hosts, and LAN/hotspot IPs change), so
+  cleartext is allowed at the base level. The app makes no internet connections at all.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

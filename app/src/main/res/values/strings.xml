@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Color Clash</string>
+    <string name="host_channel_name">Hosting a game</string>
+    <string name="host_notification_title">Hosting Color Clash</string>
+    <string name="host_notification_text">Room %1$s is open. Tap to return to the game.</string>
+</resources>

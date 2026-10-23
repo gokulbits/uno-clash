@@ -1,0 +1,83 @@
+package dev.colorclash.app.ui.theme
+
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import dev.colorclash.rules.CardColor
+
+const val GAME_TITLE = "Color Clash"
+
+/** Every color, font and avatar the game draws with. Change this one object to reskin the game. */
+object GameTheme {
+    val red = Color(0xFFFF3B5C)
+    val yellow = Color(0xFFFFC61A)
+    val green = Color(0xFF1FD15C)
+    val blue = Color(0xFF3B5BFF)
+    val wild = Color(0xFF1C1530)
+
+    val tableTop = Color(0xFF3A1F8C)
+    val tableBottom = Color(0xFF140A33)
+    val panel = Color(0x26FFFFFF)
+    val panelStrong = Color(0x40FFFFFF)
+    val accent = Color(0xFFFF8A00)
+    val text = Color.White
+    val mutedText = Color(0xB3FFFFFF)
+    val danger = Color(0xFFFF4D6D)
+
+    val cardColors = listOf(red, yellow, green, blue)
+
+    fun cardColor(color: CardColor?): Color = when (color) {
+        CardColor.RED -> red
+        CardColor.YELLOW -> yellow
+        CardColor.GREEN -> green
+        CardColor.BLUE -> blue
+        null -> wild
+    }
+
+    val tableBrush: Brush get() = Brush.verticalGradient(listOf(tableTop, tableBottom))
+
+    val displayFont: FontFamily = FontFamily.SansSerif
+    val bodyFont: FontFamily = FontFamily.SansSerif
+
+    val avatars = listOf("🦊", "🐼", "🐸", "🐙", "🦄", "🐯", "🐵", "🐧", "🐲", "🐝", "🦁", "🐨")
+    val avatarBackgrounds = listOf(red, blue, green, yellow, Color(0xFFB04DFF), Color(0xFF00C2D1))
+
+    fun avatar(index: Int): String = avatars[index.mod(avatars.size)]
+    fun avatarBackground(index: Int): Color = avatarBackgrounds[index.mod(avatarBackgrounds.size)]
+}
+
+@Composable
+fun ColorClashTheme(content: @Composable () -> Unit) {
+    val colors = darkColorScheme(
+        primary = GameTheme.accent,
+        onPrimary = Color.White,
+        secondary = GameTheme.blue,
+        onSecondary = Color.White,
+        tertiary = GameTheme.green,
+        background = GameTheme.tableBottom,
+        onBackground = GameTheme.text,
+        surface = Color(0xFF261458),
+        onSurface = GameTheme.text,
+        surfaceVariant = Color(0xFF32206B),
+        onSurfaceVariant = GameTheme.mutedText,
+        error = GameTheme.danger,
+    )
+    val base = Typography()
+    val typography = base.copy(
+        displayLarge = TextStyle(fontFamily = GameTheme.displayFont, fontWeight = FontWeight.Black, fontSize = 52.sp),
+        headlineMedium = TextStyle(fontFamily = GameTheme.displayFont, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp),
+        titleLarge = base.titleLarge.copy(fontFamily = GameTheme.displayFont, fontWeight = FontWeight.Bold),
+        titleMedium = base.titleMedium.copy(fontFamily = GameTheme.bodyFont, fontWeight = FontWeight.Bold),
+        bodyLarge = base.bodyLarge.copy(fontFamily = GameTheme.bodyFont),
+        bodyMedium = base.bodyMedium.copy(fontFamily = GameTheme.bodyFont),
+        labelLarge = base.labelLarge.copy(fontFamily = GameTheme.bodyFont, fontWeight = FontWeight.Bold, fontSize = 16.sp),
+    )
+    MaterialTheme(colorScheme = colors, typography = typography, content = content)
+}

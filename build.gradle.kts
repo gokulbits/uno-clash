@@ -4,6 +4,8 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 plugins {
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.serialization) apply false
+    alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.android.application) apply false
 }
 
 // Shared setup for the pure JVM modules (:rules, :protocol, :net), which also run on Android.
