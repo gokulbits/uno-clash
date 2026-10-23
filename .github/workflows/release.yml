@@ -1,0 +1,89 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Every build gets a higher version code, so a newer APK installs over an older one.
+      CC_VERSION_CODE: ${{ github.run_number }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Pick version name
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "CC_VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "CC_VERSION_NAME=0.0.${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Tests and lint
+        run: |
+          chmod +x gradlew
+          ./gradlew test :app:lintRelease
+
+      - name: Set up release key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::No signing secrets set. This APK is signed with a throwaway key and won't install over a previous build. See README > Releases."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "CC_KEYSTORE_PATH=$RUNNER_TEMP/release.jks"
+            echo "CC_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "CC_KEY_ALIAS=$KEY_ALIAS"
+            echo "CC_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        run: |
+          ./gradlew :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "color-clash-${CC_VERSION_NAME}.apk"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: color-clash-${{ env.CC_VERSION_NAME }}
+          path: color-clash-*.apk
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "${CC_KEYSTORE_PATH:-}" ]; then
+            echo "::error::Not publishing a release signed with a throwaway key. Add the signing secrets first (README > Releases)."
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" color-clash-*.apk \
+            --title "Color Clash $CC_VERSION_NAME" \
+            --generate-notes

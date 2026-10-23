@@ -3,6 +3,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Release signing comes from the environment (CI secrets, or exported locally). See README.
+fun env(name: String): String? = providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
+val releaseKeystore = env("CC_KEYSTORE_PATH")
+
 android {
     namespace = "dev.colorclash.app"
     compileSdk = 37
@@ -11,8 +15,26 @@ android {
         applicationId = "dev.colorclash"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.3.0"
+        versionCode = env("CC_VERSION_CODE")?.toInt() ?: 1
+        versionName = env("CC_VERSION_NAME") ?: "0.5.0"
+    }
+
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = env("CC_KEYSTORE_PASSWORD")
+                keyAlias = env("CC_KEY_ALIAS")
+                keyPassword = env("CC_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Without a real key, fall back to the debug key so a local release build still installs.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+        }
     }
 
     buildFeatures {
