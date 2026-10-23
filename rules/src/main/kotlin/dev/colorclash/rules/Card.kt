@@ -1,5 +1,7 @@
 package dev.colorclash.rules
 
+import kotlinx.serialization.Serializable
+
 enum class CardColor { RED, YELLOW, GREEN, BLUE }
 
 enum class Face(val number: Int? = null) {
@@ -13,6 +15,7 @@ enum class Face(val number: Int? = null) {
 }
 
 /** [id] is unique within a deck so cards can be tracked across zones and animated. */
+@Serializable
 data class Card(val id: Int, val face: Face, val color: CardColor? = null) {
     init {
         require(face.isWild == (color == null)) { "Wild cards have no color, every other card has one" }

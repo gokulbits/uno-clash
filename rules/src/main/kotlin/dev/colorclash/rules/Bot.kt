@@ -24,8 +24,15 @@ class SimpleBot(
         if (legal.isEmpty()) return null
         legal.firstOrNull { it is CatchLastCard }?.let { return it }
         legal.firstOrNull { it is CallLastCard }?.let { return it }
-        if (seat != state.current) return null
+        return chooseTurnAction(state, seat, legal)
+    }
 
+    /** Only a move that moves the seat's own turn along; no calls or catches. Used when a turn timer runs out. */
+    fun chooseTurnAction(state: GameState, seat: Int): PlayerAction? =
+        chooseTurnAction(state, seat, GameEngine.legalActions(state, seat))
+
+    private fun chooseTurnAction(state: GameState, seat: Int, legal: List<PlayerAction>): PlayerAction? {
+        if (seat != state.current || legal.isEmpty()) return null
         val hand = state.hand(seat)
         return when (state.phase) {
             is Phase.PickColor -> ChooseColor(seat, favoriteColor(hand))

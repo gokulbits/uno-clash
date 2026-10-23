@@ -1,5 +1,8 @@
 package dev.colorclash.rules
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class RuleSet(
     val handSize: Int = 7,
     val targetScore: Int = 500,

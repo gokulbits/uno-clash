@@ -18,3 +18,4 @@ rootProject.name = "color-clash"
 
 include(":rules")
 include(":protocol")
+include(":net")
