@@ -242,7 +242,9 @@ class GameHost(
 
     /** Runs [action] through the engine. Returns the rejection reason, or null if it was applied. */
     private fun apply(action: Action): String? {
-        val current = game ?: return "No game is running"
+        val playing = game ?: return "No game is running"
+        // Every round gets a freshly shuffled deck from new randomness, not just the game's first seed.
+        val current = if (action == Action.StartNextRound) GameEngine.reseed(playing, seed()) else playing
         return when (val result = GameEngine.reduce(current, action)) {
             is EngineResult.Rejected -> result.reason
             is EngineResult.Ok -> {
@@ -350,7 +352,7 @@ class GameHost(
             turnClock = null
             return
         }
-        // Keep the deadline while it's still the same decision, e.g. someone else calling "last card".
+        // Keep the deadline while it's still the same decision, e.g. someone else calling "UNO".
         val clock = turnClock?.takeIf { it.seat == state.current && it.phase == state.phase && it.round == state.round }
             ?: TurnClock(state.current, state.phase, state.round, TimeSource.Monotonic.markNow() + seconds.seconds)
         turnClock = clock

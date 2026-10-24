@@ -11,11 +11,18 @@ class Rng(var state: Long) {
         return z xor (z ushr 31)
     }
 
+    /** Uniform in 0 until [bound], with no modulo bias. */
     fun nextInt(bound: Int): Int {
         require(bound > 0)
-        return ((nextLong() ushr 1) % bound).toInt()
+        // Values past the last whole multiple of bound would favour the low results, so draw again.
+        val limit = Long.MAX_VALUE - Long.MAX_VALUE % bound
+        while (true) {
+            val r = nextLong() ushr 1
+            if (r < limit) return (r % bound).toInt()
+        }
     }
 
+    /** Fisher-Yates: every ordering of [list] is equally likely. */
     fun <T> shuffle(list: MutableList<T>) {
         for (i in list.lastIndex downTo 1) {
             val j = nextInt(i + 1)

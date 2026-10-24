@@ -34,6 +34,12 @@ object GameEngine {
         return Transition(blank).also { it.startRound(round = 1, dealer = dealer) }.result()
     }
 
+    /**
+     * Mixes fresh randomness into the shuffles still to come. The host does this before every
+     * round, so no single seed decides a whole game, and the engine itself stays deterministic.
+     */
+    fun reseed(state: GameState, entropy: Long): GameState = state.copy(rngState = state.rngState xor entropy)
+
     fun reduce(state: GameState, action: Action): EngineResult {
         validate(state, action)?.let { return EngineResult.Rejected(it) }
         return Transition(state).also { it.perform(action) }.result()
