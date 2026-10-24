@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -112,7 +113,6 @@ fun GameScreen(
                 TextButton(onClick = onLeave) { Text("‹ Leave", color = GameTheme.text) }
                 Text("Round ${view.round}", Modifier.weight(1f), color = GameTheme.mutedText, textAlign = TextAlign.Center)
                 Text("${view.seats[view.you].score} pts", fontWeight = FontWeight.Bold)
-                TextButton(onClick = { showReactions = !showReactions }) { Text("😊", fontSize = 20.sp) }
                 TextButton(onClick = { showSettings = true }) { Text("⚙", fontSize = 20.sp, color = GameTheme.text) }
             }
 
@@ -144,7 +144,15 @@ fun GameScreen(
                 }
             }
 
-            ActionBar(view, controls, onIntent)
+            // Your actions, with the reaction button at your side of the table.
+            Box(Modifier.fillMaxWidth()) {
+                ActionBar(view, controls, onIntent, Modifier.padding(end = REACTION_BUTTON_SIZE))
+                ReactionButton(
+                    open = showReactions,
+                    onClick = { showReactions = !showReactions },
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
+                )
+            }
 
             Hand(view, fx, onPlay = { onIntent(PlayerIntent.Play(it)) })
         }
@@ -157,7 +165,8 @@ fun GameScreen(
                     onReact(it)
                     showReactions = false
                 },
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 48.dp, end = 8.dp),
+                // Opens upwards from the reaction button, just above the action row and the hand.
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = HAND_HEIGHT + ACTION_BAR_HEIGHT),
             )
         }
 
@@ -350,9 +359,9 @@ private fun CenterTable(view: PlayerView, fx: TableFx, controls: TableControls, 
 }
 
 @Composable
-private fun ActionBar(view: PlayerView, controls: TableControls, onIntent: (PlayerIntent) -> Unit) {
+private fun ActionBar(view: PlayerView, controls: TableControls, onIntent: (PlayerIntent) -> Unit, modifier: Modifier = Modifier) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).height(48.dp),
+        modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).height(48.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -397,7 +406,7 @@ private fun Hand(view: PlayerView, fx: TableFx, onPlay: (Int) -> Unit) {
     LazyRow(
         Modifier
             .fillMaxWidth()
-            .height(HAND_CARD_WIDTH * CARD_ASPECT + 48.dp)
+            .height(HAND_HEIGHT)
             .then(fx.anchor(Anchor.Seat(view.you))),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp + HAND_CARD_WIDTH - slice, top = 24.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterHorizontally),
@@ -523,7 +532,21 @@ fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boole
     }
 }
 
-/** The mood emoji you can send. Pops open under the top bar. */
+@Composable
+private fun ReactionButton(open: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    Box(
+        modifier
+            .size(REACTION_BUTTON_SIZE)
+            .clip(CircleShape)
+            .background(if (open) GameTheme.yellow else GameTheme.panelStrong)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("😊", fontSize = 24.sp)
+    }
+}
+
+/** The mood emoji you can send. Pops open above the reaction button. */
 @Composable
 private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
     val appear = remember { Animatable(0f) }
@@ -534,7 +557,7 @@ private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
                 scaleX = appear.value
                 scaleY = appear.value
                 alpha = appear.value.coerceIn(0f, 1f)
-                transformOrigin = TransformOrigin(1f, 0f)
+                transformOrigin = TransformOrigin(1f, 1f)
             }
             .clip(RoundedCornerShape(20.dp))
             .background(GameTheme.wild.copy(alpha = 0.92f))
@@ -575,4 +598,7 @@ private fun PhaseKind.isLive() = this != PhaseKind.ROUND_OVER && this != PhaseKi
 /** Hand cards lean around a point this far down their height, below the card itself. */
 private const val HAND_PIVOT = 1.2f
 private const val REACTIONS_PER_ROW = 6
+private val REACTION_BUTTON_SIZE = 44.dp
+private val ACTION_BAR_HEIGHT = 60.dp
+private val HAND_HEIGHT = HAND_CARD_WIDTH * CARD_ASPECT + 48.dp
 private val PILE_SHAPE = RoundedCornerShape(TABLE_CARD_WIDTH * 0.11f)
