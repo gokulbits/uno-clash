@@ -95,7 +95,7 @@ class TableLogicTest {
     }
 
     @Test
-    fun `last card button pulses at two cards and catch targets the exposed player`() {
+    fun `UNO button pulses at two cards and catch targets the exposed player`() {
         val r5 = card(5, Face.FIVE)
         val hands = listOf(listOf(r5, card(6, Face.ONE, CardColor.BLUE))) + List(3) { List(3) { i -> card(30 + it * 5 + i, Face.ONE, CardColor.BLUE) } }
         val start = table(hands)

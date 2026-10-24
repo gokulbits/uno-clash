@@ -249,7 +249,7 @@ private fun OpponentSeat(
                 color = Color.White, fontWeight = FontWeight.Black, fontSize = 13.sp,
             )
             seat.cardCount == 1 && seat.calledLastCard -> Text(
-                "LAST CARD",
+                "UNO",
                 Modifier.clip(RoundedCornerShape(8.dp)).background(GameTheme.yellow).padding(horizontal = 6.dp, vertical = 2.dp),
                 color = Color.Black, fontWeight = FontWeight.Black, fontSize = 11.sp,
             )
@@ -349,7 +349,7 @@ private fun ActionBar(view: PlayerView, controls: TableControls, onIntent: (Play
         }
         if (controls.canCallLastCard) {
             ActionButton(
-                "LAST CARD!", GameTheme.yellow,
+                "UNO!", GameTheme.yellow,
                 Modifier.scale(if (controls.urgeLastCard) pulse(1.12f) else 1f),
                 textColor = Color.Black,
             ) { onIntent(PlayerIntent.CallLastCard) }

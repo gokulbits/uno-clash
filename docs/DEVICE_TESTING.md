@@ -100,7 +100,7 @@ Host on one phone; join from the others using each method once.
 
 - [ ] 6 seats (mix of phones and bots), play to 500 with stacking, jump-in and 7-0 on.
 - [ ] Every rule shows something on screen: skip flash, reverse spin, color burst after a wild, shake on +2/+4,
-  "LAST CARD!" and "CATCH!", challenge result, hands swapping, confetti on a win.
+  "UNO!" and "CATCH!", challenge result, hands swapping, confetti on a win.
 - [ ] Turn on Developer options › Profile HWUI rendering › On screen as bars during dealing and confetti.
   **Expect:** bars mostly under the green line on a mid-range phone.
 - [ ] Settings: sound, music and vibration toggles each take effect immediately, in the menu and from ⚙ in game.

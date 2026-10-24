@@ -54,7 +54,7 @@ fun CardFace(card: Card, width: Dp, modifier: Modifier = Modifier, dimmed: Boole
                 val number = card.face.number?.toString()
                 val big = number?.let { measurer.label(it, 0.66f * w, this) }
                 val cornerText = number ?: card.face.cornerText()
-                val corner = cornerText?.let { measurer.label(it, if (it.length > 1) 0.17f * w else 0.2f * w, this) }
+                val corner = cornerText?.let { measurer.label(it, if (it.length > 1) 0.19f * w else 0.24f * w, this) }
                 onDrawBehind { drawFace(card, Tint(dimmed), big, corner) }
             },
     )
@@ -196,22 +196,27 @@ private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResul
         }
     }
 
-    val cornerShade = tint(darker(base, 0.6f))
+    val cornerShade = tint(darker(base, 0.65f))
     val white = tint(Color.White)
-    val near = Offset(w * 0.17f, w * 0.19f)
+    // The oval leans away from these two corners, so the marks never run into it.
+    val near = Offset(w * 0.18f, w * 0.21f)
     val far = Offset(w - near.x, size.height - near.y)
     for (at in listOf(near, far)) {
         rotate(if (at == near) 0f else 180f, pivot = at) {
             when {
                 corner != null -> {
-                    drawLabel(corner, at, white, cornerShade, w * 0.35f)
+                    // Outlined and shadowed so they read at a glance in a tight fan.
+                    drawLabel(corner, at, white, cornerShade, w * 0.9f, outline = cornerShade, outlineWidth = w * 0.045f)
                     if (card.face == Face.SIX || card.face == Face.NINE) {
-                        drawRoundRect(white, Offset(at.x - w * 0.045f, at.y + w * 0.095f), Size(w * 0.09f, w * 0.022f), CornerRadius(w * 0.011f))
+                        val bar = Size(w * 0.11f, w * 0.03f)
+                        val barAt = Offset(at.x - bar.width / 2, at.y + w * 0.112f)
+                        drawRoundRect(cornerShade, barAt - Offset(w * 0.012f, w * 0.012f), Size(bar.width + w * 0.024f, bar.height + w * 0.024f), CornerRadius(w * 0.027f))
+                        drawRoundRect(white, barAt, bar, CornerRadius(w * 0.015f))
                     }
                 }
-                card.face == Face.SKIP -> withShadow(w * 0.35f, cornerShade, white, at) { c, color -> skipIcon(c, w * 0.075f, color) }
-                card.face == Face.REVERSE -> withShadow(w * 0.35f, cornerShade, white, at) { c, color -> reverseIcon(c, w * 0.075f, color) }
-                else -> wildPip(at, w * 0.07f, tint)
+                card.face == Face.SKIP -> withShadow(w * 0.9f, cornerShade, white, at) { c, color -> skipIcon(c, w * 0.09f, color) }
+                card.face == Face.REVERSE -> withShadow(w * 0.9f, cornerShade, white, at) { c, color -> reverseIcon(c, w * 0.09f, color) }
+                else -> wildPip(at, w * 0.08f, tint)
             }
         }
     }
@@ -249,12 +254,20 @@ private fun DrawScope.drawBack(words: List<TextLayoutResult>) {
  * Draws [text] centred on [at], with a soft drop shadow and an optional outline. Shadow offsets
  * scale with [unit] so small corner marks get a small shadow.
  */
-private fun DrawScope.drawLabel(text: TextLayoutResult, at: Offset, fill: Color, shade: Color, unit: Float, outline: Color? = null) {
+private fun DrawScope.drawLabel(
+    text: TextLayoutResult,
+    at: Offset,
+    fill: Color,
+    shade: Color,
+    unit: Float,
+    outline: Color? = null,
+    outlineWidth: Float = unit * 0.014f,
+) {
     val px = text.layoutInput.style.fontSize.toPx()
     // Centre on the cap height (digits and "+"), not the line box, which sits too high.
     val topLeft = Offset(at.x - text.size.width / 2f, at.y - text.firstBaseline + px * CAP_HEIGHT / 2)
     drawText(text, color = shade.copy(alpha = 0.55f), topLeft = topLeft + Offset(unit * 0.02f, unit * 0.03f))
-    if (outline != null) drawText(text, color = outline, topLeft = topLeft, drawStyle = Stroke(unit * 0.014f, join = StrokeJoin.Round))
+    if (outline != null) drawText(text, color = outline, topLeft = topLeft, drawStyle = Stroke(outlineWidth, join = StrokeJoin.Round))
     drawText(text, color = fill, topLeft = topLeft)
 }
 
@@ -333,7 +346,8 @@ private const val CORNER = 0.11f
 private const val INSET = 0.055f
 private const val OVAL_RX = 0.34f
 private const val OVAL_RY = 0.54f
-private const val OVAL_TILT = -28f
+/** Leans the oval's top to the right, clear of the top-left and bottom-right corner marks. */
+private const val OVAL_TILT = 28f
 private const val CAP_HEIGHT = 0.71f
 private const val SQRT_HALF = 0.70710677f
 private val BACK_WORDS = listOf("COLOR", "CLASH")

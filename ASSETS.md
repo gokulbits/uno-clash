@@ -18,7 +18,7 @@ All files in `app/src/main/res/raw/` are synthesized by [`tools/sfx/generate_sou
 | `sfx_skip.wav` | Skip |
 | `sfx_reverse.wav` | Reverse |
 | `sfx_wild.wav` | Wild color chosen |
-| `sfx_last_card.wav` | "Last card!" called |
+| `sfx_last_card.wav` | "UNO!" called |
 | `sfx_penalty.wav` | Caught, challenge outcome |
 | `sfx_win.wav` | You won the round |
 | `sfx_lose.wav` | Someone else won the round |

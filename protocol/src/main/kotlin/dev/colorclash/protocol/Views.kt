@@ -6,11 +6,13 @@ import dev.colorclash.rules.Direction
 import dev.colorclash.rules.RuleSet
 import kotlinx.serialization.Serializable
 
+const val DEFAULT_TURN_SECONDS = 15
+
 @Serializable
 data class GameSettings(
     val rules: RuleSet = RuleSet(),
     /** Null means no turn timer. */
-    val turnTimerSeconds: Int? = null,
+    val turnTimerSeconds: Int? = DEFAULT_TURN_SECONDS,
 )
 
 @Serializable

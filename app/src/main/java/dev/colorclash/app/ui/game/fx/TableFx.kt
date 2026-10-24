@@ -246,7 +246,7 @@ class TableFx {
                 arrowSpin.animateTo(arrowSpin.value + turn, tween(550, easing = FastOutSlowInEasing))
             }
             is EventView.WildColorChosen -> burst(Anchor.DiscardPile, GameTheme.cardColor(event.color))
-            is EventView.LastCardCalled -> flash(Anchor.Seat(event.player), "LAST CARD!", GameTheme.yellow)
+            is EventView.LastCardCalled -> flash(Anchor.Seat(event.player), "UNO!", GameTheme.yellow)
             is EventView.PenaltyApplied -> coroutineScope {
                 launch { flash(Anchor.Seat(event.player), "+${event.cards}", GameTheme.red) }
                 if (event.player == view.you) launch { glowRed() }

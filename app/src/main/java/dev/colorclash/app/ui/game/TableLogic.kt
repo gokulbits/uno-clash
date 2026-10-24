@@ -99,7 +99,7 @@ fun describe(event: EventView, view: PlayerView): String? {
         is EventView.Skipped -> "${who(event.player)} ${if (event.player == view.you) "are" else "is"} skipped"
         is EventView.Reversed -> if (event.direction == Direction.CLOCKWISE) "Play goes clockwise" else "Play goes counter-clockwise"
         is EventView.WildColorChosen -> "${who(event.player)} picked ${event.color.name.lowercase()}"
-        is EventView.LastCardCalled -> "${who(event.player)} called last card!"
+        is EventView.LastCardCalled -> "${who(event.player)} called UNO!"
         is EventView.PenaltyApplied -> "${who(event.caughtBy)} caught ${who(event.player).let { if (it == "You") "you" else it }}! +${event.cards}"
         is EventView.Challenged -> if (event.succeeded) {
             "${who(event.challenger)} caught ${who(event.offender)} bluffing a +4"
