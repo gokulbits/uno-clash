@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.lerp
@@ -87,7 +88,7 @@ private class Tint(private val dimmed: Boolean) {
     operator fun invoke(c: Color): Color {
         if (!dimmed) return c
         val l = 0.3f * c.red + 0.59f * c.green + 0.11f * c.blue
-        return lerp(lerp(c, Color(l, l, l, c.alpha), 0.3f), Color.Black.copy(alpha = c.alpha), 0.3f)
+        return lerp(lerp(c, Color(l, l, l, c.alpha), 0.12f), Color.Black.copy(alpha = c.alpha), 0.22f)
     }
 }
 
@@ -268,9 +269,11 @@ private fun DrawScope.drawLabel(
     val px = text.layoutInput.style.fontSize.toPx()
     // Centre on the cap height (digits and "+"), not the line box, which sits too high.
     val topLeft = Offset(at.x - text.size.width / 2f, at.y - text.firstBaseline + px * CAP_HEIGHT / 2)
-    drawText(text, color = shade.copy(alpha = 0.55f), topLeft = topLeft + Offset(unit * 0.02f, unit * 0.03f))
+    // Fill has to be passed explicitly: on Android the text paint keeps the last stroke otherwise,
+    // and the "fill" comes out as another outline.
+    drawText(text, color = shade.copy(alpha = 0.55f), topLeft = topLeft + Offset(unit * 0.02f, unit * 0.03f), drawStyle = Fill)
     if (outline != null) drawText(text, color = outline, topLeft = topLeft, drawStyle = Stroke(outlineWidth, join = StrokeJoin.Round))
-    drawText(text, color = fill, topLeft = topLeft)
+    drawText(text, color = fill, topLeft = topLeft, drawStyle = Fill)
 }
 
 /** The bar that tells a 6 from a 9: outlined in [edge] and shadowed like the digit above it. */
