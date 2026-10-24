@@ -10,6 +10,7 @@ import dev.colorclash.app.net.WifiBinder
 import dev.colorclash.net.client.ClientStatus
 import dev.colorclash.net.client.GameClient
 import dev.colorclash.net.host.GameHost
+import dev.colorclash.net.host.HostConfig
 import dev.colorclash.net.host.HostServer
 import dev.colorclash.protocol.DEFAULT_PORT
 import dev.colorclash.protocol.JoinLink
@@ -60,7 +61,8 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
     /** Opens a room on this phone. Returns an error message, or null on success. */
     suspend fun host(bots: Int = 0): String? {
         leave()
-        val host = GameHost(scope)
+        // Rounds roll on by themselves after a short look at the scores, so nobody waits on the host.
+        val host = GameHost(scope, HostConfig(autoNextRound = NEXT_ROUND_AFTER))
         val (server, port) = startServer(host) ?: return "Couldn't open a game server on this phone."
         val profile = prefs.profile.value
         val token = host.reserveHostSeat(profile.name, profile.avatar)
@@ -164,3 +166,5 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
         val REJOIN_WINDOW = 2.hours
     }
 }
+
+private val NEXT_ROUND_AFTER = 15.seconds

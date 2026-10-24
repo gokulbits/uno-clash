@@ -24,6 +24,7 @@ All files in `app/src/main/res/raw/` are synthesized by [`tools/sfx/generate_sou
 | `sfx_lose.wav` | Someone else won the round |
 | `sfx_turn.wav` | Your turn |
 | `sfx_pop.wav` | Someone reacts with an emoji |
+| `sfx_tick.wav` | The last seconds of your turn |
 | `music_loop.wav` | Background music (112 bpm electric piano, loops seamlessly) |
 
 To regenerate after tweaking the script:

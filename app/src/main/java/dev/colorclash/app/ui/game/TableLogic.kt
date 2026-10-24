@@ -81,9 +81,21 @@ fun arcPositions(count: Int): List<Pair<Float, Float>> {
     }
 }
 
-/** Groups the hand by color, then by face, so it's easy to scan. */
-fun sortHand(hand: List<Card>): List<Card> =
-    hand.sortedWith(compareBy<Card>({ it.color?.ordinal ?: Int.MAX_VALUE }, { it.face.ordinal }))
+/** Groups the hand by color, then by face, so it's easy to scan; or by face first when [byNumber]. Wilds go last either way. */
+fun sortHand(hand: List<Card>, byNumber: Boolean = false): List<Card> {
+    val color = compareBy<Card> { it.color?.ordinal ?: Int.MAX_VALUE }
+    val face = compareBy<Card> { it.face.ordinal }
+    return hand.sortedWith(if (byNumber) face.then(color) else color.then(face))
+}
+
+/** A card someone played this round, for the discard pile peek. */
+data class RecentPlay(val seat: Int, val card: Card)
+
+/** Who plays after the current player, if the round is still going. */
+fun nextSeat(view: PlayerView): Int? {
+    if (view.phase == PhaseKind.ROUND_OVER || view.phase == PhaseKind.GAME_OVER) return null
+    return (view.current + view.direction.step).mod(view.seats.size)
+}
 
 /** What's stamped on a seat: a skip sign, a "+N", or a tick or cross for a challenge. */
 enum class StampMark { SKIP, DRAW, CHECK, CROSS }
@@ -99,12 +111,19 @@ fun seatStampsFor(event: EventView, you: Int): List<SeatStamp> = when (event) {
     is EventView.Skipped -> listOf(
         SeatStamp(event.player, StampMark.SKIP, if (event.player == you) "YOU'RE SKIPPED!" else "SKIPPED!", good = false),
     )
-    // Only a +2 or +4 landing on you; a challenge's own stamps already cover those cards.
-    is EventView.Drew -> if (event.reason == DrawReason.DRAW_CARD && event.count > 0) {
-        val tag = if (event.player == you) "YOU DRAW ${event.count}!" else "DRAW ${event.count}!"
-        listOf(SeatStamp(event.player, StampMark.DRAW, tag, good = false, count = event.count))
-    } else {
-        emptyList()
+    // A +2 or +4 landing on you, or the penalty for finishing on a power card. A challenge's own
+    // stamps already cover those cards, and an UNO penalty has its own flash.
+    is EventView.Drew -> when {
+        event.count <= 0 -> emptyList()
+        event.reason == DrawReason.DRAW_CARD -> {
+            val tag = if (event.player == you) "YOU DRAW ${event.count}!" else "DRAW ${event.count}!"
+            listOf(SeatStamp(event.player, StampMark.DRAW, tag, good = false, count = event.count))
+        }
+        event.reason == DrawReason.POWER_FINISH -> {
+            val tag = if (event.player == you) "NO POWER FINISH!" else "POWER FINISH!"
+            listOf(SeatStamp(event.player, StampMark.DRAW, tag, good = false, count = event.count))
+        }
+        else -> emptyList()
     }
     is EventView.Challenged -> {
         val challengerYou = event.challenger == you
@@ -161,6 +180,7 @@ fun describe(event: EventView, view: PlayerView): String? {
             DrawReason.DRAW_CARD -> "${who(event.player)} took ${plural(event.count, "card")}"
             DrawReason.MISSED_LAST_CARD -> null // covered by the penalty line
             DrawReason.CHALLENGE -> "${who(event.player)} took ${plural(event.count, "card")} from the challenge"
+            DrawReason.POWER_FINISH -> "${who(event.player)} can't go out on a power card: +${event.count}"
         }
         is EventView.Skipped -> "${who(event.player)} ${if (event.player == view.you) "are" else "is"} skipped"
         is EventView.Reversed -> if (event.direction == Direction.CLOCKWISE) "Play goes clockwise" else "Play goes counter-clockwise"

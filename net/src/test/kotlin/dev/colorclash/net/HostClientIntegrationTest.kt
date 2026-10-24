@@ -189,8 +189,52 @@ class HostClientIntegrationTest {
             val idleSeat = assertNotNull(withTimeout(5.seconds) { idle.game.filterNotNull().first() }).you
             val waiting = withTimeout(10.seconds) { idle.game.filterNotNull().first { it.current == idleSeat && it.phase == PhaseKind.TURN } }
             assertNotNull(waiting.turnMillisLeft)
-            // The timer runs out and the host moves on without the idle player doing anything.
-            withTimeout(4.seconds) { idle.game.filterNotNull().first { it.current != idleSeat || it.phase != PhaseKind.TURN } }
+            // The timer runs out: they draw and play passes on. Nothing is played for them.
+            val after = withTimeout(4.seconds) { idle.game.filterNotNull().first { it.current != idleSeat } }
+            assertTrue(after.hand.size > waiting.hand.size, "should have drawn")
+            assertEquals(waiting.hand.map { it.id }.toSet(), waiting.hand.map { it.id }.toSet() intersect after.hand.map { it.id }.toSet())
+
+            // Three timeouts in a row and a bot takes over the seat, until they say they're back.
+            val away = h.awaitHost(15.seconds) { it.seats[idleSeat].botControlled && it.seats[idleSeat].connected }
+            assertEquals(HostStage.PLAYING, away.stage)
+            idle.resume()
+            h.awaitHost { !it.seats[idleSeat].botControlled }
+        }
+    }
+
+    @Test
+    fun `a finished game can be played again straight away, and rounds count down to the next`(): Unit = runBlocking {
+        Harness(fastHost.copy(autoNextRound = 2.seconds)).start().use { h ->
+            h.host.updateSettings(GameSettings(RuleSet(targetScore = 0)))
+            val clients = (1..2).map { h.client("P$it") }
+            clients.forEach { it.awaitConnected(); it.setReady(true) }
+            h.awaitHost { it.seats.size == 2 && it.canStart }
+            assertNull(h.host.startGame())
+            clients.forEach { h.scope.autoPlay(it) }
+
+            // A one-round game: the first round to finish ends it, and the scoreboard has no countdown.
+            val over = h.awaitHost(30.seconds) { it.stage == HostStage.GAME_OVER }
+            assertEquals(1, over.game?.round)
+            val overView = withTimeout(5.seconds) { clients[0].game.filterNotNull().first { it.phase == PhaseKind.GAME_OVER } }
+            assertNull(overView.nextRoundMillis)
+
+            h.host.rematch()
+            val again = h.awaitHost { it.stage == HostStage.PLAYING }
+            assertEquals(1, again.game?.round)
+            assertEquals(listOf(0, 0), again.game?.players?.map { it.score })
+        }
+        Harness(fastHost.copy(autoNextRound = 2.seconds)).start().use { h ->
+            h.host.updateSettings(GameSettings(RuleSet(targetScore = 10_000)))
+            val clients = (1..2).map { h.client("P$it") }
+            clients.forEach { it.awaitConnected(); it.setReady(true) }
+            h.awaitHost { it.seats.size == 2 && it.canStart }
+            assertNull(h.host.startGame())
+            clients.forEach { h.scope.autoPlay(it) }
+            val roundOver = withTimeout(30.seconds) { clients[0].game.filterNotNull().first { it.phase == PhaseKind.ROUND_OVER } }
+            val left = assertNotNull(roundOver.nextRoundMillis)
+            assertTrue(left in 1..2_000, "countdown $left")
+            // And it does start by itself.
+            h.awaitHost(5.seconds) { it.game?.round == 2 && it.stage == HostStage.PLAYING }
         }
     }
 

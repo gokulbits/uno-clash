@@ -149,6 +149,10 @@ internal class Transition(state: GameState) {
         phase = Phase.Turn
         drawFourCheck = null
 
+        if (hand.isEmpty() && rules.powerFinishPenalty > 0 && card.face.number == null) {
+            // This table doesn't let you go out on a power card: it still works, but you draw instead of winning.
+            drawCards(player, rules.powerFinishPenalty, DrawReason.POWER_FINISH)
+        }
         if (hand.isEmpty()) return goOut(player, card)
         if (hand.size == 1 && !called[player]) exposed = player
 

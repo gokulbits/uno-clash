@@ -1,6 +1,6 @@
 package dev.colorclash.rules
 
-enum class DrawReason { TURN, DRAW_CARD, MISSED_LAST_CARD, CHALLENGE }
+enum class DrawReason { TURN, DRAW_CARD, MISSED_LAST_CARD, CHALLENGE, POWER_FINISH }
 
 /**
  * Emitted by the engine in the order things happened. Some carry cards only the owner should see

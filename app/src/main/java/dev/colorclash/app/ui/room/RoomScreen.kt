@@ -34,7 +34,10 @@ import dev.colorclash.app.ui.game.GameScreen
 import dev.colorclash.app.ui.game.RoundResult
 import dev.colorclash.app.ui.game.describe
 import dev.colorclash.app.ui.game.fx.TableFx
+import dev.colorclash.app.data.Prefs
+import dev.colorclash.app.feedback.Buzz
 import dev.colorclash.app.feedback.Sfx
+import dev.colorclash.app.ui.game.RecentPlay
 import dev.colorclash.protocol.EventView
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.net.client.ClientStatus
@@ -42,6 +45,20 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 
 private const val LOG_LINES = 3
+private const val RECENT_PLAYS = 8
+
+/** Your wins and games, kept on the phone. Counted from what the host sends, once per event. */
+private fun recordStats(event: EventView, you: Int, prefs: Prefs) {
+    when (event) {
+        is EventView.RoundWon -> if (event.player == you) {
+            prefs.updateStats { it.copy(roundsWon = it.roundsWon + 1, bestRound = maxOf(it.bestRound, event.points)) }
+        }
+        is EventView.GameWon -> prefs.updateStats {
+            it.copy(gamesPlayed = it.gamesPlayed + 1, gamesWon = it.gamesWon + if (event.player == you) 1 else 0)
+        }
+        else -> Unit
+    }
+}
 
 /** Everything once you're in a room: connecting, lobby, game, and the ways it can end. */
 @Composable
@@ -56,6 +73,8 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
     var notice by remember { mutableStateOf<String?>(null) }
     val app = LocalContext.current.colorClash
     val feedbackSettings by app.prefs.feedback.collectAsState()
+    val playSettings by app.prefs.play.collectAsState()
+    var recentPlays by remember { mutableStateOf(emptyList<RecentPlay>()) }
     val fx = remember(session) { TableFx() }
 
     // Collected here rather than in the game screen so the first updates of a round aren't missed.
@@ -66,7 +85,10 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
             if (lines.isNotEmpty()) log = (log + lines).takeLast(LOG_LINES)
             for (event in update.events) {
                 if (event is EventView.RoundStarted && event.round == 1) history = emptyList()
+                if (event is EventView.RoundStarted) recentPlays = emptyList()
+                if (event is EventView.CardPlayed) recentPlays = (recentPlays + RecentPlay(event.player, event.card)).takeLast(RECENT_PLAYS)
                 if (event is EventView.RoundWon) history = history + RoundResult(update.view.round, event.player, event.points)
+                recordStats(event, update.view.you, app.prefs)
             }
         }
     }
@@ -108,9 +130,18 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
                     isHost = session.isHost,
                     feedback = feedbackSettings,
                     onFeedbackChange = app.prefs::updateFeedback,
+                    play = playSettings,
+                    onPlayChange = app.prefs::updatePlay,
+                    recentPlays = recentPlays,
+                    onTick = {
+                        app.feedback.sfx(Sfx.TICK, 0.6f)
+                        app.feedback.buzz(Buzz.TICK)
+                    },
                     onIntent = session.client::send,
                     onReact = session.client::react,
                     onNextRound = { session.hosting?.host?.startNextRound() },
+                    onRematch = { session.hosting?.host?.rematch() },
+                    onResume = session.client::resume,
                     onBackToLobby = { session.hosting?.host?.returnToLobby() },
                     onLeave = { confirmLeave = true },
                 )

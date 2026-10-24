@@ -23,6 +23,7 @@ enum class Sfx(val res: Int) {
     LOSE(R.raw.sfx_lose),
     YOUR_TURN(R.raw.sfx_turn),
     POP(R.raw.sfx_pop),
+    TICK(R.raw.sfx_tick),
 }
 
 /** Short effects through SoundPool, plus the optional music loop. Both follow the player's settings. */

@@ -1,5 +1,6 @@
 package dev.colorclash.protocol
 
+import dev.colorclash.rules.BotLevel
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.CardColor
 import dev.colorclash.rules.Direction
@@ -13,6 +14,7 @@ data class GameSettings(
     val rules: RuleSet = RuleSet(),
     /** Null means no turn timer. */
     val turnTimerSeconds: Int? = DEFAULT_TURN_SECONDS,
+    val botLevel: BotLevel = BotLevel.NORMAL,
 )
 
 @Serializable
@@ -74,6 +76,8 @@ data class PlayerView(
     val canCallLastCard: Boolean = false,
     val canChallenge: Boolean = false,
     val turnMillisLeft: Long? = null,
+    /** On a round-over scoreboard: how long until the next round starts on its own, if it will. */
+    val nextRoundMillis: Long? = null,
 ) {
     val isYourTurn: Boolean get() = current == you
 }

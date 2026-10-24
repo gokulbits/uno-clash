@@ -18,6 +18,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -42,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -57,13 +60,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,6 +79,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.colorclash.app.data.FeedbackSettings
+import dev.colorclash.app.data.PlaySettings
 import dev.colorclash.app.ui.components.AvatarBadge
 import dev.colorclash.app.ui.game.fx.Anchor
 import dev.colorclash.app.ui.game.fx.FxLayer
@@ -84,6 +92,7 @@ import dev.colorclash.protocol.PlayerView
 import dev.colorclash.protocol.SeatView
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.Direction
+import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.ceil
 
@@ -98,13 +107,50 @@ fun GameScreen(
     isHost: Boolean,
     feedback: FeedbackSettings,
     onFeedbackChange: (FeedbackSettings) -> Unit,
+    play: PlaySettings,
+    onPlayChange: (PlaySettings) -> Unit,
+    recentPlays: List<RecentPlay>,
     onIntent: (PlayerIntent) -> Unit,
     onReact: (Int) -> Unit,
     onNextRound: () -> Unit,
+    onRematch: () -> Unit,
+    onResume: () -> Unit,
     onBackToLobby: () -> Unit,
     onLeave: () -> Unit,
+    onTick: () -> Unit,
+) {
+    CompositionLocalProvider(LocalColorShapes provides play.colorShapes) {
+        GameTable(
+            view, fx, log, history, notice, isHost, feedback, onFeedbackChange, play, onPlayChange, recentPlays,
+            onIntent, onReact, onNextRound, onRematch, onResume, onBackToLobby, onLeave, onTick,
+        )
+    }
+}
+
+@Composable
+private fun GameTable(
+    view: PlayerView,
+    fx: TableFx,
+    log: List<String>,
+    history: List<RoundResult>,
+    notice: String?,
+    isHost: Boolean,
+    feedback: FeedbackSettings,
+    onFeedbackChange: (FeedbackSettings) -> Unit,
+    play: PlaySettings,
+    onPlayChange: (PlaySettings) -> Unit,
+    recentPlays: List<RecentPlay>,
+    onIntent: (PlayerIntent) -> Unit,
+    onReact: (Int) -> Unit,
+    onNextRound: () -> Unit,
+    onRematch: () -> Unit,
+    onResume: () -> Unit,
+    onBackToLobby: () -> Unit,
+    onLeave: () -> Unit,
+    onTick: () -> Unit,
 ) {
     val controls = tableControls(view)
+    var showPeek by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showReactions by remember { mutableStateOf(false) }
     val roundOver = view.phase == PhaseKind.ROUND_OVER || view.phase == PhaseKind.GAME_OVER
@@ -124,6 +170,7 @@ fun GameScreen(
             OpponentsArc(
                 view = view,
                 fx = fx,
+                next = nextSeat(view),
                 catchTarget = controls.catchTarget,
                 onCatch = { onIntent(PlayerIntent.Catch(it)) },
                 modifier = Modifier.fillMaxWidth().height(200.dp),
@@ -134,6 +181,8 @@ fun GameScreen(
                 fx = fx,
                 controls = controls,
                 onDraw = { onIntent(PlayerIntent.Draw) },
+                onPeek = { showPeek = true },
+                onTick = onTick,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
 
@@ -149,20 +198,26 @@ fun GameScreen(
                 }
             }
 
-            // Your actions, with the reaction button at your side of the table.
+            // Your actions, with the sort switch and the reaction button at either side of them.
             Box(Modifier.fillMaxWidth()) {
+                val sides = Modifier.padding(horizontal = REACTION_BUTTON_SIZE)
                 if (roundOver && scoresClosed) {
-                RoundOverBar(
-                    gameOver = view.phase == PhaseKind.GAME_OVER,
-                    isHost = isHost,
-                    onScores = { scoresClosed = false },
-                    onNextRound = onNextRound,
-                    onBackToLobby = onBackToLobby,
-                    modifier = Modifier.padding(end = REACTION_BUTTON_SIZE),
+                    RoundOverBar(
+                        gameOver = view.phase == PhaseKind.GAME_OVER,
+                        isHost = isHost,
+                        onScores = { scoresClosed = false },
+                        onNextRound = onNextRound,
+                        onRematch = onRematch,
+                        modifier = sides,
+                    )
+                } else {
+                    ActionBar(view, controls, onIntent, sides)
+                }
+                SortSwitch(
+                    byNumber = play.sortByNumber,
+                    onToggle = { onPlayChange(play.copy(sortByNumber = !play.sortByNumber)) },
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
                 )
-            } else {
-                ActionBar(view, controls, onIntent, Modifier.padding(end = REACTION_BUTTON_SIZE))
-            }
                 ReactionButton(
                     open = showReactions,
                     onClick = { showReactions = !showReactions },
@@ -170,10 +225,25 @@ fun GameScreen(
                 )
             }
 
-            Hand(view, fx, onPlay = { onIntent(PlayerIntent.Play(it)) })
+            Hand(view, fx, play, onPlay = { onIntent(PlayerIntent.Play(it)) })
+        }
+
+        // UNO is a buzzer of its own, right where your thumb rests.
+        if (controls.canCallLastCard && !roundOver) {
+            UnoBuzzer(
+                urge = controls.urgeLastCard,
+                onPress = { onIntent(PlayerIntent.CallLastCard) },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 2.dp, bottom = HAND_HEIGHT + ACTION_BAR_HEIGHT - 10.dp),
+            )
         }
 
         FxLayer(fx)
+
+        // Timed out too often: a bot has your seat until you say you're back.
+        val you = view.seats[view.you].info
+        if (you.botControlled && you.connected && view.phase.isLive()) {
+            AwayBanner(onResume, Modifier.align(Alignment.Center))
+        }
 
         if (showReactions) {
             ReactionTray(
@@ -186,10 +256,11 @@ fun GameScreen(
             )
         }
 
+        if (showPeek) RecentPlays(view, recentPlays, onDismiss = { showPeek = false })
         if (controls.pickingColor) ColorPicker(view.hand, onPick = { onIntent(PlayerIntent.ChooseColor(it)) })
         if (controls.pickingSwapTarget) SwapPicker(view, onPick = { onIntent(PlayerIntent.SwapWith(it)) })
         if (roundOver && !scoresClosed) {
-            ScoreBoard(view, controls.headline, history, isHost, onNextRound, onBackToLobby, onLeave, onClose = { scoresClosed = true })
+            ScoreBoard(view, controls.headline, history, isHost, onNextRound, onRematch, onBackToLobby, onLeave, onClose = { scoresClosed = true })
         }
 
         notice?.let {
@@ -205,11 +276,11 @@ fun GameScreen(
         }
     }
 
-    if (showSettings) QuickSettingsDialog(feedback, onFeedbackChange, onDismiss = { showSettings = false })
+    if (showSettings) QuickSettingsDialog(feedback, onFeedbackChange, play, onPlayChange, onDismiss = { showSettings = false })
 }
 
 @Composable
-private fun OpponentsArc(view: PlayerView, fx: TableFx, catchTarget: Int?, onCatch: (Int) -> Unit, modifier: Modifier) {
+private fun OpponentsArc(view: PlayerView, fx: TableFx, next: Int?, catchTarget: Int?, onCatch: (Int) -> Unit, modifier: Modifier) {
     val opponents = opponentOrder(view)
     val positions = arcPositions(opponents.size)
     BoxWithConstraints(modifier) {
@@ -223,6 +294,7 @@ private fun OpponentsArc(view: PlayerView, fx: TableFx, catchTarget: Int?, onCat
             OpponentSeat(
                 seat = view.seats[seat],
                 isCurrent = seat == view.current && view.phase.isLive(),
+                isNext = seat == next && seat != view.current,
                 turnMillisLeft = view.turnMillisLeft.takeIf { seat == view.current },
                 turnSeconds = view.settings.turnTimerSeconds,
                 canCatch = catchTarget == seat,
@@ -248,13 +320,25 @@ private fun OpponentsArc(view: PlayerView, fx: TableFx, catchTarget: Int?, onCat
 private fun OpponentSeat(
     seat: SeatView,
     isCurrent: Boolean,
+    isNext: Boolean,
     turnMillisLeft: Long?,
     turnSeconds: Int?,
     canCatch: Boolean,
     onCatch: () -> Unit,
     modifier: Modifier,
 ) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+    // Tap a seat to see exactly how many cards they hold; big hands bunch up in the fan.
+    var showCount by remember { mutableStateOf(false) }
+    LaunchedEffect(showCount) {
+        if (showCount) {
+            delay(2_000)
+            showCount = false
+        }
+    }
+    Column(
+        modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showCount = true },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Box(contentAlignment = Alignment.Center) {
             if (isCurrent) TurnRing(turnMillisLeft, turnSeconds, size = 58.dp)
             AvatarBadge(
@@ -263,6 +347,31 @@ private fun OpponentSeat(
                 ring = if (isCurrent) GameTheme.yellow else null,
                 modifier = if (isCurrent) Modifier.scale(pulse()) else Modifier,
             )
+            if (showCount) {
+                Text(
+                    "${seat.cardCount}",
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 10.dp, y = (-4).dp)
+                        .clip(CircleShape)
+                        .background(GameTheme.yellow)
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                    color = Color.Black, fontWeight = FontWeight.Black, fontSize = 15.sp,
+                )
+            }
+            if (isNext) {
+                Text(
+                    "NEXT",
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = (-12).dp, y = (-4).dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(GameTheme.blue)
+                        .border(1.5.dp, Color.White, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                    color = Color.White, fontWeight = FontWeight.Black, fontSize = 10.sp,
+                )
+            }
         }
         // Their cards, face down and fanned, held just in front of them: count them like at a real table.
         HandFan(seat.cardCount, Modifier.offset(y = (-8).dp))
@@ -305,7 +414,15 @@ private fun OpponentSeat(
 }
 
 @Composable
-private fun CenterTable(view: PlayerView, fx: TableFx, controls: TableControls, onDraw: () -> Unit, modifier: Modifier) {
+private fun CenterTable(
+    view: PlayerView,
+    fx: TableFx,
+    controls: TableControls,
+    onDraw: () -> Unit,
+    onPeek: () -> Unit,
+    onTick: () -> Unit,
+    modifier: Modifier,
+) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Box(Modifier.then(fx.anchor(Anchor.DrawPile)).scale(if (controls.canDraw) pulse(1.05f) else 1f)) {
@@ -335,7 +452,11 @@ private fun CenterTable(view: PlayerView, fx: TableFx, controls: TableControls, 
                 fontWeight = FontWeight.Black,
             )
 
-            Box(contentAlignment = Alignment.Center, modifier = fx.anchor(Anchor.DiscardPile)) {
+            // Tap the pile to see who played what lately.
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = fx.anchor(Anchor.DiscardPile).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onPeek),
+            ) {
                 // A halo in the active color, which matters most after a wild.
                 Box(
                     Modifier
@@ -366,7 +487,9 @@ private fun CenterTable(view: PlayerView, fx: TableFx, controls: TableControls, 
             }
         }
         Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (view.isYourTurn && view.phase.isLive()) TurnRing(view.turnMillisLeft, view.settings.turnTimerSeconds, size = 36.dp, showSeconds = true)
+            if (view.isYourTurn && view.phase.isLive()) {
+                TurnRing(view.turnMillisLeft, view.settings.turnTimerSeconds, size = 36.dp, showSeconds = true, onFinalSeconds = onTick)
+            }
             Text(
                 controls.headline,
                 Modifier.scale(if (view.isYourTurn && view.phase.isLive()) pulse(1.04f) else 1f),
@@ -377,6 +500,9 @@ private fun CenterTable(view: PlayerView, fx: TableFx, controls: TableControls, 
         }
         if (view.pendingDraw > 0) {
             Text("+${view.pendingDraw} waiting", color = GameTheme.red, fontWeight = FontWeight.Black)
+        }
+        if (nextSeat(view) == view.you && !view.isYourTurn) {
+            Text("You're up next", color = GameTheme.mutedText, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -394,13 +520,24 @@ private fun ActionBar(view: PlayerView, controls: TableControls, onIntent: (Play
         controls.catchTarget?.let { target ->
             ActionButton("Catch ${view.nameOf(target)}!", GameTheme.red) { onIntent(PlayerIntent.Catch(target)) }
         }
-        if (controls.canCallLastCard) {
-            ActionButton(
-                "UNO!", GameTheme.yellow,
-                Modifier.scale(if (controls.urgeLastCard) pulse(1.12f) else 1f),
-                textColor = Color.Black,
-            ) { onIntent(PlayerIntent.CallLastCard) }
-        }
+    }
+}
+
+@Composable
+private fun AwayBanner(onResume: () -> Unit, modifier: Modifier) {
+    Column(
+        modifier
+            .padding(24.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(GameTheme.wild.copy(alpha = 0.94f))
+            .border(2.dp, GameTheme.yellow, RoundedCornerShape(20.dp))
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("🤖", fontSize = 40.sp)
+        Text("You ran out of time a few turns in a row, so a bot is playing for you.", textAlign = TextAlign.Center)
+        ActionButton("I'm back!", GameTheme.green, onClick = onResume)
     }
 }
 
@@ -411,7 +548,7 @@ private fun RoundOverBar(
     isHost: Boolean,
     onScores: () -> Unit,
     onNextRound: () -> Unit,
-    onBackToLobby: () -> Unit,
+    onRematch: () -> Unit,
     modifier: Modifier,
 ) {
     Row(
@@ -422,7 +559,7 @@ private fun RoundOverBar(
         ActionButton("Scores", GameTheme.blue, onClick = onScores)
         if (isHost) {
             if (gameOver) {
-                ActionButton("Back to lobby", GameTheme.green, onClick = onBackToLobby)
+                ActionButton("Play again", GameTheme.green, onClick = onRematch)
             } else {
                 ActionButton("Next round", GameTheme.green, onClick = onNextRound)
             }
@@ -447,8 +584,11 @@ private fun ActionButton(text: String, color: Color, modifier: Modifier = Modifi
  * spill over the next, so the lazy row can animate cards in, out and around as the hand changes.
  */
 @Composable
-private fun Hand(view: PlayerView, fx: TableFx, onPlay: (Int) -> Unit) {
-    val cards = sortHand(view.hand).filter { it.id !in fx.hiddenCards }
+private fun Hand(view: PlayerView, fx: TableFx, play: PlaySettings, onPlay: (Int) -> Unit) {
+    val cards = sortHand(view.hand, play.sortByNumber).filter { it.id !in fx.hiddenCards }
+    // With tap-to-select on, the first tap picks a card up and a second tap plays it.
+    var selected by remember { mutableStateOf<Int?>(null) }
+    if (selected != null && selected !in view.playable) selected = null
     val mid = (cards.size - 1) / 2f
     val tilt = if (cards.size <= 1) 0f else (30f / cards.size).coerceAtMost(5f)
     val slice = if (cards.size > 6) HAND_CARD_WIDTH - 36.dp else HAND_CARD_WIDTH - 22.dp
@@ -476,7 +616,19 @@ private fun Hand(view: PlayerView, fx: TableFx, onPlay: (Int) -> Unit) {
                     rotation = rotation,
                     drop = (abs(i - mid) * abs(i - mid) * 1.2f).dp.coerceAtMost(18.dp),
                     incoming = { card.id in fx.incomingCards },
-                    onPlay = { onPlay(card.id) },
+                    selected = selected == card.id,
+                    onTap = {
+                        if (!play.tapToSelect || selected == card.id) {
+                            selected = null
+                            onPlay(card.id)
+                        } else {
+                            selected = card.id
+                        }
+                    },
+                    onPlay = {
+                        selected = null
+                        onPlay(card.id)
+                    },
                     anchor = fx.anchor(Anchor.HandCard(card.id), rotation, pivotY = HAND_PIVOT),
                     modifier = Modifier.wrapContentWidth(Alignment.Start, unbounded = true),
                 )
@@ -492,6 +644,8 @@ private fun HandCard(
     rotation: Float,
     drop: Dp,
     incoming: () -> Boolean,
+    selected: Boolean,
+    onTap: () -> Unit,
     onPlay: () -> Unit,
     anchor: Modifier,
     modifier: Modifier,
@@ -500,7 +654,15 @@ private fun HandCard(
     var dragging by remember { mutableStateOf(false) }
     val playThreshold = with(LocalDensity.current) { 70.dp.toPx() }
     // Everything springs, so the fan re-spreads smoothly when cards come and go.
-    val lift by animateDpAsState(if (playable) (-14).dp else 0.dp, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow), label = "lift")
+    val lift by animateDpAsState(
+        when {
+            selected -> (-34).dp
+            playable -> (-14).dp
+            else -> 0.dp
+        },
+        spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
+        label = "lift",
+    )
     val sink by animateDpAsState(drop, spring(stiffness = Spring.StiffnessMediumLow), label = "drop")
     val tilt by animateFloatAsState(rotation, spring(stiffness = Spring.StiffnessMediumLow), label = "tilt")
     val pull by animateFloatAsState(
@@ -525,7 +687,7 @@ private fun HandCard(
             .then(
                 if (playable) {
                     Modifier
-                        .clickable(onClick = onPlay)
+                        .clickable(onClick = onTap)
                         .pointerInput(card.id) {
                             detectVerticalDragGestures(
                                 onDragStart = { dragging = true },
@@ -545,13 +707,19 @@ private fun HandCard(
                 },
             ),
     ) {
-        CardFace(card, HAND_CARD_WIDTH, dimmed = !playable, elevation = 3.dp)
+        CardFace(
+            card,
+            HAND_CARD_WIDTH,
+            Modifier.then(if (selected) Modifier.border(3.dp, GameTheme.yellow, RoundedCornerShape(HAND_CARD_WIDTH * 0.11f)) else Modifier),
+            dimmed = !playable,
+            elevation = if (selected) 10.dp else 3.dp,
+        )
     }
 }
 
 /** Countdown ring for the turn timer, run locally from the time the host said was left. Optionally shows the seconds inside. */
 @Composable
-fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boolean = false) {
+fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boolean = false, onFinalSeconds: (() -> Unit)? = null) {
     if (millisLeft == null || totalSeconds == null) return
     val total = totalSeconds * 1000f
     val progress = remember { Animatable(1f) }
@@ -562,6 +730,8 @@ fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boole
     // Recompose once a second for the number, not every frame.
     val seconds by remember(totalSeconds) { derivedStateOf { ceil(progress.value * totalSeconds).toInt() } }
     val urgent by remember { derivedStateOf { progress.value < 0.25f } }
+    // A tick for each of the last few seconds.
+    LaunchedEffect(seconds) { if (seconds in 1..FINAL_SECONDS && progress.isRunning) onFinalSeconds?.invoke() }
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val stroke = 4.dp.toPx()
@@ -585,6 +755,90 @@ fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boole
     }
 }
 
+/**
+ * The UNO call as an arcade buzzer: a glossy red dome on a dark rim that pops in when you may
+ * call, glows while you should, and sinks into its base when pressed.
+ */
+@Composable
+private fun UnoBuzzer(urge: Boolean, onPress: () -> Unit, modifier: Modifier) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val sink by animateFloatAsState(if (pressed) 1f else 0f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessHigh), label = "sink")
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMediumLow)) }
+    val glow = if (urge) pulse(1.2f) else 1f
+    Box(
+        modifier
+            .size(BUZZER_SIZE * 1.3f)
+            .graphicsLayer {
+                scaleX = appear.value
+                scaleY = appear.value
+            }
+            .clickable(interactionSource = interaction, indication = null, onClick = onPress),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val d = BUZZER_SIZE.toPx()
+            val rim = d * 0.5f
+            val dome = d * 0.4f
+            val lift = d * 0.07f
+            val top = center + Offset(0f, -lift + d * 0.05f * sink)
+            if (urge) {
+                // A ring that breathes out from the rim.
+                val t = (glow - 1f) / 0.2f
+                drawCircle(GameTheme.red.copy(alpha = 0.55f * (1f - t)), rim * (1.05f + 0.25f * t), center, style = Stroke(d * 0.07f))
+            }
+            drawOval(Color.Black.copy(alpha = 0.35f), center - Offset(rim, rim * 0.97f - d * 0.06f), Size(rim * 2, rim * 1.94f))
+            drawCircle(Brush.radialGradient(listOf(GameTheme.buzzerRim, GameTheme.buzzerRimDeep), center - Offset(0f, rim * 0.3f), rim * 1.4f), rim)
+            drawCircle(Color.White.copy(alpha = 0.18f), rim * 0.98f, style = Stroke(d * 0.015f))
+            // The side of the dome shows while it's up; pressing sinks the cap down over it.
+            drawCircle(GameTheme.buzzerSide, dome, center + Offset(0f, lift * 0.35f))
+            drawCircle(
+                Brush.radialGradient(
+                    0f to (if (pressed) GameTheme.red else GameTheme.buzzerShine),
+                    0.6f to (if (pressed) GameTheme.buzzerPressed else GameTheme.red),
+                    1f to GameTheme.buzzerDeep,
+                    center = top - Offset(dome * 0.3f, dome * 0.4f),
+                    radius = dome * 1.6f,
+                ),
+                dome,
+                top,
+            )
+            rotate(-20f, pivot = top - Offset(dome * 0.25f, dome * 0.45f)) {
+                drawOval(
+                    Color.White.copy(alpha = if (pressed) 0.18f else 0.35f),
+                    top - Offset(dome * 0.7f, dome * 0.65f),
+                    Size(dome * 0.9f, dome * 0.4f),
+                )
+            }
+        }
+        Text(
+            "UNO!",
+            Modifier.graphicsLayer { translationY = BUZZER_SIZE.toPx() * (-0.07f + 0.05f * sink) },
+            color = Color.White,
+            fontSize = (BUZZER_SIZE.value * 0.22f).sp,
+            fontWeight = FontWeight.Black,
+            fontFamily = GameTheme.displayFont,
+            style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.4f), Offset(2f, 3f), blurRadius = 3f)),
+        )
+    }
+}
+
+/** Flips your hand between sorted by color and sorted by number. */
+@Composable
+private fun SortSwitch(byNumber: Boolean, onToggle: () -> Unit, modifier: Modifier) {
+    Box(
+        modifier
+            .size(REACTION_BUTTON_SIZE)
+            .clip(CircleShape)
+            .background(GameTheme.panelStrong)
+            .clickable(onClick = onToggle),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(if (byNumber) "1-9" else "🎨", fontSize = if (byNumber) 14.sp else 20.sp, fontWeight = FontWeight.Black)
+    }
+}
+
 @Composable
 private fun ReactionButton(open: Boolean, onClick: () -> Unit, modifier: Modifier) {
     Box(
@@ -599,7 +853,7 @@ private fun ReactionButton(open: Boolean, onClick: () -> Unit, modifier: Modifie
     }
 }
 
-/** The mood emoji you can send. Pops open above the reaction button. */
+/** The mood emoji and quick chat you can send. Pops open above the reaction button. */
 @Composable
 private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
     val appear = remember { Animatable(0f) }
@@ -631,6 +885,23 @@ private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
                 }
             }
         }
+        val firstPhrase = GameTheme.reactions.size
+        GameTheme.phrases.indices.chunked(PHRASES_PER_ROW).forEach { row ->
+            Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { p ->
+                    Text(
+                        GameTheme.reaction(firstPhrase + p),
+                        Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(GameTheme.panel)
+                            .clickable { onPick(firstPhrase + p) }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -651,6 +922,9 @@ private fun PhaseKind.isLive() = this != PhaseKind.ROUND_OVER && this != PhaseKi
 /** Hand cards lean around a point this far down their height, below the card itself. */
 private const val HAND_PIVOT = 1.2f
 private const val REACTIONS_PER_ROW = 6
+private val BUZZER_SIZE = 88.dp
+private const val PHRASES_PER_ROW = 3
+private const val FINAL_SECONDS = 5
 private val REACTION_BUTTON_SIZE = 44.dp
 private val ACTION_BAR_HEIGHT = 60.dp
 private val HAND_HEIGHT = HAND_CARD_WIDTH * CARD_ASPECT + 48.dp

@@ -30,6 +30,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import dev.colorclash.app.data.FeedbackSettings
+import dev.colorclash.app.data.PlaySettings
+import dev.colorclash.app.data.Stats
 import dev.colorclash.app.data.Profile
 import dev.colorclash.app.ui.components.AvatarBadge
 import dev.colorclash.app.ui.components.Panel
@@ -43,6 +45,9 @@ fun SettingsScreen(
     onProfileChange: (Profile) -> Unit,
     feedback: FeedbackSettings,
     onFeedbackChange: (FeedbackSettings) -> Unit,
+    play: PlaySettings,
+    onPlayChange: (PlaySettings) -> Unit,
+    stats: Stats,
     onBack: () -> Unit,
 ) {
     Column(
@@ -82,6 +87,16 @@ fun SettingsScreen(
         }
 
         Panel {
+            SectionTitle("Playing")
+            PlayToggles(play, onPlayChange)
+        }
+
+        Panel {
+            SectionTitle("Your stats")
+            StatsSummary(stats)
+        }
+
+        Panel {
             SectionTitle("About")
             Text(GAME_TITLE, fontWeight = FontWeight.Bold)
             Text("Version ${appVersion()}", color = GameTheme.mutedText)
@@ -98,13 +113,46 @@ fun FeedbackToggles(feedback: FeedbackSettings, onChange: (FeedbackSettings) -> 
     Toggle("Announce cards out loud", feedback.voice) { onChange(feedback.copy(voice = it)) }
 }
 
+@Composable
+fun PlayToggles(play: PlaySettings, onChange: (PlaySettings) -> Unit) {
+    Toggle("Tap a card twice to play it", play.tapToSelect) { onChange(play.copy(tapToSelect = it)) }
+    Toggle("Shapes for each color (colorblind)", play.colorShapes) { onChange(play.copy(colorShapes = it)) }
+}
+
+@Composable
+private fun StatsSummary(stats: Stats) {
+    val winRate = if (stats.gamesPlayed == 0) "–" else "${stats.gamesWon * 100 / stats.gamesPlayed}%"
+    listOf(
+        "Games played" to "${stats.gamesPlayed}",
+        "Games won" to "${stats.gamesWon} ($winRate)",
+        "Rounds won" to "${stats.roundsWon}",
+        "Best round" to "${stats.bestRound} pts",
+    ).forEach { (label, value) ->
+        Row(Modifier.fillMaxWidth()) {
+            Text(label, Modifier.weight(1f), color = GameTheme.mutedText)
+            Text(value, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
 /** The quick version for the game screen: just the switches, no leaving the table. */
 @Composable
-fun QuickSettingsDialog(feedback: FeedbackSettings, onChange: (FeedbackSettings) -> Unit, onDismiss: () -> Unit) {
+fun QuickSettingsDialog(
+    feedback: FeedbackSettings,
+    onChange: (FeedbackSettings) -> Unit,
+    play: PlaySettings,
+    onPlayChange: (PlaySettings) -> Unit,
+    onDismiss: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Settings") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { FeedbackToggles(feedback, onChange) } },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FeedbackToggles(feedback, onChange)
+                PlayToggles(play, onPlayChange)
+            }
+        },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
     )
 }

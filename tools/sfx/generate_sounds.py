@@ -403,6 +403,14 @@ def sfx_pop():
     return reverb(t.buf, wet=0.15, tail=0.2)
 
 
+def sfx_tick():
+    # A dry wooden tick for the last seconds of your turn: short, so five in a row don't blur.
+    t = Track(0.09)
+    t.add(env_ad(sine(1400, 0.06, 1100), 0.0008, 90), vol=0.7)
+    t.add(snap(0.008, 4200, 2.0), vol=0.4)
+    return t.buf
+
+
 # --- music -----------------------------------------------------------------
 
 def music_loop():
@@ -483,3 +491,4 @@ if __name__ == "__main__":
     write("music_loop", music_loop(), peak=0.55, trim=False)  # exact length, so it loops on the beat
     # New sounds go last: they share the seeded generator, so this keeps the files above unchanged.
     write("sfx_pop", sfx_pop(), peak=0.55)
+    write("sfx_tick", sfx_tick(), peak=0.5)

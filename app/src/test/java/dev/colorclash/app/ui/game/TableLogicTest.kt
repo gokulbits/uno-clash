@@ -138,6 +138,28 @@ class TableLogicTest {
             card(4, Face.ONE, CardColor.BLUE), card(5, Face.SKIP, CardColor.RED),
         )
         assertEquals(listOf(3, 5, 4, 2, 1), sortHand(hand).map { it.id })
+        // By number: faces in order, colors breaking ties, wilds still last.
+        assertEquals(listOf(4, 3, 2, 5, 1), sortHand(hand, byNumber = true).map { it.id })
+    }
+
+    @Test
+    fun `finishing on a power card is stamped and logged`() {
+        val view = table().view(0)
+        assertEquals(
+            listOf(SeatStamp(1, StampMark.DRAW, "POWER FINISH!", good = false, count = 2)),
+            seatStampsFor(EventView.Drew(1, 2, DrawReason.POWER_FINISH), you = 0),
+        )
+        assertEquals("NO POWER FINISH!", seatStampsFor(EventView.Drew(0, 4, DrawReason.POWER_FINISH), you = 0).single().tag)
+        assertEquals("Ben can't go out on a power card: +2", describe(EventView.Drew(1, 2, DrawReason.POWER_FINISH), view))
+    }
+
+    @Test
+    fun `next seat follows the direction of play and stops when the round is over`() {
+        val view = table().view(0)
+        assertEquals(1, nextSeat(view))
+        assertEquals(3, nextSeat(view.copy(direction = Direction.COUNTER_CLOCKWISE)))
+        assertEquals(0, nextSeat(view.copy(current = 3)))
+        assertNull(nextSeat(view.copy(phase = PhaseKind.ROUND_OVER)))
     }
 
     @Test

@@ -45,6 +45,14 @@ object GameTheme {
     val cardBackOvalDeep = Color(0xFFD0183A)
     val cardBackInk = Color(0xFF5A0016)
 
+    // The UNO buzzer: a glossy red dome on a dark rim.
+    val buzzerShine = Color(0xFFFF6B82)
+    val buzzerPressed = Color(0xFFC01836)
+    val buzzerDeep = Color(0xFF8E0A22)
+    val buzzerSide = Color(0xFF7A0A1E)
+    val buzzerRim = Color(0xFF4A4166)
+    val buzzerRimDeep = Color(0xFF1A1530)
+
     fun cardColor(color: CardColor?): Color = when (color) {
         CardColor.RED -> red
         CardColor.YELLOW -> yellow
@@ -61,10 +69,15 @@ object GameTheme {
     val avatars = listOf("🦊", "🐼", "🐸", "🐙", "🦄", "🐯", "🐵", "🐧", "🐲", "🐝", "🦁", "🐨")
     val avatarBackgrounds = listOf(red, blue, green, yellow, Color(0xFFB04DFF), Color(0xFF00C2D1))
 
-    /** Mood emoji players can send. Exactly REACTION_COUNT of them, in the order the protocol numbers them. */
+    /** Mood emoji players can send. With [phrases] after them, these are numbered exactly as the protocol's reactions. */
     val reactions = listOf("😂", "😍", "😎", "😮", "😢", "😡", "🤯", "🥳", "👍", "👏", "🔥", "😴")
+    /** Quick chat, numbered straight after the emoji. Short enough for a bubble over a seat. */
+    val phrases = listOf("Nice one!", "Hurry up!", "Noooo!", "Gotcha 😏", "Oops", "GG", "Watch out!", "So close!")
 
-    fun reaction(index: Int): String = reactions[index.mod(reactions.size)]
+    fun isPhrase(index: Int): Boolean = index >= reactions.size
+
+    fun reaction(index: Int): String =
+        if (isPhrase(index)) phrases[(index - reactions.size).mod(phrases.size)] else reactions[index.mod(reactions.size)]
 
     fun avatar(index: Int): String = avatars[index.mod(avatars.size)]
     fun avatarBackground(index: Int): Color = avatarBackgrounds[index.mod(avatarBackgrounds.size)]

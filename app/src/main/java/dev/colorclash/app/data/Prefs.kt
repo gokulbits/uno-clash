@@ -18,6 +18,19 @@ data class FeedbackSettings(
     val voice: Boolean = true,
 )
 
+/** How you like to play, kept per phone. */
+data class PlaySettings(
+    /** First tap picks a card up, second tap plays it. Dragging up still plays straight away. */
+    val tapToSelect: Boolean = false,
+    /** Sort the hand by number rather than by color. */
+    val sortByNumber: Boolean = false,
+    /** Mark each color with its own shape, so no card depends on telling colors apart. */
+    val colorShapes: Boolean = false,
+)
+
+/** Your record on this phone. */
+data class Stats(val gamesPlayed: Int = 0, val gamesWon: Int = 0, val roundsWon: Int = 0, val bestRound: Int = 0)
+
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("color_clash", Context.MODE_PRIVATE)
 
@@ -33,6 +46,36 @@ class Prefs(context: Context) {
         ),
     )
     val feedback: StateFlow<FeedbackSettings> = _feedback.asStateFlow()
+
+    private val _play = MutableStateFlow(
+        PlaySettings(sp.getBoolean(KEY_TAP_TO_SELECT, false), sp.getBoolean(KEY_SORT_BY_NUMBER, false), sp.getBoolean(KEY_COLOR_SHAPES, false)),
+    )
+    val play: StateFlow<PlaySettings> = _play.asStateFlow()
+
+    private val _stats = MutableStateFlow(
+        Stats(sp.getInt(KEY_GAMES, 0), sp.getInt(KEY_WINS, 0), sp.getInt(KEY_ROUNDS_WON, 0), sp.getInt(KEY_BEST_ROUND, 0)),
+    )
+    val stats: StateFlow<Stats> = _stats.asStateFlow()
+
+    fun updatePlay(settings: PlaySettings) {
+        _play.value = settings
+        sp.edit()
+            .putBoolean(KEY_TAP_TO_SELECT, settings.tapToSelect)
+            .putBoolean(KEY_SORT_BY_NUMBER, settings.sortByNumber)
+            .putBoolean(KEY_COLOR_SHAPES, settings.colorShapes)
+            .apply()
+    }
+
+    fun updateStats(change: (Stats) -> Stats) {
+        val stats = change(_stats.value)
+        _stats.value = stats
+        sp.edit()
+            .putInt(KEY_GAMES, stats.gamesPlayed)
+            .putInt(KEY_WINS, stats.gamesWon)
+            .putInt(KEY_ROUNDS_WON, stats.roundsWon)
+            .putInt(KEY_BEST_ROUND, stats.bestRound)
+            .apply()
+    }
 
     fun updateProfile(profile: Profile) {
         _profile.value = profile
@@ -74,6 +117,13 @@ class Prefs(context: Context) {
         const val KEY_MUSIC = "music"
         const val KEY_HAPTICS = "haptics"
         const val KEY_VOICE = "voice"
+        const val KEY_TAP_TO_SELECT = "tap_to_select"
+        const val KEY_SORT_BY_NUMBER = "sort_by_number"
+        const val KEY_COLOR_SHAPES = "color_shapes"
+        const val KEY_GAMES = "stats_games"
+        const val KEY_WINS = "stats_wins"
+        const val KEY_ROUNDS_WON = "stats_rounds_won"
+        const val KEY_BEST_ROUND = "stats_best_round"
         const val KEY_HOST = "last_host"
         const val KEY_PORT = "last_port"
         const val KEY_CODE = "last_code"

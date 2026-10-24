@@ -2,6 +2,7 @@ package dev.colorclash.app.ui.game
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +28,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +47,8 @@ import dev.colorclash.protocol.PhaseKind
 import dev.colorclash.protocol.PlayerView
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.CardColor
+import kotlin.math.ceil
+import kotlinx.coroutines.delay
 
 private const val MAX_HISTORY_ROWS = 5
 
@@ -92,6 +99,26 @@ private fun Overlay(onDismiss: (() -> Unit)? = null, content: @Composable Column
     }
 }
 
+/** The last few cards played this round, newest first, and who played them. */
+@Composable
+fun RecentPlays(view: PlayerView, plays: List<RecentPlay>, onDismiss: () -> Unit) {
+    Overlay(onDismiss = onDismiss) {
+        Text("Recent plays", style = MaterialTheme.typography.headlineMedium)
+        if (plays.isEmpty()) Text("Nothing played yet this round", color = GameTheme.mutedText)
+        plays.asReversed().forEach { play ->
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CardFace(play.card, 34.dp, elevation = 1.dp)
+                Text(if (play.seat == view.you) "You" else view.nameOf(play.seat), Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                Text(play.card.label(), color = GameTheme.mutedText)
+            }
+        }
+    }
+}
+
 @Composable
 fun ColorPicker(hand: List<Card>, onPick: (CardColor) -> Unit) {
     val counts = hand.mapNotNull { it.color }.groupingBy { it }.eachCount()
@@ -110,6 +137,11 @@ fun ColorPicker(hand: List<Card>, onPick: (CardColor) -> Unit) {
                         contentAlignment = Alignment.Center,
                     ) {
                         ColorLabel(color, counts[color] ?: 0)
+                        if (LocalColorShapes.current) {
+                            Canvas(Modifier.align(Alignment.TopStart).padding(12.dp).size(22.dp)) {
+                                colorShape(color, center, size.minDimension * 0.42f, Color.White, Color.Black.copy(alpha = 0.4f), 1.5.dp.toPx())
+                            }
+                        }
                     }
                 }
             }
@@ -160,6 +192,7 @@ fun ScoreBoard(
     history: List<RoundResult>,
     isHost: Boolean,
     onNextRound: () -> Unit,
+    onRematch: () -> Unit,
     onBackToLobby: () -> Unit,
     onLeave: () -> Unit,
     onClose: () -> Unit,
@@ -190,8 +223,8 @@ fun ScoreBoard(
                     Text(seat.info.name + if (seat.info.seat == view.you) " (you)" else "", Modifier.weight(1f), fontWeight = FontWeight.Bold)
                     Text("${seat.score}", fontWeight = FontWeight.Black)
                 }
-                // How close each player is to the target score.
-                Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(GameTheme.panel)) {
+                // How close each player is to the target score. A one-round game has no target to show.
+                if (target > 0) Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(GameTheme.panel)) {
                     Box(
                         Modifier
                             .fillMaxWidth((seat.score.toFloat() / target).coerceIn(0f, 1f) * pop.value.coerceAtMost(1f))
@@ -202,7 +235,8 @@ fun ScoreBoard(
                 }
             }
         }
-        Text("Playing to $target", color = GameTheme.mutedText)
+        Text(if (target > 0) "Playing to $target" else "One round game", color = GameTheme.mutedText)
+        NextRoundCountdown(view.nextRoundMillis, view.round)
 
         if (history.isNotEmpty()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -218,12 +252,14 @@ fun ScoreBoard(
 
         when {
             isHost && gameOver -> {
-                BigButton("Back to lobby", GameTheme.green, onBackToLobby)
+                BigButton("Play again", GameTheme.green, onRematch)
+                BigButton("Back to lobby", GameTheme.blue, onBackToLobby)
                 BigButton("Close room", GameTheme.red, onLeave)
             }
             isHost -> BigButton("Next round", GameTheme.green, onNextRound)
             gameOver -> BigButton("Leave", GameTheme.blue, onLeave)
-            else -> Text("Waiting for the host to start the next round…", color = GameTheme.mutedText, textAlign = TextAlign.Center)
+            view.nextRoundMillis == null ->
+                Text("Waiting for the host to start the next round…", color = GameTheme.mutedText, textAlign = TextAlign.Center)
         }
         if (!gameOver) {
             TextButton(onClick = onLeave) {
@@ -231,4 +267,19 @@ fun ScoreBoard(
             }
         }
     }
+}
+
+/** "Next round in 9" while a round-over scoreboard counts down, run locally from what the host said. */
+@Composable
+fun NextRoundCountdown(millisLeft: Long?, round: Int) {
+    if (millisLeft == null) return
+    var seconds by remember(round, millisLeft) { mutableIntStateOf(ceil(millisLeft / 1000.0).toInt()) }
+    LaunchedEffect(round, millisLeft) {
+        val end = System.currentTimeMillis() + millisLeft
+        while (seconds > 0) {
+            delay(200)
+            seconds = ceil((end - System.currentTimeMillis()).coerceAtLeast(0) / 1000.0).toInt()
+        }
+    }
+    Text("Next round in $seconds…", color = GameTheme.yellow, fontWeight = FontWeight.Bold)
 }

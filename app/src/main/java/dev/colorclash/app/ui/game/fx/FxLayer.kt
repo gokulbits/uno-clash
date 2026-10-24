@@ -329,6 +329,7 @@ private fun ReactionView(reaction: ReactionFx, onDone: () -> Unit) {
         onDone()
     }
     val emoji = GameTheme.reaction(reaction.reaction)
+    if (GameTheme.isPhrase(reaction.reaction)) return SpeechBubble(reaction, emoji) { progress.value }
     val density = LocalDensity.current
     val rise = with(density) { 96.dp.toPx() }
     val sway = with(density) { 28.dp.toPx() }
@@ -368,6 +369,35 @@ private fun ReactionView(reaction: ReactionFx, onDone: () -> Unit) {
             },
         fontSize = 48.sp,
         style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.35f), Offset(0f, 4f), blurRadius = 8f)),
+    )
+}
+
+/** Quick chat: a speech bubble pops out of the seat, drifts up a little and fades. */
+@Composable
+private fun SpeechBubble(reaction: ReactionFx, text: String, progress: () -> Float) {
+    val rise = with(LocalDensity.current) { 56.dp.toPx() }
+    Text(
+        text,
+        Modifier
+            .placeAt(reaction.at, centered = true)
+            .graphicsLayer {
+                val p = progress()
+                val pop = if (p < 0.15f) POP.transform(p / 0.15f) else 1f
+                scaleX = pop
+                scaleY = pop
+                translationY = -rise * (0.4f + 0.6f * p)
+                alpha = if (p < 0.8f) 1f else (1 - p) / 0.2f
+                shadowElevation = 8.dp.toPx()
+                shape = RoundedCornerShape(16.dp)
+                clip = true
+            }
+            .background(Color.White)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        color = GameTheme.wild,
+        fontWeight = FontWeight.Black,
+        fontSize = 17.sp,
+        maxLines = 1,
+        softWrap = false,
     )
 }
 

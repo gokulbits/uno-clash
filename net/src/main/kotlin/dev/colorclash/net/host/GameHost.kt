@@ -44,18 +44,20 @@ class GameHost(
     val config: HostConfig = HostConfig(),
     val roomCode: String = RoomCode.generate(),
     private val seed: () -> Long = { SecureRandom().nextLong() },
-    botRandom: Random = Random.Default,
+    private val botRandom: Random = Random.Default,
 ) {
     private val commands = Channel<Command>(Channel.UNLIMITED)
     private val seats = mutableListOf<Seat>()
     private val seatByConnection = mutableMapOf<Connection, Seat>()
-    private val bot = SimpleBot(botRandom)
+    private var bot = SimpleBot(botRandom)
     private var settings = GameSettings()
     private var game: GameState? = null
     private var version = 0L
     private var automation: Job? = null
     private var turnTimer: Job? = null
     private var turnClock: TurnClock? = null
+    /** When the next round starts on its own, while a round-over scoreboard is up. */
+    private var nextRoundAt: TimeMark? = null
 
     private val _status = MutableStateFlow(HostStatus(HostStage.LOBBY, emptyList()))
     val status: StateFlow<HostStatus> = _status.asStateFlow()
@@ -89,6 +91,9 @@ class GameHost(
     fun removeBot(seat: Int) = post(Command.RemoveBot(seat))
     fun startNextRound() = post(Command.NextRound)
     fun returnToLobby() = post(Command.ReturnToLobby)
+
+    /** After the last round: a fresh game with the same table, straight away. */
+    fun rematch() = post(Command.Rematch)
     fun close() = post(Command.Close)
 
     /** Null on success, otherwise why the game can't start yet. */
@@ -125,6 +130,7 @@ class GameHost(
             is Command.StartGame -> command.reply.complete(startGame(seed()))
             Command.NextRound -> if (game?.phase is Phase.RoundOver) apply(Action.StartNextRound)
             Command.ReturnToLobby -> backToLobby()
+            Command.Rematch -> rematch(seed())
             is Command.GraceExpired -> {
                 val seat = command.seat
                 if (game != null && seat in seats && seat.connection == null) {
@@ -150,9 +156,12 @@ class GameHost(
                 lobbyChanged()
             }
             is ClientMessage.Intent -> {
+                // Doing anything at all means they're back at the table.
+                if (seat.away) comeBack(seat)
                 val error = apply(message.intent.toAction(seats.indexOf(seat)))
-                if (error != null) connection.send(ServerMessage.ActionRejected(error))
+                if (error != null) connection.send(ServerMessage.ActionRejected(error)) else seat.timeouts = 0
             }
+            ClientMessage.Resume -> if (seat.away) comeBack(seat)
             is ClientMessage.React -> react(seat, message.reaction)
             ClientMessage.Leave -> {
                 seatByConnection.remove(connection)
@@ -195,6 +204,8 @@ class GameHost(
         seat.graceJob?.cancel()
         seat.graceJob = null
         seat.botControlled = false
+        seat.away = false
+        seat.timeouts = 0
         seatByConnection[connection] = seat
         connection.send(ServerMessage.Welcome(seats.indexOf(seat), seat.token, roomCode))
         if (game == null) lobbyChanged() else gameChanged(emptyList())
@@ -240,10 +251,24 @@ class GameHost(
 
     // Game flow
 
+    private fun rematch(seed: Long) {
+        if (game?.phase !is Phase.GameOver) return
+        game = null
+        cancelTimers()
+        seats.forEach {
+            it.away = false
+            it.timeouts = 0
+            // Anyone still gone stays covered by a bot until they're back.
+            it.botControlled = !it.isBot && it.connection == null
+        }
+        startGame(seed)
+    }
+
     private fun startGame(seed: Long): String? {
         if (game != null) return "A game is already running"
         if (seats.size < GameEngine.MIN_PLAYERS) return "Need at least ${GameEngine.MIN_PLAYERS} players"
         if (!seats.all { it.isReady }) return "Waiting for everyone to be ready"
+        bot = SimpleBot(botRandom, level = settings.botLevel)
         val (state, events) = GameEngine.newGame(seats.size, settings.rules, seed)
         game = state
         gameChanged(events)
@@ -271,10 +296,14 @@ class GameHost(
         updateTurnTimer(state)
         val infos = seatInfos()
         val millisLeft = turnClock?.millisLeft()
+        nextRoundAt = when {
+            state.phase !is Phase.RoundOver -> null
+            else -> nextRoundAt ?: config.autoNextRound?.let { TimeSource.Monotonic.markNow() + it }
+        }
+        val nextRoundMillis = nextRoundAt?.let { (-it.elapsedNow()).coerceAtLeast(Duration.ZERO).inWholeMilliseconds }
         seats.forEachIndexed { i, seat ->
-            seat.connection?.send(
-                ServerMessage.Game(state.viewFor(i, infos, settings, millisLeft), events.map { it.toView(i) }),
-            )
+            val view = state.viewFor(i, infos, settings, millisLeft).copy(nextRoundMillis = nextRoundMillis)
+            seat.connection?.send(ServerMessage.Game(view, events.map { it.toView(i) }))
         }
         publishStatus()
         scheduleAutomation(state)
@@ -297,6 +326,8 @@ class GameHost(
         seats.removeAll { !it.isBot && !it.isHost && it.connection == null }
         seats.forEach {
             it.botControlled = false
+            it.away = false
+            it.timeouts = 0
             it.graceJob?.cancel()
             if (!it.isBot && !it.isHost) it.ready = false
         }
@@ -327,7 +358,8 @@ class GameHost(
         automation = null
         when (state.phase) {
             is Phase.RoundOver -> {
-                config.autoNextRound?.let { schedule(it, Action.StartNextRound) }
+                // From the deadline, so a resync mid-countdown doesn't restart it.
+                nextRoundAt?.let { schedule((-it.elapsedNow()).coerceAtLeast(Duration.ZERO), Action.StartNextRound) }
                 return
             }
             is Phase.GameOver -> return
@@ -373,15 +405,33 @@ class GameHost(
         }
     }
 
-    /** The current player ran out of time: let the bot finish their turn. */
+    /**
+     * The current player ran out of time: they draw and keep it (a color or swap pick is made
+     * for them). Run out of time [AWAY_AFTER] turns in a row and a bot plays for them until they
+     * do something again.
+     */
     private fun playForTimedOutSeat() {
-        val seat = game?.current ?: return
-        repeat(4) {
-            val state = game ?: return
-            if (state.current != seat) return
-            val action = bot.chooseTurnAction(state, seat) ?: return
-            if (apply(action) != null) return
+        val current = game?.current ?: return
+        val seat = seats[current]
+        seat.timeouts++
+        repeat(3) {
+            val state = game ?: return@repeat
+            if (state.current != current) return@repeat
+            val action = bot.chooseTimeoutAction(state, current) ?: return@repeat
+            if (apply(action) != null) return@repeat
         }
+        if (seat.timeouts >= AWAY_AFTER && !seat.away) {
+            seat.away = true
+            seat.botControlled = true
+            gameChanged(emptyList())
+        }
+    }
+
+    private fun comeBack(seat: Seat) {
+        seat.away = false
+        seat.timeouts = 0
+        seat.botControlled = seat.connection == null
+        gameChanged(emptyList())
     }
 
     private fun cancelTimers() {
@@ -436,6 +486,10 @@ class GameHost(
         var botControlled = false
         var graceJob: Job? = null
         var lastReaction: TimeMark? = null
+        /** Turns in a row this player has let the timer run out. */
+        var timeouts = 0
+        /** Timed out too often, so a bot is playing for them until they're back. */
+        var away = false
         val isReady get() = ready || isBot || isHost
     }
 
@@ -454,6 +508,7 @@ class GameHost(
         class StartGame(val reply: CompletableDeferred<String?>) : Command
         data object NextRound : Command
         data object ReturnToLobby : Command
+        data object Rematch : Command
         class GraceExpired(val seat: Seat) : Command
         class Automate(val version: Long, val action: Action) : Command
         class TurnTimeout(val version: Long) : Command
@@ -462,6 +517,7 @@ class GameHost(
 
     private companion object {
         const val MAX_NAME_LENGTH = 16
+        const val AWAY_AFTER = 3
         val BOT_NAMES = listOf("Robo", "Chip", "Pixel", "Bolt", "Sprocket", "Widget")
     }
 }

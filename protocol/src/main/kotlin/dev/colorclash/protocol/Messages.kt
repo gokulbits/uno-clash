@@ -39,14 +39,19 @@ sealed interface ClientMessage {
     @SerialName("leave")
     data object Leave : ClientMessage
 
-    /** An emoji reaction, by index into the app's list of [REACTION_COUNT]. */
+    /** Back at the table after timing out too often; the bot hands the seat back. */
+    @Serializable
+    @SerialName("resume")
+    data object Resume : ClientMessage
+
+    /** An emoji reaction or quick chat phrase, by index into the app's list of [REACTION_COUNT]. */
     @Serializable
     @SerialName("react")
     data class React(val reaction: Int) : ClientMessage
 }
 
-/** How many reaction emoji there are. The host drops anything outside this range. */
-const val REACTION_COUNT = 12
+/** How many reactions there are (emoji, then quick chat phrases). The host drops anything outside this range. */
+const val REACTION_COUNT = 20
 
 /** What a player wants to do. The seat comes from the connection, never from the client. */
 @Serializable

@@ -12,10 +12,13 @@ import kotlin.random.Random
 /**
  * Plays a legal card, goes on the attack when an opponent is close to going out,
  * and picks the color it holds most. Never jumps in and never plays a +4 it isn't allowed to.
+ * At [BotLevel.EASY] it plays any legal card, picks colors at random, never challenges, and
+ * forgets to call UNO about half the time, so there's something to catch.
  */
 class SimpleBot(
     private val random: Random = Random.Default,
     private val challengeChance: Double = 0.25,
+    val level: BotLevel = BotLevel.NORMAL,
 ) {
 
     /** Null when the bot has nothing to do right now (not its turn, round over, etc.). */
@@ -23,9 +26,29 @@ class SimpleBot(
         val legal = GameEngine.legalActions(state, seat)
         if (legal.isEmpty()) return null
         legal.firstOrNull { it is CatchLastCard }?.let { return it }
-        legal.firstOrNull { it is CallLastCard }?.let { return it }
+        legal.firstOrNull { it is CallLastCard }?.let { if (!forgetsUno(state, seat)) return it }
         return chooseTurnAction(state, seat, legal)
     }
+
+    /**
+     * What happens when a person's turn timer runs out: they draw (taking any draw penalty,
+     * which also gives up a challenge) and keep what they drew. Colors and swaps still need a
+     * pick, so the bot makes it. Never plays a card for them.
+     */
+    fun chooseTimeoutAction(state: GameState, seat: Int): PlayerAction? {
+        if (seat != state.current) return null
+        return when (state.phase) {
+            Phase.Turn -> Draw(seat)
+            is Phase.DrewPlayable -> Action.Pass(seat)
+            is Phase.PickColor -> ChooseColor(seat, favoriteColor(state.hand(seat)))
+            Phase.PickSwapTarget -> SwapWith(seat, state.players.indices.filter { it != seat }.minBy { state.hand(it).size })
+            else -> null
+        }
+    }
+
+    /** An easy bot's UNO lapse. Fixed for a given table, so asking twice gives the same answer. */
+    private fun forgetsUno(state: GameState, seat: Int): Boolean =
+        level == BotLevel.EASY && (state.round * 31 + seat * 7 + state.discardPile.size) % 2 == 0
 
     /** Only a move that moves the seat's own turn along; no calls or catches. Used when a turn timer runs out. */
     fun chooseTurnAction(state: GameState, seat: Int): PlayerAction? =
@@ -35,7 +58,7 @@ class SimpleBot(
         if (seat != state.current || legal.isEmpty()) return null
         val hand = state.hand(seat)
         return when (state.phase) {
-            is Phase.PickColor -> ChooseColor(seat, favoriteColor(hand))
+            is Phase.PickColor -> ChooseColor(seat, if (level == BotLevel.EASY) randomColor() else favoriteColor(hand))
             Phase.PickSwapTarget -> {
                 val target = state.players.indices.filter { it != seat }.minBy { state.hand(it).size }
                 SwapWith(seat, target)
@@ -50,9 +73,12 @@ class SimpleBot(
         val hand = state.hand(seat)
         val plays = legal.filterIsInstance<PlayCard>().map { play -> hand.first { it.id == play.cardId } }
         if (plays.isEmpty()) {
-            val challenge = legal.firstOrNull { it is ChallengeDrawFour }
+            val challenge = legal.firstOrNull { it is ChallengeDrawFour }.takeIf { level != BotLevel.EASY }
             return if (challenge != null && random.nextDouble() < challengeChance) challenge else Draw(seat)
         }
+        if (level == BotLevel.EASY) return PlayCard(seat, plays[random.nextInt(plays.size)].id)
+        // Drawing one beats a penalty for finishing on a power card.
+        if (state.rules.powerFinishPenalty > 0 && hand.size == 1 && plays.all { it.face.number == null }) return Draw(seat)
 
         // Skip a +4 we'd lose a challenge on, unless it's the only move or we're stacking.
         val honest = if (state.pendingDraw > 0) plays else plays.filter {
@@ -87,6 +113,8 @@ class SimpleBot(
 
     private fun favoriteColor(hand: List<Card>): CardColor {
         val counts = hand.mapNotNull { it.color }.groupingBy { it }.eachCount()
-        return counts.maxByOrNull { it.value }?.key ?: CardColor.entries[random.nextInt(CardColor.entries.size)]
+        return counts.maxByOrNull { it.value }?.key ?: randomColor()
     }
+
+    private fun randomColor() = CardColor.entries[random.nextInt(CardColor.entries.size)]
 }

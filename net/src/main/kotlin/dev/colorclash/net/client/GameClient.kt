@@ -123,6 +123,9 @@ class GameClient(
 
     fun react(reaction: Int) = post(ClientMessage.React(reaction))
 
+    /** Take your seat back from the bot after timing out too often. */
+    fun resume() = post(ClientMessage.Resume)
+
     fun leave() {
         leaving = true
         if (!post(ClientMessage.Leave)) close()

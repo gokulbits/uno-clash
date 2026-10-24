@@ -5,11 +5,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -33,12 +35,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.rules.Card
+import dev.colorclash.rules.CardColor
 import dev.colorclash.rules.Face
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
 const val CARD_ASPECT = 1.5f
+
+/** Colorblind-friendly cards: each color also gets its own shape. Provided by the game screen from the player's settings. */
+val LocalColorShapes = staticCompositionLocalOf { false }
 val HAND_CARD_WIDTH = 76.dp
 val TABLE_CARD_WIDTH = 92.dp
 
@@ -49,6 +55,7 @@ val TABLE_CARD_WIDTH = 92.dp
 @Composable
 fun CardFace(card: Card, width: Dp, modifier: Modifier = Modifier, dimmed: Boolean = false, elevation: Dp = 2.dp) {
     val measurer = rememberTextMeasurer()
+    val shapes = LocalColorShapes.current
     Spacer(
         modifier
             .size(width, width * CARD_ASPECT)
@@ -59,7 +66,7 @@ fun CardFace(card: Card, width: Dp, modifier: Modifier = Modifier, dimmed: Boole
                 val big = number?.let { measurer.label(it, 0.66f * w, this) }
                 val cornerText = number ?: card.face.cornerText()
                 val corner = cornerText?.let { measurer.label(it, if (it.length > 1) 0.18f * w else 0.24f * w, this) }
-                onDrawBehind { drawFace(card, Tint(dimmed), big, corner) }
+                onDrawBehind { drawFace(card, Tint(dimmed), big, corner, shapes) }
             },
     )
 }
@@ -198,7 +205,7 @@ private fun DrawScope.drawQuadrants(topLeft: Offset, ovalSize: Size, tint: Tint)
 
 // Faces
 
-private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResult?, corner: TextLayoutResult?) {
+private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResult?, corner: TextLayoutResult?, shapes: Boolean) {
     val w = size.width
     val base = GameTheme.cardColor(card.color)
     val inset = w * INSET
@@ -266,8 +273,38 @@ private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResul
                 card.face == Face.REVERSE -> withShadow(w * 0.9f, cornerShade, white, at) { c, color -> reverseIcon(c, w * 0.09f, color) }
                 else -> wildPip(at, w * 0.08f, tint)
             }
+            // Under the corner mark, where it still shows in a tight fan. Drawn relative to the mark, so
+            // the bottom corner's half-turn carries it along.
+            if (shapes) card.color?.let { colorShape(it, at + Offset(w * 0.18f - near.x, w * 0.22f), w * 0.065f, white, cornerShade, w * 0.015f) }
         }
     }
+}
+
+/**
+ * The shape that stands for [color] in colorblind mode: red triangle, blue square, green
+ * circle, yellow diamond. Drawn in [fill] with an [edge] outline.
+ */
+fun DrawScope.colorShape(color: CardColor, at: Offset, r: Float, fill: Color, edge: Color, edgeWidth: Float) {
+    val path = Path().apply {
+        when (color) {
+            CardColor.RED -> {
+                moveTo(at.x, at.y - r)
+                lineTo(at.x + r * 1.05f, at.y + r * 0.8f)
+                lineTo(at.x - r * 1.05f, at.y + r * 0.8f)
+            }
+            CardColor.BLUE -> addRect(Rect(at.x - r * 0.85f, at.y - r * 0.85f, at.x + r * 0.85f, at.y + r * 0.85f))
+            CardColor.GREEN -> addOval(Rect(at.x - r, at.y - r, at.x + r, at.y + r))
+            CardColor.YELLOW -> {
+                moveTo(at.x, at.y - r * 1.15f)
+                lineTo(at.x + r, at.y)
+                lineTo(at.x, at.y + r * 1.15f)
+                lineTo(at.x - r, at.y)
+            }
+        }
+        close()
+    }
+    drawPath(path, edge, style = Stroke(edgeWidth * 2, join = StrokeJoin.Round))
+    drawPath(path, fill)
 }
 
 private fun DrawScope.drawBack(words: List<TextLayoutResult>) {

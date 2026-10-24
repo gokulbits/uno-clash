@@ -17,7 +17,11 @@ fun cueFor(event: EventView, you: Int): Cue? = when (event) {
     is EventView.Dealt -> null
     is EventView.StarterFlipped -> Cue(Sfx.FLIP)
     is EventView.CardPlayed -> Cue(Sfx.FLIP, Buzz.TICK.takeIf { event.player == you })
-    is EventView.Drew -> Cue(Sfx.DRAW, Buzz.BUMP.takeIf { event.player == you && event.reason != DrawReason.TURN })
+    is EventView.Drew -> if (event.reason == DrawReason.POWER_FINISH) {
+        Cue(Sfx.PENALTY, Buzz.HEAVY.takeIf { event.player == you })
+    } else {
+        Cue(Sfx.DRAW, Buzz.BUMP.takeIf { event.player == you && event.reason != DrawReason.TURN })
+    }
     is EventView.Skipped -> Cue(Sfx.SKIP, Buzz.BUMP.takeIf { event.player == you })
     is EventView.Reversed -> Cue(Sfx.REVERSE)
     is EventView.WildColorChosen -> Cue(Sfx.WILD)
