@@ -33,6 +33,16 @@ object GameTheme {
 
     val cardColors = listOf(red, yellow, green, blue)
 
+    // Card stock: the paper frame, the oval, and the back.
+    val cardPaper = Color.White
+    val cardPaperEdge = Color(0xFFE9EBF2)
+    val cardOvalEdge = Color(0xFFE4E7F0)
+    val cardBackGlow = Color(0xFF3A2A78)
+    val cardBackDeep = Color(0xFF120C2C)
+    val cardBackOval = Color(0xFFFF5A74)
+    val cardBackOvalDeep = Color(0xFFD0183A)
+    val cardBackInk = Color(0xFF5A0016)
+
     fun cardColor(color: CardColor?): Color = when (color) {
         CardColor.RED -> red
         CardColor.YELLOW -> yellow

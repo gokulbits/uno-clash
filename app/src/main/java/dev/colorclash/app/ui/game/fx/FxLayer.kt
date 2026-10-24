@@ -1,11 +1,14 @@
 package dev.colorclash.app.ui.game.fx
 
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -16,22 +19,29 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.colorclash.app.ui.game.CARD_ASPECT
 import dev.colorclash.app.ui.game.CardBack
 import dev.colorclash.app.ui.game.CardFace
+import dev.colorclash.app.ui.game.TABLE_CARD_WIDTH
 import dev.colorclash.app.ui.theme.GameTheme
+import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
-val FLIGHT_CARD_WIDTH = 92.dp
+val FLIGHT_CARD_WIDTH = TABLE_CARD_WIDTH
+private val CARD_SHAPE = RoundedCornerShape(FLIGHT_CARD_WIDTH * 0.11f)
+private val POP = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
 
 /** Everything that moves over the table. Sits on top and never takes touches. */
 @Composable
@@ -56,47 +66,75 @@ private fun FlightView(flight: Flight) {
     val density = LocalDensity.current
     val halfW = with(density) { FLIGHT_CARD_WIDTH.toPx() } / 2
     val halfH = halfW * CARD_ASPECT
+    val rest = with(density) { 2.dp.toPx() }
+    val lift = with(density) { 18.dp.toPx() }
+    // Only recomposes once, when the card turns over; everything else moves in the layer.
+    val faceUp by remember(flight) {
+        derivedStateOf { flight.card != null && (!flight.flips || turn(flight.progress.value) >= 0.5f) }
+    }
     Box(
         Modifier
             .placeAt(Offset.Zero)
             .graphicsLayer {
                 val p = flight.progress.value
+                val to = flight.to()
                 // Quadratic curve with the control point lifted above the midpoint: a nice toss arc.
-                val mid = (flight.from + flight.to) / 2f
-                val lift = (flight.to - flight.from).getDistance() * 0.35f
-                val control = Offset(mid.x, mid.y - lift)
+                val mid = (flight.from + to) / 2f
+                val arc = (to - flight.from).getDistance() * 0.28f
+                val control = Offset(mid.x, mid.y - arc)
                 val inv = 1 - p
-                val pos = flight.from * (inv * inv) + control * (2 * inv * p) + flight.to * (p * p)
+                val pos = flight.from * (inv * inv) + control * (2 * inv * p) + to * (p * p)
                 translationX = pos.x - halfW
                 translationY = pos.y - halfH
-                rotationZ = flight.endRotation * p
-                val s = flight.startScale + (1 - flight.startScale) * p
-                scaleX = s
+                rotationZ = mix(flight.fromRotation, flight.toRotation, p)
+                val height = sin(p * PI).toFloat()
+                // Swells a touch at the top of the arc, as if it came off the table towards you.
+                val s = mix(flight.fromScale, flight.toScale, p) * (1 + 0.1f * height)
+                scaleX = if (flight.flips) s * abs(cos(turn(p) * PI)).toFloat() else s
                 scaleY = s
+                shadowElevation = rest + lift * height
+                shape = CARD_SHAPE
+                clip = false
+                alpha = if (flight.fadesOut) ((1 - p) / 0.3f).coerceIn(0f, 1f) else 1f
             },
     ) {
         val card = flight.card
-        if (card != null) CardFace(card, FLIGHT_CARD_WIDTH) else CardBack(FLIGHT_CARD_WIDTH)
+        if (faceUp && card != null) {
+            CardFace(card, FLIGHT_CARD_WIDTH, elevation = 0.dp)
+        } else {
+            CardBack(FLIGHT_CARD_WIDTH, elevation = 0.dp)
+        }
     }
 }
 
+/** How far through turning over a flipping card is, 0 to 1. It turns in the middle stretch of the flight. */
+private fun turn(p: Float) = ((p - 0.1f) / 0.55f).coerceIn(0f, 1f)
+
+private fun mix(a: Float, b: Float, t: Float) = a + (b - a) * t
+
 @Composable
 private fun FlashView(flash: Flash) {
+    val density = LocalDensity.current
+    val rise = with(density) { 28.dp.toPx() }
     Text(
         flash.text,
         Modifier
             .placeAt(flash.at, centered = true)
             .graphicsLayer {
                 val p = flash.progress.value
-                val s = 0.6f + 0.9f * p
+                // Pops in past full size, settles, then drifts up and fades.
+                val pop = if (p < 0.25f) POP.transform(p / 0.25f) else 1f
+                val s = 0.5f + 0.6f * pop
                 scaleX = s
                 scaleY = s
-                alpha = if (p < 0.6f) 1f else (1 - p) / 0.4f
+                translationY = -rise * p
+                alpha = if (p < 0.65f) 1f else (1 - p) / 0.35f
             },
         color = flash.color,
         fontSize = 34.sp,
         fontWeight = FontWeight.Black,
         fontFamily = GameTheme.displayFont,
+        style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.6f), Offset(0f, 4f), blurRadius = 10f)),
     )
 }
 

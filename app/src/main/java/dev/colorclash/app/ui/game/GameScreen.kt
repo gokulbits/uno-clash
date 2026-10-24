@@ -3,9 +3,14 @@ package dev.colorclash.app.ui.game
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -35,8 +40,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.colorclash.app.data.FeedbackSettings
@@ -74,9 +82,6 @@ import dev.colorclash.protocol.SeatView
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.Direction
 import kotlin.math.abs
-
-private val HAND_CARD_WIDTH = 76.dp
-private val TABLE_CARD_WIDTH = 92.dp
 
 /** The game table. Every move goes to the host as an intent; this only ever shows what the host sent back. */
 @Composable
@@ -256,20 +261,23 @@ private fun OpponentSeat(
 private fun CenterTable(view: PlayerView, fx: TableFx, controls: TableControls, onDraw: () -> Unit, modifier: Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            Box(
-                Modifier
-                    .then(fx.anchor(Anchor.DrawPile))
-                    .scale(if (controls.canDraw) pulse(1.05f) else 1f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .then(if (controls.canDraw) Modifier.border(3.dp, GameTheme.yellow, RoundedCornerShape(14.dp)) else Modifier)
-                    .clickable(enabled = controls.canDraw, onClick = onDraw),
-            ) {
-                CardBack(TABLE_CARD_WIDTH)
-                Text(
-                    view.drawPileCount.toString(),
-                    Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
-                    color = GameTheme.mutedText, fontSize = 12.sp,
-                )
+            Box(Modifier.then(fx.anchor(Anchor.DrawPile)).scale(if (controls.canDraw) pulse(1.05f) else 1f)) {
+                // A couple of cards peeking out underneath, so it reads as a deck.
+                if (view.drawPileCount > 2) CardBack(TABLE_CARD_WIDTH, Modifier.offset(3.dp, 5.dp), elevation = 1.dp)
+                if (view.drawPileCount > 1) CardBack(TABLE_CARD_WIDTH, Modifier.offset(1.5.dp, 2.5.dp), elevation = 1.dp)
+                Box(
+                    Modifier
+                        .clip(PILE_SHAPE)
+                        .then(if (controls.canDraw) Modifier.border(3.dp, GameTheme.yellow, PILE_SHAPE) else Modifier)
+                        .clickable(enabled = controls.canDraw, onClick = onDraw),
+                ) {
+                    CardBack(TABLE_CARD_WIDTH, elevation = 3.dp)
+                    Text(
+                        view.drawPileCount.toString(),
+                        Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
+                        color = GameTheme.mutedText, fontSize = 12.sp,
+                    )
+                }
             }
 
             Text(
@@ -288,7 +296,26 @@ private fun CenterTable(view: PlayerView, fx: TableFx, controls: TableControls, 
                         .clip(RoundedCornerShape(20.dp))
                         .background(GameTheme.cardColor(view.activeColor).copy(alpha = if (view.activeColor == null) 0f else 0.55f)),
                 )
-                CardFace(view.topCard, TABLE_CARD_WIDTH, Modifier.graphicsLayer { rotationZ = TableFx.discardTilt(view.topCard) })
+                fx.pileUnder.forEach { card ->
+                    key(card.id) { CardFace(card, TABLE_CARD_WIDTH, Modifier.graphicsLayer { rotationZ = TableFx.discardTilt(card) }, elevation = 1.dp) }
+                }
+                if (!fx.pileCleared) {
+                    val top = fx.pileTop ?: view.topCard
+                    key(top.id) {
+                        CardFace(
+                            top,
+                            TABLE_CARD_WIDTH,
+                            Modifier.graphicsLayer {
+                                rotationZ = TableFx.discardTilt(top)
+                                // Settles with a little squash when a card lands.
+                                val bump = 1f + 0.06f * fx.pileBump.value
+                                scaleX = bump
+                                scaleY = bump
+                            },
+                            elevation = 3.dp,
+                        )
+                    }
+                }
             }
         }
         Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -362,14 +389,19 @@ private fun Hand(view: PlayerView, fx: TableFx, onPlay: (Int) -> Unit) {
         verticalAlignment = Alignment.Bottom,
     ) {
         itemsIndexed(cards, key = { _, card -> card.id }) { i, card ->
-            Box(Modifier.animateItem().width(slice)) {
+            val rotation = (i - mid) * tilt
+            // The thrown card is already flying from its slot, so it mustn't fade out there too.
+            Box(Modifier.animateItem(fadeOutSpec = null, placementSpec = spring<IntOffset>(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)).width(slice)) {
+                DisposableEffect(card.id) { onDispose { fx.forget(Anchor.HandCard(card.id)) } }
                 HandCard(
                     card = card,
                     playable = card.id in view.playable,
-                    rotation = (i - mid) * tilt,
+                    rotation = rotation,
                     drop = (abs(i - mid) * abs(i - mid) * 1.2f).dp.coerceAtMost(18.dp),
+                    incoming = { card.id in fx.incomingCards },
                     onPlay = { onPlay(card.id) },
-                    modifier = Modifier.wrapContentWidth(Alignment.Start, unbounded = true).then(fx.anchor(Anchor.HandCard(card.id))),
+                    anchor = fx.anchor(Anchor.HandCard(card.id), rotation, pivotY = HAND_PIVOT),
+                    modifier = Modifier.wrapContentWidth(Alignment.Start, unbounded = true),
                 )
             }
         }
@@ -377,17 +409,41 @@ private fun Hand(view: PlayerView, fx: TableFx, onPlay: (Int) -> Unit) {
 }
 
 @Composable
-private fun HandCard(card: Card, playable: Boolean, rotation: Float, drop: Dp, onPlay: () -> Unit, modifier: Modifier) {
+private fun HandCard(
+    card: Card,
+    playable: Boolean,
+    rotation: Float,
+    drop: Dp,
+    incoming: () -> Boolean,
+    onPlay: () -> Unit,
+    anchor: Modifier,
+    modifier: Modifier,
+) {
     var dragY by remember { mutableFloatStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
     val playThreshold = with(LocalDensity.current) { 70.dp.toPx() }
-    val lift = if (playable) (-14).dp else 0.dp
+    // Everything springs, so the fan re-spreads smoothly when cards come and go.
+    val lift by animateDpAsState(if (playable) (-14).dp else 0.dp, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow), label = "lift")
+    val sink by animateDpAsState(drop, spring(stiffness = Spring.StiffnessMediumLow), label = "drop")
+    val tilt by animateFloatAsState(rotation, spring(stiffness = Spring.StiffnessMediumLow), label = "tilt")
+    val pull by animateFloatAsState(
+        dragY,
+        if (dragging) snap<Float>() else spring<Float>(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium),
+        label = "pull",
+    )
     Box(
         modifier
-            .offset(y = drop + lift)
+            .offset(y = sink + lift)
+            .then(anchor)
             .graphicsLayer {
-                rotationZ = rotation
-                translationY = dragY
-                transformOrigin = TransformOrigin(0.5f, 1.2f)
+                rotationZ = tilt
+                translationY = pull
+                transformOrigin = TransformOrigin(0.5f, HAND_PIVOT)
+                // Grows a little as you drag it up towards the pile.
+                val reach = 1f + 0.08f * (-pull / playThreshold).coerceIn(0f, 1f)
+                scaleX = reach
+                scaleY = reach
+                alpha = if (incoming()) 0f else 1f
             }
             .then(
                 if (playable) {
@@ -395,11 +451,16 @@ private fun HandCard(card: Card, playable: Boolean, rotation: Float, drop: Dp, o
                         .clickable(onClick = onPlay)
                         .pointerInput(card.id) {
                             detectVerticalDragGestures(
+                                onDragStart = { dragging = true },
                                 onDragEnd = {
                                     if (dragY < -playThreshold) onPlay()
+                                    dragging = false
                                     dragY = 0f
                                 },
-                                onDragCancel = { dragY = 0f },
+                                onDragCancel = {
+                                    dragging = false
+                                    dragY = 0f
+                                },
                             ) { _, dy -> dragY = (dragY + dy).coerceAtMost(0f) }
                         }
                 } else {
@@ -407,7 +468,7 @@ private fun HandCard(card: Card, playable: Boolean, rotation: Float, drop: Dp, o
                 },
             ),
     ) {
-        CardFace(card, HAND_CARD_WIDTH, dimmed = !playable)
+        CardFace(card, HAND_CARD_WIDTH, dimmed = !playable, elevation = 3.dp)
     }
 }
 
@@ -446,3 +507,7 @@ private fun pulse(to: Float = 1.08f): Float {
 }
 
 private fun PhaseKind.isLive() = this != PhaseKind.ROUND_OVER && this != PhaseKind.GAME_OVER
+
+/** Hand cards lean around a point this far down their height, below the card itself. */
+private const val HAND_PIVOT = 1.2f
+private val PILE_SHAPE = RoundedCornerShape(TABLE_CARD_WIDTH * 0.11f)
