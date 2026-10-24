@@ -192,7 +192,8 @@ private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResul
         else -> if (bigLabel != null) {
             drawLabel(bigLabel, mid, ink, shade, w, outline = shade)
             if (card.face == Face.SIX || card.face == Face.NINE) {
-                underline(mid.x, mid.y + w * 0.31f, Size(w * 0.36f, w * 0.04f), ink, shade, w * 0.011f)
+                // Tucked right under the digit and a bit narrower than it, like a printed card.
+                underline(mid.x, mid.y + w * 0.27f, Size(bigLabel.size.width * 0.75f, w * 0.04f), ink, shade, w * 0.011f)
             }
         }
     }
@@ -212,7 +213,7 @@ private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResul
                     // Outlined and shadowed so they read at a glance in a tight fan.
                     drawLabel(corner, at, white, cornerShade, w * 0.9f, outline = cornerShade, outlineWidth = outline)
                     if (card.face == Face.SIX || card.face == Face.NINE) {
-                        underline(at.x, at.y + w * 0.112f, Size(w * 0.15f, w * 0.024f), white, cornerShade, w * 0.012f)
+                        underline(at.x, at.y + w * 0.108f, Size(w * 0.13f, w * 0.024f), white, cornerShade, w * 0.01f)
                     }
                 }
                 card.face == Face.SKIP -> withShadow(w * 0.9f, cornerShade, white, at) { c, color -> skipIcon(c, w * 0.09f, color) }
@@ -274,10 +275,10 @@ private fun DrawScope.drawLabel(
 
 /** The bar that tells a 6 from a 9: outlined in [edge] and shadowed like the digit above it. */
 private fun DrawScope.underline(centerX: Float, top: Float, bar: Size, fill: Color, edge: Color, edgeWidth: Float) {
-    val w = size.width
     val topLeft = Offset(centerX - bar.width / 2, top)
     val r = bar.height / 2
-    drawRoundRect(edge.copy(alpha = 0.55f), topLeft + Offset(w * 0.02f, w * 0.03f), bar, CornerRadius(r))
+    // The shadow drops by about the bar's own thickness, so a thin bar doesn't look doubled.
+    drawRoundRect(edge.copy(alpha = 0.45f), topLeft + Offset(bar.height * 0.35f, bar.height * 0.6f), bar, CornerRadius(r))
     drawRoundRect(
         edge,
         topLeft - Offset(edgeWidth, edgeWidth),
