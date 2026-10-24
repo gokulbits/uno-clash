@@ -17,6 +17,14 @@ class ScoringTest {
     private val t = Table()
 
     @Test
+    fun `a one round game ends with the first round, even on zero points`() {
+        val last = t.red(FIVE)
+        val s = t.state(listOf(last), listOf(t.blue(Face.ZERO)), top = t.red(NINE), rules = RuleSet(targetScore = 0))
+        val (after, _) = s.act(PlayCard(0, last.id))
+        assertEquals(Phase.GameOver(winner = 0), after.phase)
+    }
+
+    @Test
     fun `round winner collects points left in other hands`() {
         val last = t.red(FIVE)
         val s = t.state(listOf(last), listOf(t.wild(), t.red(SKIP)), listOf(t.blue(SEVEN)), top = t.red(NINE))

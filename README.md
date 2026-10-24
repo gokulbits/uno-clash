@@ -9,8 +9,12 @@ A private project for playing with friends, not published anywhere.
 
 - 2–6 players, any mix of friends and bots, portrait only
 - Standard 108-card deck: Skip, Reverse, Draw 2, Wild, Wild Draw 4
-- "Last card!" calls with catching, the +4 challenge, scoring over rounds to a target
-- House rules you can toggle in the lobby: stacking +2/+4, jump-in, 7-0 swaps, draw until playable, turn timer
+- "UNO!" calls with catching, the +4 challenge, scoring over rounds to a target
+- A fair shuffle: every round is dealt one card at a time around the table from a freshly shuffled deck
+- 15-second turn timer by default (the host can change or turn it off in the lobby)
+- House rules you can toggle in the lobby: stacking +2/+4, jump-in, 7-0 swaps, draw until playable, a penalty for finishing on a power card
+- Action cards and picked colors are called out on screen and out loud ("Skip!", "Blue!")
+- Emoji reactions that float up from your seat for everyone to see
 - Join by QR code (the in-app scanner or the stock camera app), room code, nearby-room list, or IP address
 - Dropped players get 60 seconds to come back; after that a bot keeps their seat warm until they rejoin
 - Card animations, sound effects, music and haptics, all switchable in Settings
@@ -41,8 +45,8 @@ Requires Android 8.0 (API 26) or newer.
 On Android 17 and newer the app asks for permission to talk to devices on your local network the first
 time you host or join. The game can't work without it.
 
-During play: tap a highlighted card (or drag it up) to play it, tap the draw pile to draw, and hit
-**LAST CARD!** before you're down to one. If someone forgets, a **CATCH!** button appears on their seat.
+During play: tap a highlighted card (or drag it up) to play it, tap the draw pile to draw, and on your
+turn hit **UNO!** before you play your second-to-last card. If someone forgets, a **CATCH!** button appears on their seat.
 
 ## Troubleshooting
 

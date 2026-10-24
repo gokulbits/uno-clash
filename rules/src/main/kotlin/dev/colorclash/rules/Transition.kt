@@ -60,7 +60,7 @@ internal class Transition(state: GameState) {
     )
 
     fun perform(action: Action) {
-        // Once someone else takes a turn, the window to catch a missed last-card call closes.
+        // Once someone else takes a turn, the window to catch a missed UNO call closes.
         val startsTurn = action is PlayCard || action is Draw || action is Pass || action is ChallengeDrawFour
         if (startsTurn && exposed != action.player) exposed = null
 
@@ -92,14 +92,14 @@ internal class Transition(state: GameState) {
         rng.shuffle(drawPile)
         events += GameEvent.RoundStarted(round, dealer)
 
+        // Dealt like at a real table: one card at a time, round and round, starting left of the dealer.
         val first = seatAfter(dealer)
+        repeat(rules.handSize) {
+            for (i in 0 until playerCount) hands[seatAfter(first, i)] += drawPile.removeAt(0)
+        }
         for (i in 0 until playerCount) {
             val seat = seatAfter(first, i)
-            val dealt = drawPile.subList(0, rules.handSize)
-            val cards = dealt.toList()
-            dealt.clear()
-            hands[seat] += cards
-            events += GameEvent.Dealt(seat, cards)
+            events += GameEvent.Dealt(seat, hands[seat].toList())
         }
 
         // A Wild Draw 4 can't start a round; bury it and flip again.
@@ -149,6 +149,10 @@ internal class Transition(state: GameState) {
         phase = Phase.Turn
         drawFourCheck = null
 
+        if (hand.isEmpty() && rules.powerFinishPenalty > 0 && card.face.number == null) {
+            // This table doesn't let you go out on a power card: it still works, but you draw instead of winning.
+            drawCards(player, rules.powerFinishPenalty, DrawReason.POWER_FINISH)
+        }
         if (hand.isEmpty()) return goOut(player, card)
         if (hand.size == 1 && !called[player]) exposed = player
 

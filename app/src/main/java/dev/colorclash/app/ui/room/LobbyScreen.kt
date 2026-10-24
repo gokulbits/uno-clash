@@ -47,6 +47,7 @@ import dev.colorclash.protocol.GameSettings
 import dev.colorclash.protocol.JoinLink
 import dev.colorclash.protocol.LobbyView
 import dev.colorclash.protocol.SeatInfo
+import dev.colorclash.rules.BotLevel
 import dev.colorclash.rules.GameEngine
 import dev.colorclash.rules.RuleSet
 import kotlinx.coroutines.Dispatchers
@@ -194,8 +195,18 @@ private fun RulesPanel(settings: GameSettings, editable: Boolean, onChange: (Gam
         RuleSwitch("Draw until playable", "Keep drawing until you can play", rules.drawUntilPlayable, editable) { update { copy(drawUntilPlayable = it) } }
         RuleSwitch("Challenge +4", "Call out an illegal Wild Draw 4", rules.challengeDrawFour, editable) { update { copy(challengeDrawFour = it) } }
 
+
         Text("Play to", fontWeight = FontWeight.Bold)
-        ChoiceChips(listOf(100, 250, 500), rules.targetScore, editable, { "$it pts" }) { update { copy(targetScore = it) } }
+        ChoiceChips(listOf(0, 100, 250, 500), rules.targetScore, editable, { if (it == 0) "1 round" else "$it pts" }) { update { copy(targetScore = it) } }
+        Text("Finishing on a power card", fontWeight = FontWeight.Bold)
+        Text("Going out on a Skip, Reverse, +2 or Wild: the card still works, but you draw instead of winning", color = GameTheme.mutedText, style = MaterialTheme.typography.bodyMedium)
+        ChoiceChips(listOf(0, 2, 4), rules.powerFinishPenalty, editable, { if (it == 0) "Allowed" else "Draw $it" }) {
+            update { copy(powerFinishPenalty = it) }
+        }
+        Text("Bot skill", fontWeight = FontWeight.Bold)
+        ChoiceChips(BotLevel.entries, settings.botLevel, editable, { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } }) {
+            onChange(settings.copy(botLevel = it))
+        }
         Text("Turn timer", fontWeight = FontWeight.Bold)
         ChoiceChips(listOf<Int?>(null, 15, 30, 60), settings.turnTimerSeconds, editable, { it?.let { s -> "${s}s" } ?: "Off" }) {
             onChange(settings.copy(turnTimerSeconds = it))

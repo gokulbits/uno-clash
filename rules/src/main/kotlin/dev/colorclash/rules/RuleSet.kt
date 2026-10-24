@@ -2,9 +2,14 @@ package dev.colorclash.rules
 
 import kotlinx.serialization.Serializable
 
+/** How bots play. Normal plays well; Easy plays any legal card, never challenges, and sometimes forgets UNO. */
+@Serializable
+enum class BotLevel { EASY, NORMAL }
+
 @Serializable
 data class RuleSet(
     val handSize: Int = 7,
+    /** First to this many points wins the game. 0 means a single round. */
     val targetScore: Int = 500,
     val lastCardPenalty: Int = 2,
     val challengeDrawFour: Boolean = true,
@@ -15,10 +20,16 @@ data class RuleSet(
     /** 7 swaps hands with a chosen player, 0 passes every hand along the direction of play. */
     val sevenZero: Boolean = false,
     val drawUntilPlayable: Boolean = false,
+    /**
+     * Cards drawn for playing a Skip, Reverse, +2 or wild as your last card. The card still
+     * works, but you don't go out. 0 turns the rule off.
+     */
+    val powerFinishPenalty: Int = 0,
 ) {
     init {
         require(handSize in 1..15) { "Hand size must be 1-15" }
-        require(targetScore > 0) { "Target score must be positive" }
+        require(targetScore >= 0) { "Target score can't be negative" }
         require(lastCardPenalty >= 0) { "Penalty can't be negative" }
+        require(powerFinishPenalty >= 0) { "Penalty can't be negative" }
     }
 }

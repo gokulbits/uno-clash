@@ -44,6 +44,8 @@ fun AppRoot(app: ColorClashApp, incomingLink: JoinLink?, onLinkHandled: () -> Un
     val session by sessions.session.collectAsState()
     val profile by app.prefs.profile.collectAsState()
     val feedback by app.prefs.feedback.collectAsState()
+    val play by app.prefs.play.collectAsState()
+    val stats by app.prefs.stats.collectAsState()
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -139,6 +141,9 @@ fun AppRoot(app: ColorClashApp, incomingLink: JoinLink?, onLinkHandled: () -> Un
                     onProfileChange = app.prefs::updateProfile,
                     feedback = feedback,
                     onFeedbackChange = app.prefs::updateFeedback,
+                    play = play,
+                    onPlayChange = app.prefs::updatePlay,
+                    stats = stats,
                     onBack = { screen = Screen.HOME },
                 )
             }

@@ -20,6 +20,13 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.wifi" android:required="true" />
 
+    <!-- Lets the app find the phone's text-to-speech engine for announcements (Android 11+ package visibility). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".ColorClashApp"
         android:allowBackup="false"

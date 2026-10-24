@@ -12,17 +12,20 @@ All files in `app/src/main/res/raw/` are synthesized by [`tools/sfx/generate_sou
 | --- | --- |
 | `sfx_shuffle.wav` | Round start, reshuffle, hands swapped or passed |
 | `sfx_deal.wav` | Each card dealt |
-| `sfx_flip.wav` | Card played, starter card |
+| `sfx_flip.wav` | Card thrown, starter card turned over |
+| `sfx_land.wav` | A card landing on the discard pile |
 | `sfx_draw.wav` | Drawing |
 | `sfx_skip.wav` | Skip |
 | `sfx_reverse.wav` | Reverse |
 | `sfx_wild.wav` | Wild color chosen |
-| `sfx_last_card.wav` | "Last card!" called |
+| `sfx_last_card.wav` | "UNO!" called |
 | `sfx_penalty.wav` | Caught, challenge outcome |
 | `sfx_win.wav` | You won the round |
 | `sfx_lose.wav` | Someone else won the round |
 | `sfx_turn.wav` | Your turn |
-| `music_loop.wav` | Background music (128 bpm chiptune, loops) |
+| `sfx_pop.wav` | Someone reacts with an emoji |
+| `sfx_tick.wav` | The last seconds of your turn |
+| `music_loop.wav` | Background music (112 bpm electric piano, loops seamlessly) |
 
 To regenerate after tweaking the script:
 

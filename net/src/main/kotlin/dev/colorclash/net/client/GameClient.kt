@@ -90,6 +90,10 @@ class GameClient(
     private val _updates = MutableSharedFlow<ServerMessage.Game>(extraBufferCapacity = 256)
     val updates: SharedFlow<ServerMessage.Game> = _updates.asSharedFlow()
 
+    /** Emoji reactions from anyone at the table, yours included once the host echoes them. */
+    private val _reactions = MutableSharedFlow<ServerMessage.Reaction>(extraBufferCapacity = 32)
+    val reactions: SharedFlow<ServerMessage.Reaction> = _reactions.asSharedFlow()
+
     /** Short messages worth showing, like a rejected move. */
     private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val notices: SharedFlow<String> = _notices.asSharedFlow()
@@ -116,6 +120,11 @@ class GameClient(
     fun send(intent: PlayerIntent) = post(ClientMessage.Intent(intent))
 
     fun setReady(ready: Boolean) = post(ClientMessage.SetReady(ready))
+
+    fun react(reaction: Int) = post(ClientMessage.React(reaction))
+
+    /** Take your seat back from the bot after timing out too often. */
+    fun resume() = post(ClientMessage.Resume)
 
     fun leave() {
         leaving = true
@@ -269,6 +278,7 @@ class GameClient(
                 _updates.tryEmit(message)
             }
             is ServerMessage.ActionRejected -> _notices.tryEmit(message.reason)
+            is ServerMessage.Reaction -> _reactions.tryEmit(message)
             is ServerMessage.Pong -> Unit
             is ServerMessage.Closed -> return Outcome.Ended(message.reason)
         }

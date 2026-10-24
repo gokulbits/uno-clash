@@ -22,6 +22,39 @@ class HouseRulesTest {
     private val t = Table()
     private fun spare() = listOf(t.blue(ONE), t.blue(THREE))
 
+    // Punished for finishing on a power card
+
+    private val powerPenalty = RuleSet(powerFinishPenalty = 2)
+
+    @Test
+    fun `finishing on a power card works but draws the penalty instead of winning`() {
+        val skip = t.red(Face.SKIP)
+        val (after, events) = t.state(listOf(skip), spare(), spare(), top = t.red(NINE), rules = powerPenalty).act(PlayCard(0, skip.id))
+        assertTrue(after.phase !is Phase.RoundOver)
+        assertEquals(2, after.hand(0).size)
+        assertTrue(events.any { it is GameEvent.Drew && it.player == 0 && it.reason == DrawReason.POWER_FINISH && it.cards.size == 2 })
+        // The skip still did its job: seat 1 is skipped and seat 2 plays.
+        assertTrue(events.any { it is GameEvent.Skipped && it.player == 1 })
+        assertEquals(2, after.current)
+    }
+
+    @Test
+    fun `a wild as the last card still asks for a color, and the penalty follows the rule set`() {
+        val wild = t.wild()
+        val s = t.state(listOf(wild), spare(), top = t.red(NINE), rules = RuleSet(powerFinishPenalty = 4))
+        val (after, _) = s.act(PlayCard(0, wild.id))
+        assertEquals(4, after.hand(0).size)
+        assertTrue(after.phase is Phase.PickColor)
+    }
+
+    @Test
+    fun `numbers still finish with the rule on, and power cards finish with it off`() {
+        val five = t.red(FIVE)
+        assertTrue(t.state(listOf(five), spare(), top = t.red(NINE), rules = powerPenalty).act(PlayCard(0, five.id)).state.phase is Phase.RoundOver)
+        val skip = t.red(Face.SKIP)
+        assertTrue(t.state(listOf(skip), spare(), top = t.red(NINE)).act(PlayCard(0, skip.id)).state.phase is Phase.RoundOver)
+    }
+
     // Stacking
 
     private val stacking = RuleSet(stackDraws = true)

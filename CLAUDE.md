@@ -48,8 +48,9 @@ python tools/sfx/generate_sounds.py      # regenerate res/raw sounds (stdlib onl
 
 ## Working agreements
 
-- Work in phases; finish each with a green build and tests, a short commit, and a summary.
-- Commit messages under 10 words, plain. No AI co-author lines. Don't push; the owner pushes.
+- Work in phases; finish each with a green build and tests, a summary, and a proposed commit.
+- Never commit or push without the owner's approval. Show what changed and how it was verified, then wait.
+- Commit messages under 10 words, plain. No AI co-author lines.
 - Short, human comments. Don't build features outside the brief; list ideas at the end of a phase instead.
 
 ## Network resilience

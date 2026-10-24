@@ -25,6 +25,7 @@ class FuzzTest {
                 jumpIn = random.nextBoolean(),
                 sevenZero = random.nextBoolean(),
                 drawUntilPlayable = random.nextBoolean(),
+                powerFinishPenalty = listOf(0, 2, 4).random(random),
             )
             try {
                 playOut(GameEngine.newGame(players, rules, seed = game.toLong()).state, random)

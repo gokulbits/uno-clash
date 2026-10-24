@@ -23,6 +23,8 @@ class CuesTest {
     fun `getting hit by a draw card bumps, drawing on your own turn doesn't`() {
         assertEquals(Cue(Sfx.DRAW, Buzz.BUMP), cueFor(EventView.Drew(0, 2, DrawReason.DRAW_CARD), you = 0))
         assertEquals(Cue(Sfx.DRAW), cueFor(EventView.Drew(0, 1, DrawReason.TURN), you = 0))
+        assertEquals(Cue(Sfx.PENALTY, Buzz.HEAVY), cueFor(EventView.Drew(0, 2, DrawReason.POWER_FINISH), you = 0))
+        assertEquals(Cue(Sfx.PENALTY), cueFor(EventView.Drew(1, 2, DrawReason.POWER_FINISH), you = 0))
     }
 
     @Test

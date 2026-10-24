@@ -4,6 +4,7 @@ import dev.colorclash.protocol.EventView
 import dev.colorclash.protocol.PhaseKind
 import dev.colorclash.protocol.PlayerView
 import dev.colorclash.rules.Card
+import dev.colorclash.rules.CardColor
 import dev.colorclash.rules.Direction
 import dev.colorclash.rules.DrawReason
 import dev.colorclash.rules.Face
@@ -80,13 +81,97 @@ fun arcPositions(count: Int): List<Pair<Float, Float>> {
     }
 }
 
-/** Groups the hand by color, then by face, so it's easy to scan. */
-fun sortHand(hand: List<Card>): List<Card> =
-    hand.sortedWith(compareBy<Card>({ it.color?.ordinal ?: Int.MAX_VALUE }, { it.face.ordinal }))
+/** Groups the hand by color, then by face, so it's easy to scan; or by face first when [byNumber]. Wilds go last either way. */
+fun sortHand(hand: List<Card>, byNumber: Boolean = false): List<Card> {
+    val color = compareBy<Card> { it.color?.ordinal ?: Int.MAX_VALUE }
+    val face = compareBy<Card> { it.face.ordinal }
+    return hand.sortedWith(if (byNumber) face.then(color) else color.then(face))
+}
+
+/** A card someone played this round, for the discard pile peek. */
+data class RecentPlay(val seat: Int, val card: Card)
+
+/** Who plays after the current player, if the round is still going. */
+fun nextSeat(view: PlayerView): Int? {
+    if (view.phase == PhaseKind.ROUND_OVER || view.phase == PhaseKind.GAME_OVER) return null
+    return (view.current + view.direction.step).mod(view.seats.size)
+}
+
+/** What's stamped on a seat: a skip sign, a "+N", or a tick or cross for a challenge. */
+enum class StampMark { SKIP, DRAW, CHECK, CROSS }
+
+/**
+ * A big stamp slammed onto one player's seat (over your hand when it's you). [good] stamps are
+ * green and the seat bounces; bad ones are red and the seat gets knocked about.
+ */
+data class SeatStamp(val seat: Int, val mark: StampMark, val tag: String, val good: Boolean, val count: Int = 0)
+
+/** The stamps an event puts on players' seats, worded for the player at [you]. */
+fun seatStampsFor(event: EventView, you: Int): List<SeatStamp> = when (event) {
+    is EventView.Skipped -> listOf(
+        SeatStamp(event.player, StampMark.SKIP, if (event.player == you) "YOU'RE SKIPPED!" else "SKIPPED!", good = false),
+    )
+    // A +2 or +4 landing on you, or the penalty for finishing on a power card. A challenge's own
+    // stamps already cover those cards, and an UNO penalty has its own flash.
+    is EventView.Drew -> when {
+        event.count <= 0 -> emptyList()
+        event.reason == DrawReason.DRAW_CARD -> {
+            val tag = if (event.player == you) "YOU DRAW ${event.count}!" else "DRAW ${event.count}!"
+            listOf(SeatStamp(event.player, StampMark.DRAW, tag, good = false, count = event.count))
+        }
+        event.reason == DrawReason.POWER_FINISH -> {
+            val tag = if (event.player == you) "NO POWER FINISH!" else "POWER FINISH!"
+            listOf(SeatStamp(event.player, StampMark.DRAW, tag, good = false, count = event.count))
+        }
+        else -> emptyList()
+    }
+    is EventView.Challenged -> {
+        val challengerYou = event.challenger == you
+        val offenderYou = event.offender == you
+        if (event.succeeded) {
+            listOf(
+                SeatStamp(event.challenger, StampMark.CHECK, if (challengerYou) "YOU CAUGHT THEM!" else "BLUFF CAUGHT!", good = true),
+                SeatStamp(event.offender, StampMark.CROSS, if (offenderYou) "YOU GOT CAUGHT!" else "BLUFFED!", good = false),
+            )
+        } else {
+            listOf(
+                SeatStamp(event.offender, StampMark.CHECK, if (offenderYou) "IT WAS LEGIT!" else "LEGIT!", good = true),
+                SeatStamp(event.challenger, StampMark.CROSS, if (challengerYou) "BAD CHALLENGE!" else "WRONG CALL!", good = false),
+            )
+        }
+    }
+    else -> emptyList()
+}
+
+/** A big table-wide callout: a card that does something landing, a color being picked, someone calling UNO. */
+data class Announcement(val title: String, val detail: String, val color: CardColor?, val spoken: String)
+
+fun announcementFor(event: EventView, view: PlayerView): Announcement? {
+    fun who(seat: Int) = view.who(seat)
+    return when (event) {
+        is EventView.CardPlayed -> {
+            val (title, spoken, name) = when (event.card.face) {
+                Face.SKIP -> Triple("SKIP!", "Skip!", "a Skip")
+                Face.REVERSE -> Triple("REVERSE!", "Reverse!", "a Reverse")
+                Face.DRAW_TWO -> Triple("+2", "Draw two!", "a Draw Two")
+                Face.WILD -> Triple("WILD!", "Wild!", "a Wild")
+                Face.WILD_DRAW_FOUR -> Triple("+4", "Wild draw four!", "a Wild Draw Four")
+                else -> return null
+            }
+            Announcement(title, "${who(event.player)} played $name", event.card.color, spoken)
+        }
+        is EventView.WildColorChosen -> {
+            val name = event.color.name.lowercase()
+            Announcement("${event.color.name}!", "${who(event.player)} picked $name", event.color, name.replaceFirstChar { it.uppercase() } + "!")
+        }
+        is EventView.LastCardCalled -> Announcement("UNO!", "${who(event.player)} called UNO", null, "UNO!")
+        else -> null
+    }
+}
 
 /** One line of table chatter for an event, or null for events not worth a line. */
 fun describe(event: EventView, view: PlayerView): String? {
-    fun who(seat: Int) = if (seat == view.you) "You" else view.nameOf(seat)
+    fun who(seat: Int) = view.who(seat)
     return when (event) {
         is EventView.RoundStarted -> "Round ${event.round} — ${who(event.dealer)} dealt"
         is EventView.CardPlayed -> "${who(event.player)} ${if (event.jumpIn) "jumped in with" else "played"} ${event.card.label()}"
@@ -95,11 +180,12 @@ fun describe(event: EventView, view: PlayerView): String? {
             DrawReason.DRAW_CARD -> "${who(event.player)} took ${plural(event.count, "card")}"
             DrawReason.MISSED_LAST_CARD -> null // covered by the penalty line
             DrawReason.CHALLENGE -> "${who(event.player)} took ${plural(event.count, "card")} from the challenge"
+            DrawReason.POWER_FINISH -> "${who(event.player)} can't go out on a power card: +${event.count}"
         }
         is EventView.Skipped -> "${who(event.player)} ${if (event.player == view.you) "are" else "is"} skipped"
         is EventView.Reversed -> if (event.direction == Direction.CLOCKWISE) "Play goes clockwise" else "Play goes counter-clockwise"
         is EventView.WildColorChosen -> "${who(event.player)} picked ${event.color.name.lowercase()}"
-        is EventView.LastCardCalled -> "${who(event.player)} called last card!"
+        is EventView.LastCardCalled -> "${who(event.player)} called UNO!"
         is EventView.PenaltyApplied -> "${who(event.caughtBy)} caught ${who(event.player).let { if (it == "You") "you" else it }}! +${event.cards}"
         is EventView.Challenged -> if (event.succeeded) {
             "${who(event.challenger)} caught ${who(event.offender)} bluffing a +4"
@@ -128,5 +214,7 @@ fun Card.label(): String {
 }
 
 fun PlayerView.nameOf(seat: Int): String = seats.getOrNull(seat)?.info?.name ?: "Someone"
+
+private fun PlayerView.who(seat: Int) = if (seat == you) "You" else nameOf(seat)
 
 private fun plural(count: Int, word: String) = if (count == 1) "1 $word" else "$count ${word}s"
