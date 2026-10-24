@@ -85,6 +85,45 @@ fun arcPositions(count: Int): List<Pair<Float, Float>> {
 fun sortHand(hand: List<Card>): List<Card> =
     hand.sortedWith(compareBy<Card>({ it.color?.ordinal ?: Int.MAX_VALUE }, { it.face.ordinal }))
 
+/** What's stamped on a seat: a skip sign, a "+N", or a tick or cross for a challenge. */
+enum class StampMark { SKIP, DRAW, CHECK, CROSS }
+
+/**
+ * A big stamp slammed onto one player's seat (over your hand when it's you). [good] stamps are
+ * green and the seat bounces; bad ones are red and the seat gets knocked about.
+ */
+data class SeatStamp(val seat: Int, val mark: StampMark, val tag: String, val good: Boolean, val count: Int = 0)
+
+/** The stamps an event puts on players' seats, worded for the player at [you]. */
+fun seatStampsFor(event: EventView, you: Int): List<SeatStamp> = when (event) {
+    is EventView.Skipped -> listOf(
+        SeatStamp(event.player, StampMark.SKIP, if (event.player == you) "YOU'RE SKIPPED!" else "SKIPPED!", good = false),
+    )
+    // Only a +2 or +4 landing on you; a challenge's own stamps already cover those cards.
+    is EventView.Drew -> if (event.reason == DrawReason.DRAW_CARD && event.count > 0) {
+        val tag = if (event.player == you) "YOU DRAW ${event.count}!" else "DRAW ${event.count}!"
+        listOf(SeatStamp(event.player, StampMark.DRAW, tag, good = false, count = event.count))
+    } else {
+        emptyList()
+    }
+    is EventView.Challenged -> {
+        val challengerYou = event.challenger == you
+        val offenderYou = event.offender == you
+        if (event.succeeded) {
+            listOf(
+                SeatStamp(event.challenger, StampMark.CHECK, if (challengerYou) "YOU CAUGHT THEM!" else "BLUFF CAUGHT!", good = true),
+                SeatStamp(event.offender, StampMark.CROSS, if (offenderYou) "YOU GOT CAUGHT!" else "BLUFFED!", good = false),
+            )
+        } else {
+            listOf(
+                SeatStamp(event.offender, StampMark.CHECK, if (offenderYou) "IT WAS LEGIT!" else "LEGIT!", good = true),
+                SeatStamp(event.challenger, StampMark.CROSS, if (challengerYou) "BAD CHALLENGE!" else "WRONG CALL!", good = false),
+            )
+        }
+    }
+    else -> emptyList()
+}
+
 /** A big table-wide callout: a card that does something landing, a color being picked, someone calling UNO. */
 data class Announcement(val title: String, val detail: String, val color: CardColor?, val spoken: String)
 

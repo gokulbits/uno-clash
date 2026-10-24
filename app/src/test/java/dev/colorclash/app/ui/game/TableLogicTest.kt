@@ -10,6 +10,7 @@ import dev.colorclash.rules.Action
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.CardColor
 import dev.colorclash.rules.Direction
+import dev.colorclash.rules.DrawReason
 import dev.colorclash.rules.EngineResult
 import dev.colorclash.rules.Face
 import dev.colorclash.rules.GameEngine
@@ -146,6 +147,41 @@ class TableLogicTest {
         assertEquals("You drew 1 card", describe(EventView.Drew(0, 1, dev.colorclash.rules.DrawReason.TURN), view))
         assertEquals("Cy caught you! +2", describe(EventView.PenaltyApplied(0, 2, 2), view))
         assertNull(describe(EventView.StarterFlipped(card(9, Face.ONE)), view))
+    }
+
+    @Test
+    fun `skips, draw cards and challenges stamp the right seats`() {
+        assertEquals(
+            listOf(SeatStamp(2, StampMark.SKIP, "SKIPPED!", good = false)),
+            seatStampsFor(EventView.Skipped(2), you = 0),
+        )
+        assertEquals("YOU'RE SKIPPED!", seatStampsFor(EventView.Skipped(0), you = 0).single().tag)
+        assertEquals(
+            listOf(SeatStamp(1, StampMark.DRAW, "DRAW 4!", good = false, count = 4)),
+            seatStampsFor(EventView.Drew(1, 4, DrawReason.DRAW_CARD), you = 0),
+        )
+        assertEquals("YOU DRAW 6!", seatStampsFor(EventView.Drew(0, 6, DrawReason.DRAW_CARD), you = 0).single().tag)
+        // Ordinary draws, UNO penalties and challenge cards don't get a stamp of their own.
+        assertEquals(emptyList(), seatStampsFor(EventView.Drew(1, 1, DrawReason.TURN), you = 0))
+        assertEquals(emptyList(), seatStampsFor(EventView.Drew(1, 2, DrawReason.MISSED_LAST_CARD), you = 0))
+        assertEquals(emptyList(), seatStampsFor(EventView.Drew(1, 6, DrawReason.CHALLENGE), you = 0))
+
+        assertEquals(
+            listOf(
+                SeatStamp(0, StampMark.CHECK, "YOU CAUGHT THEM!", good = true),
+                SeatStamp(3, StampMark.CROSS, "BLUFFED!", good = false),
+            ),
+            seatStampsFor(EventView.Challenged(challenger = 0, offender = 3, succeeded = true), you = 0),
+        )
+        assertEquals(
+            listOf(
+                SeatStamp(3, StampMark.CHECK, "LEGIT!", good = true),
+                SeatStamp(1, StampMark.CROSS, "WRONG CALL!", good = false),
+            ),
+            seatStampsFor(EventView.Challenged(challenger = 1, offender = 3, succeeded = false), you = 0),
+        )
+        assertEquals("BAD CHALLENGE!", seatStampsFor(EventView.Challenged(0, 3, succeeded = false), you = 0)[1].tag)
+        assertEquals("YOU GOT CAUGHT!", seatStampsFor(EventView.Challenged(1, 0, succeeded = true), you = 0)[1].tag)
     }
 
     @Test

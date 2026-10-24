@@ -25,9 +25,11 @@ import dev.colorclash.app.feedback.Sfx
 import dev.colorclash.app.feedback.YOUR_TURN_CUE
 import dev.colorclash.app.feedback.cueFor
 import dev.colorclash.app.ui.game.Announcement
+import dev.colorclash.app.ui.game.SeatStamp
 import dev.colorclash.app.ui.game.HAND_CARD_WIDTH
 import dev.colorclash.app.ui.game.TABLE_CARD_WIDTH
 import dev.colorclash.app.ui.game.announcementFor
+import dev.colorclash.app.ui.game.seatStampsFor
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.EventView
 import dev.colorclash.protocol.PhaseKind
@@ -85,8 +87,8 @@ class Flight(
     val progress = Animatable(0f)
 }
 
-/** A "no entry" stamp slammed onto a skipped player's seat, bigger when it's you. */
-class SkipFx(val at: Offset, val forYou: Boolean) {
+/** A stamp slammed onto a player's seat (skip, +N, challenge result), bigger when it's you. */
+class StampFx(val at: Offset, val forYou: Boolean, val stamp: SeatStamp) {
     val progress = Animatable(0f)
 }
 
@@ -142,11 +144,15 @@ class TableFx {
 
     val arrowSpin = Animatable(0f)
     val shake = Animatable(0f)
-    val skips = mutableStateListOf<SkipFx>()
-    /** The seat a skip is knocking sideways right now (yours means your hand), and by how much. */
+    val stamps = mutableStateListOf<StampFx>()
+    /** The seat a bad stamp is knocking sideways right now (yours means your hand), and by how much. */
     var joltedSeat by mutableStateOf<Int?>(null)
         private set
     val jolt = Animatable(0f)
+    /** The seat a good stamp is bouncing for joy, and how high. */
+    var cheeredSeat by mutableStateOf<Int?>(null)
+        private set
+    val cheer = Animatable(0f)
     val penaltyGlow = Animatable(0f)
     var confettiBursts by mutableIntStateOf(0)
         private set
@@ -230,9 +236,15 @@ class TableFx {
             }
             feedback.cue(cueFor(event, view.you))
             val callout = announcementFor(event, view)
+            val seatStamps = seatStampsFor(event, view.you)
             // A played card is called out as it lands; a picked color or an UNO call straight away.
             if (event !is EventView.CardPlayed) callout?.let { announce(it, feedback) }
-            animate(event, view, feedback)
+            // Stamps land first; the event's own animation (cards flying to the victim) starts as they hit.
+            coroutineScope {
+                seatStamps.forEach { launch { stamp(it, view.you) } }
+                if (seatStamps.isNotEmpty()) delay(STAMP_IMPACT_MILLIS)
+                animate(event, view, feedback)
+            }
             if (event is EventView.CardPlayed) callout?.let { announce(it, feedback) }
         }
     }
@@ -284,7 +296,7 @@ class TableFx {
                     }
                 }
             }
-            is EventView.Skipped -> skip(event.player, forYou = event.player == view.you)
+            is EventView.Skipped -> Unit // its stamp is the whole effect
             is EventView.Reversed -> {
                 val turn = if (event.direction == Direction.CLOCKWISE) 360f else -360f
                 arrowSpin.animateTo(arrowSpin.value + turn, tween(550, easing = FastOutSlowInEasing))
@@ -295,11 +307,7 @@ class TableFx {
                 launch { flash(Anchor.Seat(event.player), "+${event.cards}", GameTheme.red) }
                 if (event.player == view.you) launch { glowRed() }
             }
-            is EventView.Challenged -> flash(
-                Anchor.Seat(event.offender),
-                if (event.succeeded) "Bluff!" else "Legit!",
-                if (event.succeeded) GameTheme.red else GameTheme.green,
-            )
+            is EventView.Challenged -> Unit // both players' stamps say it
             is EventView.HandsSwapped -> coroutineScope {
                 launch { fly(null, Anchor.Seat(event.player), Anchor.Seat(event.target), 460, SEAT_SCALE, SEAT_SCALE) }
                 launch { fly(null, Anchor.Seat(event.target), Anchor.Seat(event.player), 460, SEAT_SCALE, SEAT_SCALE) }
@@ -442,25 +450,37 @@ class TableFx {
         pileCleared = cleared
     }
 
-    private suspend fun skip(seat: Int, forYou: Boolean) = coroutineScope {
-        val at = center(Anchor.Seat(seat)) ?: return@coroutineScope
-        val stamp = SkipFx(at, forYou)
-        skips += stamp
-        launch { joltSeat(seat) }
+    private suspend fun stamp(stamp: SeatStamp, you: Int) = coroutineScope {
+        val at = center(Anchor.Seat(stamp.seat)) ?: return@coroutineScope
+        val shown = StampFx(at, forYou = stamp.seat == you, stamp)
+        stamps += shown
+        launch { if (stamp.good) cheerSeat(stamp.seat) else joltSeat(stamp.seat) }
         try {
-            stamp.progress.animateTo(1f, tween(SKIP_MILLIS, easing = LinearEasing))
+            shown.progress.animateTo(1f, tween(STAMP_MILLIS, easing = LinearEasing))
         } finally {
-            skips -= stamp
+            stamps -= shown
         }
     }
 
     private suspend fun joltSeat(seat: Int) {
         joltedSeat = seat
         try {
-            delay(SKIP_IMPACT_MILLIS) // knocked as the stamp hits, not before
+            delay(STAMP_IMPACT_MILLIS) // knocked as the stamp hits, not before
             for (x in listOf(16f, -13f, 10f, -7f, 4f, 0f)) jolt.animateTo(x, tween(55))
         } finally {
             joltedSeat = null
+        }
+    }
+
+    private suspend fun cheerSeat(seat: Int) {
+        cheeredSeat = seat
+        try {
+            delay(STAMP_IMPACT_MILLIS)
+            cheer.snapTo(0f)
+            cheer.animateTo(1f, tween(140))
+            cheer.animateTo(0f, spring(dampingRatio = 0.3f, stiffness = Spring.StiffnessMedium))
+        } finally {
+            cheeredSeat = null
         }
     }
 
@@ -531,8 +551,8 @@ class TableFx {
         private const val DEAL_GAP_MILLIS = 55L
         private const val PILE_DEPTH = 3
         private const val BANNER_MILLIS = 1400
-        private const val SKIP_MILLIS = 1150
-        private const val SKIP_IMPACT_MILLIS = 150L
+        private const val STAMP_MILLIS = 1150
+        private const val STAMP_IMPACT_MILLIS = 170L
         private const val MAX_REACTIONS = 12
         private val HAND_SCALE = HAND_CARD_WIDTH / TABLE_CARD_WIDTH
         private const val SEAT_SCALE = 0.42f

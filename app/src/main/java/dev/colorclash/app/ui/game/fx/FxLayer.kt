@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,15 +26,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.layout.size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
@@ -45,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import dev.colorclash.app.ui.game.CARD_ASPECT
 import dev.colorclash.app.ui.game.CardBack
 import dev.colorclash.app.ui.game.CardFace
+import dev.colorclash.app.ui.game.StampMark
 import dev.colorclash.app.ui.game.TABLE_CARD_WIDTH
 import dev.colorclash.app.ui.theme.GameTheme
 import kotlin.math.PI
@@ -71,7 +75,7 @@ fun FxLayer(fx: TableFx, modifier: Modifier = Modifier) {
         fx.bursts.forEach { BurstView(it) }
         fx.flights.forEach { FlightView(it) }
         fx.flashes.forEach { FlashView(it) }
-        fx.skips.forEach { SkipView(it) }
+        fx.stamps.forEach { StampView(it) }
         fx.banner?.let { key(it) { BannerView(it) } }
         fx.reactions.forEach { r -> key(r.id) { ReactionView(r) { fx.reactionDone(r) } } }
         Confetti(fx.confettiBursts, fx.bigConfetti)
@@ -156,75 +160,110 @@ private fun FlashView(flash: Flash) {
 }
 
 /**
- * The skip stamp: a big red "no entry" sign slams down out of nowhere (huge and tilted, then a
- * squash on impact), a shockwave rings out from the seat, the sign wobbles, and a SKIPPED tag
- * pops up under it. Everything is bigger when you're the one skipped.
+ * A seat stamp: a big disc slams down out of nowhere (huge and tilted, then a squash on impact),
+ * a shockwave rings out from the seat, the disc wobbles, and a tag pops up under it. Red with a
+ * skip sign, "+N" or a cross when it's bad news; green with a tick when it's good. Everything is
+ * bigger when it's yours.
  */
 @Composable
-private fun SkipView(skip: SkipFx) {
+private fun StampView(fx: StampFx) {
     val density = LocalDensity.current
-    val sign = if (skip.forYou) 136.dp else 88.dp
-    val signPx = with(density) { sign.toPx() }
-    val red = GameTheme.red
+    val stamp = fx.stamp
+    val disc = if (fx.forYou) 136.dp else 88.dp
+    val discPx = with(density) { disc.toPx() }
+    val tone = if (stamp.good) GameTheme.green else GameTheme.red
     Canvas(Modifier.fillMaxSize()) {
-        val wave = (skip.progress.value - SKIP_IMPACT) / 0.4f
+        val wave = (fx.progress.value - STAMP_IMPACT) / 0.4f
         if (wave in 0f..1f) {
             drawCircle(
-                red.copy(alpha = 0.7f * (1 - wave)),
-                radius = signPx * (0.5f + 1.4f * wave),
-                center = skip.at,
+                tone.copy(alpha = 0.7f * (1 - wave)),
+                radius = discPx * (0.5f + 1.4f * wave),
+                center = fx.at,
                 style = Stroke(12.dp.toPx() * (1 - wave) + 1f),
             )
         }
     }
-    Canvas(
+    Box(
         Modifier
-            .placeAt(skip.at, centered = true)
-            .size(sign)
+            .placeAt(fx.at, centered = true)
+            .size(disc)
             .graphicsLayer {
-                val p = skip.progress.value
-                val slam = (p / SKIP_IMPACT).coerceIn(0f, 1f)
+                val p = fx.progress.value
+                val slam = (p / STAMP_IMPACT).coerceIn(0f, 1f)
                 // Shrinks from huge onto the seat; POP's overshoot dips it under full size: the squash.
                 val landed = 2.6f - 1.6f * POP.transform(slam)
                 val leave = ((p - 0.82f) / 0.18f).coerceIn(0f, 1f)
                 scaleX = landed * (1 + 0.25f * leave)
                 scaleY = landed * (1 + 0.25f * leave)
-                val wobble = if (p > SKIP_IMPACT) sin((p - SKIP_IMPACT) * 34f) * 10f * (1 - p) else 0f
+                val wobble = if (p > STAMP_IMPACT) sin((p - STAMP_IMPACT) * 34f) * 10f * (1 - p) else 0f
                 rotationZ = -40f * (1 - slam) + wobble
                 alpha = (slam / 0.3f).coerceAtMost(1f) * (1 - leave)
             },
+        contentAlignment = Alignment.Center,
     ) {
-        val r = size.minDimension / 2
-        val ring = r * 0.2f
-        val inner = r - ring / 2 - r * 0.06f
-        val drop = Offset(0f, 4.dp.toPx())
-        drawCircle(Color.Black.copy(alpha = 0.35f), r, center + drop)
-        drawCircle(Color.White, r)
-        drawCircle(Color.White, r * 0.94f, style = Stroke(r * 0.12f))
-        drawCircle(red, inner, style = Stroke(ring))
-        val d = inner * 0.7071f
-        drawLine(red, center + Offset(-d, d), center + Offset(d, -d), ring)
+        Canvas(Modifier.fillMaxSize()) {
+            val r = size.minDimension / 2
+            val line = r * 0.2f
+            drawCircle(Color.Black.copy(alpha = 0.35f), r, center + Offset(0f, 4.dp.toPx()))
+            drawCircle(Color.White, r)
+            when (stamp.mark) {
+                StampMark.SKIP -> {
+                    val inner = r - line / 2 - r * 0.06f
+                    drawCircle(tone, inner, style = Stroke(line))
+                    val d = inner * 0.7071f
+                    drawLine(tone, center + Offset(-d, d), center + Offset(d, -d), line)
+                }
+                StampMark.DRAW -> drawCircle(tone, r * 0.86f)
+                StampMark.CHECK -> {
+                    drawCircle(tone, r * 0.86f)
+                    val tick = Path().apply {
+                        moveTo(center.x - r * 0.42f, center.y + r * 0.02f)
+                        lineTo(center.x - r * 0.12f, center.y + r * 0.32f)
+                        lineTo(center.x + r * 0.44f, center.y - r * 0.3f)
+                    }
+                    drawPath(tick, Color.White, style = Stroke(line, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                }
+                StampMark.CROSS -> {
+                    drawCircle(tone, r * 0.86f)
+                    val d = r * 0.34f
+                    drawLine(Color.White, center + Offset(-d, -d), center + Offset(d, d), line, StrokeCap.Round)
+                    drawLine(Color.White, center + Offset(-d, d), center + Offset(d, -d), line, StrokeCap.Round)
+                }
+            }
+        }
+        if (stamp.mark == StampMark.DRAW) {
+            Text(
+                "+${stamp.count}",
+                color = Color.White,
+                fontSize = (disc.value * 0.4f).sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = GameTheme.displayFont,
+                style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.4f), Offset(0f, 3f), blurRadius = 4f)),
+            )
+        }
     }
     Text(
-        if (skip.forYou) "YOU'RE SKIPPED!" else "SKIPPED!",
+        stamp.tag,
         Modifier
-            .placeAt(skip.at + Offset(0f, signPx * 0.68f), centered = true)
+            .placeAt(fx.at + Offset(0f, discPx * 0.68f), centered = true)
             .graphicsLayer {
-                val p = skip.progress.value
-                val show = ((p - SKIP_IMPACT) / 0.15f).coerceIn(0f, 1f)
+                val p = fx.progress.value
+                val show = ((p - STAMP_IMPACT) / 0.15f).coerceIn(0f, 1f)
                 val pop = if (show > 0f) POP.transform(show) else 0f
                 scaleX = pop
                 scaleY = pop
                 alpha = if (p < 0.82f) 1f else (1 - p) / 0.18f
             }
             .clip(RoundedCornerShape(12.dp))
-            .background(red)
+            .background(tone)
             .border(2.dp, Color.White, RoundedCornerShape(12.dp))
             .padding(horizontal = 12.dp, vertical = 4.dp),
         color = Color.White,
-        fontSize = if (skip.forYou) 26.sp else 16.sp,
+        fontSize = if (fx.forYou) 26.sp else 16.sp,
         fontWeight = FontWeight.Black,
         fontFamily = GameTheme.displayFont,
+        maxLines = 1,
+        softWrap = false,
     )
 }
 
@@ -409,8 +448,8 @@ private fun Modifier.placeAt(at: Offset, centered: Boolean = false): Modifier = 
 
 private const val BURST_RAYS = 12
 private const val REACTION_MILLIS = 2400
-/** The fraction of the skip effect it takes the stamp to land. */
-private const val SKIP_IMPACT = 0.15f
+/** The fraction of a seat stamp's time it takes to land (170 ms of 1150). */
+private const val STAMP_IMPACT = 0.15f
 private const val SPARKS = 6
 private const val MAX_CONFETTI = 120
 private const val CONFETTI_NANOS = 3_200_000_000L

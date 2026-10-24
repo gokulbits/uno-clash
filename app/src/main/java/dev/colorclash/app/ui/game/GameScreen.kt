@@ -215,7 +215,14 @@ private fun OpponentsArc(view: PlayerView, fx: TableFx, catchTarget: Int?, onCat
                     .offset(x, y)
                     .width(seatWidth)
                     .then(fx.anchor(Anchor.Seat(seat)))
-                    .graphicsLayer { if (fx.joltedSeat == seat) translationX = fx.jolt.value },
+                    .graphicsLayer {
+                        if (fx.joltedSeat == seat) translationX = fx.jolt.value
+                        if (fx.cheeredSeat == seat) {
+                            translationY = -14.dp.toPx() * fx.cheer.value
+                            scaleX = 1f + 0.12f * fx.cheer.value
+                            scaleY = 1f + 0.12f * fx.cheer.value
+                        }
+                    },
             )
         }
     }
@@ -401,7 +408,10 @@ private fun Hand(view: PlayerView, fx: TableFx, onPlay: (Int) -> Unit) {
             .fillMaxWidth()
             .height(HAND_HEIGHT)
             .then(fx.anchor(Anchor.Seat(view.you)))
-            .graphicsLayer { if (fx.joltedSeat == view.you) translationX = fx.jolt.value },
+            .graphicsLayer {
+                if (fx.joltedSeat == view.you) translationX = fx.jolt.value
+                if (fx.cheeredSeat == view.you) translationY = -14.dp.toPx() * fx.cheer.value
+            },
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp + HAND_CARD_WIDTH - slice, top = 24.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.Bottom,
