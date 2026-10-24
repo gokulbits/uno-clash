@@ -1,5 +1,6 @@
 package dev.colorclash.app.ui.game
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +36,7 @@ import dev.colorclash.rules.Card
 import dev.colorclash.rules.Face
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 
 const val CARD_ASPECT = 1.5f
 val HAND_CARD_WIDTH = 76.dp
@@ -75,6 +77,49 @@ fun CardBack(width: Dp, modifier: Modifier = Modifier, elevation: Dp = 2.dp) {
                 onDrawBehind { drawBack(words) }
             },
     )
+}
+
+/**
+ * An opponent's hand as you'd see it across a table: one small card back per card, fanned out,
+ * so the count reads at a glance. Big hands bunch up like a real one. One canvas draws the
+ * whole hand, so a big hand costs one draw, not a composable per card.
+ */
+@Composable
+fun HandFan(count: Int, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(FAN_WIDTH, FAN_HEIGHT)) {
+        if (count <= 0) return@Canvas
+        val cw = FAN_CARD_WIDTH.toPx()
+        val cardSize = Size(cw, cw * CARD_ASPECT)
+        val step = if (count > 1) min(7.dp.toPx(), 36.dp.toPx() / (count - 1)) else 0f
+        val turn = if (count > 1) min(7f, 36f / (count - 1)) else 0f
+        val top = 4.dp.toPx()
+        val drop = Offset(0.6.dp.toPx(), 0.9.dp.toPx())
+        val inset = cw * INSET
+        val body = lerp(GameTheme.cardBackGlow, GameTheme.cardBackDeep, 0.5f)
+        val oval = lerp(GameTheme.cardBackOval, GameTheme.cardBackOvalDeep, 0.5f)
+        for (i in 0 until count) {
+            val t = i - (count - 1) / 2f
+            val topLeft = Offset(center.x + t * step - cw / 2, top)
+            val cardCenter = topLeft + Offset(cw / 2, cardSize.height / 2)
+            // Each card leans around a point well below the hand, like cards held in a fan.
+            rotate(t * turn, pivot = Offset(cardCenter.x, top + cardSize.height * 1.8f)) {
+                drawRoundRect(Color.Black.copy(alpha = 0.3f), topLeft + drop, cardSize, CornerRadius(cw * CORNER))
+                drawRoundRect(GameTheme.cardPaper, topLeft, cardSize, CornerRadius(cw * CORNER))
+                drawRoundRect(
+                    body,
+                    topLeft + Offset(inset, inset),
+                    Size(cardSize.width - inset * 2, cardSize.height - inset * 2),
+                    CornerRadius(cw * 0.08f),
+                )
+                rotate(OVAL_TILT, pivot = cardCenter) {
+                    val ovalSize = Size(cw * 0.6f, cw * 0.96f)
+                    val ovalTopLeft = cardCenter - Offset(ovalSize.width / 2, ovalSize.height / 2)
+                    drawOval(oval, ovalTopLeft, ovalSize)
+                    drawOval(Color.White, ovalTopLeft, ovalSize, style = Stroke(cw * 0.035f))
+                }
+            }
+        }
+    }
 }
 
 private fun Face.cornerText(): String? = when (this) {
@@ -362,6 +407,9 @@ private fun DrawScope.wildPip(at: Offset, r: Float, tint: Tint) {
     drawCircle(tint(Color.White), r, at, style = Stroke(size.width * 0.014f))
 }
 
+private val FAN_CARD_WIDTH = 20.dp
+private val FAN_WIDTH = 76.dp
+private val FAN_HEIGHT = 40.dp
 private const val CORNER = 0.11f
 private const val INSET = 0.055f
 private const val OVAL_RX = 0.34f

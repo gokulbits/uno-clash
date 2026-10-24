@@ -199,7 +199,7 @@ private fun OpponentsArc(view: PlayerView, fx: TableFx, catchTarget: Int?, onCat
     BoxWithConstraints(modifier) {
         // Narrow enough that five opponents fit across a small phone.
         val seatWidth = 76.dp
-        val seatHeight = 112.dp
+        val seatHeight = 136.dp
         opponents.forEachIndexed { i, seat ->
             val (fx0, fy) = positions[i]
             val x = maxWidth * fx0 - seatWidth / 2
@@ -236,20 +236,9 @@ private fun OpponentSeat(
                 ring = if (isCurrent) GameTheme.yellow else null,
                 modifier = if (isCurrent) Modifier.scale(pulse()) else Modifier,
             )
-            Text(
-                seat.cardCount.toString(),
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .offset(x = 6.dp, y = 4.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(GameTheme.wild)
-                    .border(1.5.dp, Color.White, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 6.dp, vertical = 1.dp),
-                color = Color.White,
-                fontWeight = FontWeight.Black,
-                fontSize = 13.sp,
-            )
         }
+        // Their cards, face down and fanned, held just in front of them: count them like at a real table.
+        HandFan(seat.cardCount, Modifier.offset(y = (-8).dp))
         Text(
             seat.info.name + when {
                 seat.info.botControlled -> " 🤖"
