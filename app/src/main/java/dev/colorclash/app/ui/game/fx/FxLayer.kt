@@ -25,6 +25,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -68,6 +71,7 @@ fun FxLayer(fx: TableFx, modifier: Modifier = Modifier) {
         fx.bursts.forEach { BurstView(it) }
         fx.flights.forEach { FlightView(it) }
         fx.flashes.forEach { FlashView(it) }
+        fx.skips.forEach { SkipView(it) }
         fx.banner?.let { key(it) { BannerView(it) } }
         fx.reactions.forEach { r -> key(r.id) { ReactionView(r) { fx.reactionDone(r) } } }
         Confetti(fx.confettiBursts, fx.bigConfetti)
@@ -148,6 +152,79 @@ private fun FlashView(flash: Flash) {
         fontWeight = FontWeight.Black,
         fontFamily = GameTheme.displayFont,
         style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.6f), Offset(0f, 4f), blurRadius = 10f)),
+    )
+}
+
+/**
+ * The skip stamp: a big red "no entry" sign slams down out of nowhere (huge and tilted, then a
+ * squash on impact), a shockwave rings out from the seat, the sign wobbles, and a SKIPPED tag
+ * pops up under it. Everything is bigger when you're the one skipped.
+ */
+@Composable
+private fun SkipView(skip: SkipFx) {
+    val density = LocalDensity.current
+    val sign = if (skip.forYou) 136.dp else 88.dp
+    val signPx = with(density) { sign.toPx() }
+    val red = GameTheme.red
+    Canvas(Modifier.fillMaxSize()) {
+        val wave = (skip.progress.value - SKIP_IMPACT) / 0.4f
+        if (wave in 0f..1f) {
+            drawCircle(
+                red.copy(alpha = 0.7f * (1 - wave)),
+                radius = signPx * (0.5f + 1.4f * wave),
+                center = skip.at,
+                style = Stroke(12.dp.toPx() * (1 - wave) + 1f),
+            )
+        }
+    }
+    Canvas(
+        Modifier
+            .placeAt(skip.at, centered = true)
+            .size(sign)
+            .graphicsLayer {
+                val p = skip.progress.value
+                val slam = (p / SKIP_IMPACT).coerceIn(0f, 1f)
+                // Shrinks from huge onto the seat; POP's overshoot dips it under full size: the squash.
+                val landed = 2.6f - 1.6f * POP.transform(slam)
+                val leave = ((p - 0.82f) / 0.18f).coerceIn(0f, 1f)
+                scaleX = landed * (1 + 0.25f * leave)
+                scaleY = landed * (1 + 0.25f * leave)
+                val wobble = if (p > SKIP_IMPACT) sin((p - SKIP_IMPACT) * 34f) * 10f * (1 - p) else 0f
+                rotationZ = -40f * (1 - slam) + wobble
+                alpha = (slam / 0.3f).coerceAtMost(1f) * (1 - leave)
+            },
+    ) {
+        val r = size.minDimension / 2
+        val ring = r * 0.2f
+        val inner = r - ring / 2 - r * 0.06f
+        val drop = Offset(0f, 4.dp.toPx())
+        drawCircle(Color.Black.copy(alpha = 0.35f), r, center + drop)
+        drawCircle(Color.White, r)
+        drawCircle(Color.White, r * 0.94f, style = Stroke(r * 0.12f))
+        drawCircle(red, inner, style = Stroke(ring))
+        val d = inner * 0.7071f
+        drawLine(red, center + Offset(-d, d), center + Offset(d, -d), ring)
+    }
+    Text(
+        if (skip.forYou) "YOU'RE SKIPPED!" else "SKIPPED!",
+        Modifier
+            .placeAt(skip.at + Offset(0f, signPx * 0.68f), centered = true)
+            .graphicsLayer {
+                val p = skip.progress.value
+                val show = ((p - SKIP_IMPACT) / 0.15f).coerceIn(0f, 1f)
+                val pop = if (show > 0f) POP.transform(show) else 0f
+                scaleX = pop
+                scaleY = pop
+                alpha = if (p < 0.82f) 1f else (1 - p) / 0.18f
+            }
+            .clip(RoundedCornerShape(12.dp))
+            .background(red)
+            .border(2.dp, Color.White, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        color = Color.White,
+        fontSize = if (skip.forYou) 26.sp else 16.sp,
+        fontWeight = FontWeight.Black,
+        fontFamily = GameTheme.displayFont,
     )
 }
 
@@ -332,6 +409,8 @@ private fun Modifier.placeAt(at: Offset, centered: Boolean = false): Modifier = 
 
 private const val BURST_RAYS = 12
 private const val REACTION_MILLIS = 2400
+/** The fraction of the skip effect it takes the stamp to land. */
+private const val SKIP_IMPACT = 0.15f
 private const val SPARKS = 6
 private const val MAX_CONFETTI = 120
 private const val CONFETTI_NANOS = 3_200_000_000L

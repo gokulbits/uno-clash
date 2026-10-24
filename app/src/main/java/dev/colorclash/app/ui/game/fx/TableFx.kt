@@ -85,6 +85,11 @@ class Flight(
     val progress = Animatable(0f)
 }
 
+/** A "no entry" stamp slammed onto a skipped player's seat, bigger when it's you. */
+class SkipFx(val at: Offset, val forYou: Boolean) {
+    val progress = Animatable(0f)
+}
+
 class Flash(val at: Offset, val text: String, val color: Color) {
     val progress = Animatable(0f)
 }
@@ -137,6 +142,11 @@ class TableFx {
 
     val arrowSpin = Animatable(0f)
     val shake = Animatable(0f)
+    val skips = mutableStateListOf<SkipFx>()
+    /** The seat a skip is knocking sideways right now (yours means your hand), and by how much. */
+    var joltedSeat by mutableStateOf<Int?>(null)
+        private set
+    val jolt = Animatable(0f)
     val penaltyGlow = Animatable(0f)
     var confettiBursts by mutableIntStateOf(0)
         private set
@@ -274,7 +284,7 @@ class TableFx {
                     }
                 }
             }
-            is EventView.Skipped -> flash(Anchor.Seat(event.player), "⊘", GameTheme.red)
+            is EventView.Skipped -> skip(event.player, forYou = event.player == view.you)
             is EventView.Reversed -> {
                 val turn = if (event.direction == Direction.CLOCKWISE) 360f else -360f
                 arrowSpin.animateTo(arrowSpin.value + turn, tween(550, easing = FastOutSlowInEasing))
@@ -432,6 +442,28 @@ class TableFx {
         pileCleared = cleared
     }
 
+    private suspend fun skip(seat: Int, forYou: Boolean) = coroutineScope {
+        val at = center(Anchor.Seat(seat)) ?: return@coroutineScope
+        val stamp = SkipFx(at, forYou)
+        skips += stamp
+        launch { joltSeat(seat) }
+        try {
+            stamp.progress.animateTo(1f, tween(SKIP_MILLIS, easing = LinearEasing))
+        } finally {
+            skips -= stamp
+        }
+    }
+
+    private suspend fun joltSeat(seat: Int) {
+        joltedSeat = seat
+        try {
+            delay(SKIP_IMPACT_MILLIS) // knocked as the stamp hits, not before
+            for (x in listOf(16f, -13f, 10f, -7f, 4f, 0f)) jolt.animateTo(x, tween(55))
+        } finally {
+            joltedSeat = null
+        }
+    }
+
     private suspend fun flash(at: Anchor, text: String, color: Color) {
         val center = center(at) ?: return
         val flash = Flash(center, text, color)
@@ -499,6 +531,8 @@ class TableFx {
         private const val DEAL_GAP_MILLIS = 55L
         private const val PILE_DEPTH = 3
         private const val BANNER_MILLIS = 1400
+        private const val SKIP_MILLIS = 1150
+        private const val SKIP_IMPACT_MILLIS = 150L
         private const val MAX_REACTIONS = 12
         private val HAND_SCALE = HAND_CARD_WIDTH / TABLE_CARD_WIDTH
         private const val SEAT_SCALE = 0.42f
