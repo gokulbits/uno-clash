@@ -33,6 +33,7 @@ import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.Face
 import kotlin.math.abs
+import kotlin.math.max
 
 const val CARD_ASPECT = 1.5f
 val HAND_CARD_WIDTH = 76.dp
@@ -54,7 +55,7 @@ fun CardFace(card: Card, width: Dp, modifier: Modifier = Modifier, dimmed: Boole
                 val number = card.face.number?.toString()
                 val big = number?.let { measurer.label(it, 0.66f * w, this) }
                 val cornerText = number ?: card.face.cornerText()
-                val corner = cornerText?.let { measurer.label(it, if (it.length > 1) 0.19f * w else 0.24f * w, this) }
+                val corner = cornerText?.let { measurer.label(it, if (it.length > 1) 0.18f * w else 0.24f * w, this) }
                 onDrawBehind { drawFace(card, Tint(dimmed), big, corner) }
             },
     )
@@ -191,27 +192,27 @@ private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResul
         else -> if (bigLabel != null) {
             drawLabel(bigLabel, mid, ink, shade, w, outline = shade)
             if (card.face == Face.SIX || card.face == Face.NINE) {
-                drawRoundRect(ink, Offset(mid.x - w * 0.12f, mid.y + w * 0.31f), Size(w * 0.24f, w * 0.05f), CornerRadius(w * 0.025f))
+                underline(mid.x, mid.y + w * 0.31f, Size(w * 0.36f, w * 0.04f), ink, shade, w * 0.011f)
             }
         }
     }
 
     val cornerShade = tint(darker(base, 0.65f))
     val white = tint(Color.White)
-    // The oval leans away from these two corners, so the marks never run into it.
-    val near = Offset(w * 0.18f, w * 0.21f)
+    // The oval leans away from these two corners, so the marks never run into it. Wide marks (+2, +4)
+    // move in from the edge so their outline stays on the color, off the white border.
+    val outline = w * 0.045f
+    val nearX = max(w * 0.18f, w * (INSET + 0.03f) + (corner?.size?.width ?: 0) / 2f + outline / 2)
+    val near = Offset(nearX, w * 0.21f)
     val far = Offset(w - near.x, size.height - near.y)
     for (at in listOf(near, far)) {
         rotate(if (at == near) 0f else 180f, pivot = at) {
             when {
                 corner != null -> {
                     // Outlined and shadowed so they read at a glance in a tight fan.
-                    drawLabel(corner, at, white, cornerShade, w * 0.9f, outline = cornerShade, outlineWidth = w * 0.045f)
+                    drawLabel(corner, at, white, cornerShade, w * 0.9f, outline = cornerShade, outlineWidth = outline)
                     if (card.face == Face.SIX || card.face == Face.NINE) {
-                        val bar = Size(w * 0.11f, w * 0.03f)
-                        val barAt = Offset(at.x - bar.width / 2, at.y + w * 0.112f)
-                        drawRoundRect(cornerShade, barAt - Offset(w * 0.012f, w * 0.012f), Size(bar.width + w * 0.024f, bar.height + w * 0.024f), CornerRadius(w * 0.027f))
-                        drawRoundRect(white, barAt, bar, CornerRadius(w * 0.015f))
+                        underline(at.x, at.y + w * 0.112f, Size(w * 0.15f, w * 0.024f), white, cornerShade, w * 0.012f)
                     }
                 }
                 card.face == Face.SKIP -> withShadow(w * 0.9f, cornerShade, white, at) { c, color -> skipIcon(c, w * 0.09f, color) }
@@ -269,6 +270,21 @@ private fun DrawScope.drawLabel(
     drawText(text, color = shade.copy(alpha = 0.55f), topLeft = topLeft + Offset(unit * 0.02f, unit * 0.03f))
     if (outline != null) drawText(text, color = outline, topLeft = topLeft, drawStyle = Stroke(outlineWidth, join = StrokeJoin.Round))
     drawText(text, color = fill, topLeft = topLeft)
+}
+
+/** The bar that tells a 6 from a 9: outlined in [edge] and shadowed like the digit above it. */
+private fun DrawScope.underline(centerX: Float, top: Float, bar: Size, fill: Color, edge: Color, edgeWidth: Float) {
+    val w = size.width
+    val topLeft = Offset(centerX - bar.width / 2, top)
+    val r = bar.height / 2
+    drawRoundRect(edge.copy(alpha = 0.55f), topLeft + Offset(w * 0.02f, w * 0.03f), bar, CornerRadius(r))
+    drawRoundRect(
+        edge,
+        topLeft - Offset(edgeWidth, edgeWidth),
+        Size(bar.width + edgeWidth * 2, bar.height + edgeWidth * 2),
+        CornerRadius(r + edgeWidth),
+    )
+    drawRoundRect(fill, topLeft, bar, CornerRadius(r))
 }
 
 /** Draws an icon twice: once offset in [shade] as its shadow, then on top in [ink]. */
