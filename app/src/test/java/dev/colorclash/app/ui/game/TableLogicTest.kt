@@ -96,11 +96,11 @@ class TableLogicTest {
     }
 
     @Test
-    fun `UNO button pulses at two cards and catch targets the exposed player`() {
+    fun `UNO can be called at two cards and catch targets the exposed player`() {
         val r5 = card(5, Face.FIVE)
         val hands = listOf(listOf(r5, card(6, Face.ONE, CardColor.BLUE))) + List(3) { List(3) { i -> card(30 + it * 5 + i, Face.ONE, CardColor.BLUE) } }
         val start = table(hands)
-        assertTrue(tableControls(start.view(0)).urgeLastCard)
+        assertTrue(tableControls(start.view(0)).canCallLastCard)
 
         val exposed = start.then(Action.PlayCard(0, r5.id))
         assertEquals(0, tableControls(exposed.view(2)).catchTarget)

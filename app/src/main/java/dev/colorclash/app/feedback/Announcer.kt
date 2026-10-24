@@ -7,10 +7,7 @@ import dev.colorclash.app.data.FeedbackSettings
 import kotlinx.coroutines.flow.StateFlow
 import java.util.Locale
 
-/**
- * Calls out card effects ("Skip!", "Blue!") through the phone's own text-to-speech engine.
- * Quietly does nothing on a phone without one, or until the engine has started.
- */
+/** Calls out card effects through the phone's text-to-speech. Silent without an engine. */
 class Announcer(context: Context, private val settings: StateFlow<FeedbackSettings>) {
     @Volatile private var ready = false
     private var tts: TextToSpeech? = null

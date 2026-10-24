@@ -18,7 +18,7 @@ data class HostConfig(
     val botCatchDelay: Duration = 2.seconds,
     /** Start the next round on its own after this long. Null waits for the host to do it. */
     val autoNextRound: Duration? = null,
-    /** Each player can react this often at most, so emoji stay fun rather than a flood. */
+    /** At most one reaction per player this often. */
     val reactionCooldown: Duration = 700.milliseconds,
 )
 

@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import dev.colorclash.app.ui.components.AvatarBadge
 import dev.colorclash.app.ui.components.BigButton
 import dev.colorclash.app.ui.theme.GameTheme
+import dev.colorclash.app.ui.theme.LocalTableStyle
 import dev.colorclash.protocol.PhaseKind
 import dev.colorclash.protocol.PlayerView
 import dev.colorclash.rules.Card
@@ -68,7 +69,7 @@ private fun Overlay(onDismiss: (() -> Unit)? = null, content: @Composable Column
                 .fillMaxWidth()
                 .padding(24.dp)
                 .clip(RoundedCornerShape(28.dp))
-                .background(GameTheme.tableTop)
+                .background(LocalTableStyle.current.top)
                 // Taps on the card itself mustn't count as tapping outside.
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
         ) {
@@ -173,7 +174,7 @@ fun SwapPicker(view: PlayerView, onPick: (Int) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                AvatarBadge(info.info.avatar, size = 40.dp)
+                AvatarBadge(info.info, size = 40.dp)
                 Text(info.info.name, Modifier.weight(1f), fontWeight = FontWeight.Bold)
                 Text(if (info.cardCount == 1) "1 card" else "${info.cardCount} cards", color = GameTheme.yellow, fontWeight = FontWeight.Bold)
             }
@@ -219,11 +220,11 @@ fun ScoreBoard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("${rank + 1}", fontWeight = FontWeight.Black, color = GameTheme.mutedText)
-                    AvatarBadge(seat.info.avatar, size = 34.dp)
+                    AvatarBadge(seat.info, size = 34.dp)
                     Text(seat.info.name + if (seat.info.seat == view.you) " (you)" else "", Modifier.weight(1f), fontWeight = FontWeight.Bold)
                     Text("${seat.score}", fontWeight = FontWeight.Black)
                 }
-                // How close each player is to the target score. A one-round game has no target to show.
+                // Progress to the target; a one-round game has none.
                 if (target > 0) Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(GameTheme.panel)) {
                     Box(
                         Modifier

@@ -22,6 +22,12 @@ data class SeatInfo(
     val seat: Int,
     val name: String,
     val avatar: Int,
+    /** Index into the app's avatar colors, or [AUTO_AVATAR_COLOR] for the avatar's own. */
+    val avatarColor: Int = AUTO_AVATAR_COLOR,
+    /** Index into the app's avatar frames; 0 is none. */
+    val avatarFrame: Int = 0,
+    /** The photo itself arrives in a [ServerMessage.Photo]. */
+    val photoId: String? = null,
     val isBot: Boolean = false,
     val isHost: Boolean = false,
     val ready: Boolean = false,

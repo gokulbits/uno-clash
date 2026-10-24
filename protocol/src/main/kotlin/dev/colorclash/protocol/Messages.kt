@@ -21,6 +21,10 @@ sealed interface ClientMessage {
         val avatar: Int = 0,
         /** Set when rejoining a seat. */
         val sessionToken: String? = null,
+        val avatarColor: Int = AUTO_AVATAR_COLOR,
+        val avatarFrame: Int = 0,
+        /** Small base64 JPEG shown instead of the avatar, at most [MAX_PHOTO_CHARS]. */
+        val photo: String? = null,
     ) : ClientMessage
 
     @Serializable
@@ -44,13 +48,13 @@ sealed interface ClientMessage {
     @SerialName("resume")
     data object Resume : ClientMessage
 
-    /** An emoji reaction or quick chat phrase, by index into the app's list of [REACTION_COUNT]. */
+    /** Index into the app's reactions: emoji, then quick chat. */
     @Serializable
     @SerialName("react")
     data class React(val reaction: Int) : ClientMessage
 }
 
-/** How many reactions there are (emoji, then quick chat phrases). The host drops anything outside this range. */
+/** The host drops reactions outside this range. */
 const val REACTION_COUNT = 20
 
 /** What a player wants to do. The seat comes from the connection, never from the client. */
@@ -126,7 +130,11 @@ sealed interface ServerMessage {
     @SerialName("reaction")
     data class Reaction(val seat: Int, val reaction: Int) : ServerMessage
 
-    /** Host shut the room down. */
+    /** Sent once rather than with every view; [SeatInfo.photoId] says whose it is. */
+    @Serializable
+    @SerialName("photo")
+    data class Photo(val id: String, val data: String) : ServerMessage
+
     @Serializable
     @SerialName("closed")
     data class Closed(val reason: String) : ServerMessage

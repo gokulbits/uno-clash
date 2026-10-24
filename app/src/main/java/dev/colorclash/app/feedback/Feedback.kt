@@ -3,15 +3,11 @@ package dev.colorclash.app.feedback
 import dev.colorclash.protocol.EventView
 import dev.colorclash.rules.DrawReason
 
-/** A sound and/or a buzz to go with something happening on the table. */
 data class Cue(val sfx: Sfx?, val buzz: Buzz? = null)
 
 val YOUR_TURN_CUE = Cue(Sfx.YOUR_TURN, Buzz.TICK)
 
-/**
- * What to play for an event, seen from seat [you]. Dealing has no cue here because each dealt
- * card gets its own soft sound as it lands.
- */
+/** Dealing has no cue here: each dealt card gets its own sound as it lands. */
 fun cueFor(event: EventView, you: Int): Cue? = when (event) {
     is EventView.RoundStarted -> Cue(Sfx.SHUFFLE)
     is EventView.Dealt -> null

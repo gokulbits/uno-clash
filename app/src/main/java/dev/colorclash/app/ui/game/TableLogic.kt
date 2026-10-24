@@ -20,8 +20,6 @@ data class TableControls(
     val canKeep: Boolean,
     val canChallenge: Boolean,
     val canCallLastCard: Boolean,
-    /** Pulse the button: you're about to be down to one card. */
-    val urgeLastCard: Boolean,
     val catchTarget: Int?,
     val pickingColor: Boolean,
     val pickingSwapTarget: Boolean,
@@ -50,7 +48,6 @@ fun tableControls(view: PlayerView): TableControls {
         canKeep = view.canPass,
         canChallenge = view.canChallenge,
         canCallLastCard = view.canCallLastCard,
-        urgeLastCard = view.canCallLastCard && view.hand.size <= 2,
         catchTarget = view.exposedPlayer?.takeIf { it != view.you },
         pickingColor = yourTurn && view.phase == PhaseKind.PICK_COLOR,
         pickingSwapTarget = yourTurn && view.phase == PhaseKind.PICK_SWAP_TARGET,
@@ -63,10 +60,7 @@ fun opponentOrder(view: PlayerView): List<Int> {
     return (1 until n).map { (view.you + it) % n }
 }
 
-/**
- * Where to put [count] opponents on an arc across the top of the table, as fractions of the
- * available width and height (x left to right, y top to bottom).
- */
+/** Where [count] opponents sit on an arc across the top, as fractions of width and height. */
 fun arcPositions(count: Int): List<Pair<Float, Float>> {
     if (count <= 0) return emptyList()
     if (count == 1) return listOf(0.5f to 0.15f)
@@ -81,14 +75,13 @@ fun arcPositions(count: Int): List<Pair<Float, Float>> {
     }
 }
 
-/** Groups the hand by color, then by face, so it's easy to scan; or by face first when [byNumber]. Wilds go last either way. */
+/** By color then face, or face first when [byNumber]. Wilds go last either way. */
 fun sortHand(hand: List<Card>, byNumber: Boolean = false): List<Card> {
     val color = compareBy<Card> { it.color?.ordinal ?: Int.MAX_VALUE }
     val face = compareBy<Card> { it.face.ordinal }
     return hand.sortedWith(if (byNumber) face.then(color) else color.then(face))
 }
 
-/** A card someone played this round, for the discard pile peek. */
 data class RecentPlay(val seat: Int, val card: Card)
 
 /** Who plays after the current player, if the round is still going. */
@@ -97,13 +90,9 @@ fun nextSeat(view: PlayerView): Int? {
     return (view.current + view.direction.step).mod(view.seats.size)
 }
 
-/** What's stamped on a seat: a skip sign, a "+N", or a tick or cross for a challenge. */
 enum class StampMark { SKIP, DRAW, CHECK, CROSS }
 
-/**
- * A big stamp slammed onto one player's seat (over your hand when it's you). [good] stamps are
- * green and the seat bounces; bad ones are red and the seat gets knocked about.
- */
+/** [good] stamps are green and bounce the seat; bad ones are red and knock it about. */
 data class SeatStamp(val seat: Int, val mark: StampMark, val tag: String, val good: Boolean, val count: Int = 0)
 
 /** The stamps an event puts on players' seats, worded for the player at [you]. */
@@ -143,7 +132,7 @@ fun seatStampsFor(event: EventView, you: Int): List<SeatStamp> = when (event) {
     else -> emptyList()
 }
 
-/** A big table-wide callout: a card that does something landing, a color being picked, someone calling UNO. */
+/** A table-wide callout: an action card landing, a color picked, an UNO call. */
 data class Announcement(val title: String, val detail: String, val color: CardColor?, val spoken: String)
 
 fun announcementFor(event: EventView, view: PlayerView): Announcement? {

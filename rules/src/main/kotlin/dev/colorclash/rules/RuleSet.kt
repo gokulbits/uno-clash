@@ -2,7 +2,6 @@ package dev.colorclash.rules
 
 import kotlinx.serialization.Serializable
 
-/** How bots play. Normal plays well; Easy plays any legal card, never challenges, and sometimes forgets UNO. */
 @Serializable
 enum class BotLevel { EASY, NORMAL }
 

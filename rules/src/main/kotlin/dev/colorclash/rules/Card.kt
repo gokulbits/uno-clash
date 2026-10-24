@@ -10,7 +10,6 @@ enum class Face(val number: Int? = null) {
 
     val isWild: Boolean get() = this == WILD || this == WILD_DRAW_FOUR
 
-    /** Points this card is worth in the round winner's tally. */
     val points: Int get() = number ?: if (isWild) 50 else 20
 }
 

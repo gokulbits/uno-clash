@@ -1,12 +1,15 @@
 package dev.colorclash.net
 
 import dev.colorclash.net.client.ClientStatus
+import dev.colorclash.net.client.GameClient
 import dev.colorclash.net.host.HostStage
+import dev.colorclash.protocol.AUTO_AVATAR_COLOR
 import dev.colorclash.protocol.ClientMessage
 import dev.colorclash.protocol.Codec
 import dev.colorclash.protocol.EventView
 import dev.colorclash.protocol.GameSettings
 import dev.colorclash.protocol.JoinError
+import dev.colorclash.protocol.MAX_PHOTO_CHARS
 import dev.colorclash.protocol.PROTOCOL_VERSION
 import dev.colorclash.protocol.PhaseKind
 import dev.colorclash.protocol.PlayerIntent
@@ -28,6 +31,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.util.Base64
 import java.util.Collections
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -172,6 +176,53 @@ class HostClientIntegrationTest {
             assertNull(h.host.startGame())
             h.scope.autoPlay(me)
             h.awaitHost(60.seconds) { it.stage == HostStage.GAME_OVER }
+        }
+    }
+
+    @Test
+    fun `avatar color and frame reach everyone`(): Unit = runBlocking {
+        Harness().start().use { h ->
+            val token = h.host.reserveHostSeat("Me", avatar = 14, avatarColor = 3, avatarFrame = 2)
+            val me = h.client("Me", token = token)
+            val guest = GameClient(h.scope, fastClient).also { it.connect("127.0.0.1", h.port, ROOM, "Guest", avatar = 30, avatarColor = 7, avatarFrame = 5) }
+            try {
+                h.host.addBot()
+                val lobby = withTimeout(5.seconds) { me.lobby.filterNotNull().first { it.seats.size == 3 } }
+                val (mine, theirs) = listOf("Me", "Guest").map { name -> lobby.seats.single { it.name == name } }
+                assertEquals(Triple(14, 3, 2), Triple(mine.avatar, mine.avatarColor, mine.avatarFrame))
+                assertEquals(Triple(30, 7, 5), Triple(theirs.avatar, theirs.avatarColor, theirs.avatarFrame))
+                // Bots keep the plain look.
+                val bot = lobby.seats.single { it.isBot }
+                assertEquals(AUTO_AVATAR_COLOR, bot.avatarColor)
+                assertEquals(0, bot.avatarFrame)
+            } finally {
+                guest.close()
+            }
+        }
+    }
+
+    @Test
+    fun `photos reach everyone once and bad ones are dropped`(): Unit = runBlocking {
+        val jpeg = Base64.getEncoder().encodeToString(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 1, 2, 3))
+        val notJpeg = Base64.getEncoder().encodeToString("hello there".toByteArray())
+        Harness().start().use { h ->
+            val token = h.host.reserveHostSeat("Me", photo = jpeg)
+            val me = h.client("Me", token = token)
+            withTimeout(5.seconds) { me.lobby.filterNotNull().first { it.seats.size == 1 } }
+            val guest = GameClient(h.scope, fastClient).also { it.connect("127.0.0.1", h.port, ROOM, "Guest", photo = notJpeg) }
+            val late = GameClient(h.scope, fastClient).also { it.connect("127.0.0.1", h.port, ROOM, "Late", photo = "x".repeat(MAX_PHOTO_CHARS + 1)) }
+            try {
+                val lobby = withTimeout(5.seconds) { guest.lobby.filterNotNull().first { it.seats.size == 3 } }
+                val id = assertNotNull(lobby.seats.single { it.name == "Me" }.photoId)
+                assertNull(lobby.seats.single { it.name == "Guest" }.photoId)
+                assertNull(lobby.seats.single { it.name == "Late" }.photoId)
+                // Someone who joins after gets the photos already at the table.
+                assertEquals(jpeg, withTimeout(5.seconds) { late.photos.first { id in it } }[id])
+                assertEquals(mapOf(id to jpeg), withTimeout(5.seconds) { guest.photos.first { it.isNotEmpty() } })
+            } finally {
+                guest.close()
+                late.close()
+            }
         }
     }
 

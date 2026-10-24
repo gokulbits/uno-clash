@@ -1,6 +1,8 @@
 package dev.colorclash.app.data
 
 import android.content.Context
+import java.io.File
+import dev.colorclash.protocol.AUTO_AVATAR_COLOR
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -8,7 +10,17 @@ import kotlinx.coroutines.flow.asStateFlow
 /** A guest seat we can get back into after the app was killed in the background. */
 data class SavedSession(val host: String, val port: Int, val roomCode: String, val token: String, val savedAtMillis: Long)
 
-data class Profile(val name: String, val avatar: Int)
+/** Everyone sees this. [photo] is a small base64 JPEG shown instead of the avatar. */
+data class Profile(
+    val name: String,
+    val avatar: Int,
+    val avatarColor: Int = AUTO_AVATAR_COLOR,
+    val avatarFrame: Int = 0,
+    val photo: String? = null,
+)
+
+/** How the game looks on this phone only. */
+data class LookSettings(val table: Int = 0, val cardBack: Int = 0)
 
 data class FeedbackSettings(
     val sound: Boolean = true,
@@ -18,24 +30,34 @@ data class FeedbackSettings(
     val voice: Boolean = true,
 )
 
-/** How you like to play, kept per phone. */
 data class PlaySettings(
     /** First tap picks a card up, second tap plays it. Dragging up still plays straight away. */
     val tapToSelect: Boolean = false,
-    /** Sort the hand by number rather than by color. */
     val sortByNumber: Boolean = false,
     /** Mark each color with its own shape, so no card depends on telling colors apart. */
     val colorShapes: Boolean = false,
 )
 
-/** Your record on this phone. */
 data class Stats(val gamesPlayed: Int = 0, val gamesWon: Int = 0, val roundsWon: Int = 0, val bestRound: Int = 0)
 
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("color_clash", Context.MODE_PRIVATE)
+    // The photo lives in its own file rather than bloating the preferences.
+    private val photoFile = File(context.filesDir, PHOTO_FILE)
 
-    private val _profile = MutableStateFlow(Profile(sp.getString(KEY_NAME, null) ?: "", sp.getInt(KEY_AVATAR, 0)))
+    private val _profile = MutableStateFlow(
+        Profile(
+            sp.getString(KEY_NAME, null) ?: "",
+            sp.getInt(KEY_AVATAR, 0),
+            sp.getInt(KEY_AVATAR_COLOR, AUTO_AVATAR_COLOR),
+            sp.getInt(KEY_AVATAR_FRAME, 0),
+            runCatching { photoFile.takeIf { it.exists() }?.readText() }.getOrNull(),
+        ),
+    )
     val profile: StateFlow<Profile> = _profile.asStateFlow()
+
+    private val _looks = MutableStateFlow(LookSettings(sp.getInt(KEY_TABLE, 0), sp.getInt(KEY_CARD_BACK, 0)))
+    val looks: StateFlow<LookSettings> = _looks.asStateFlow()
 
     private val _feedback = MutableStateFlow(
         FeedbackSettings(
@@ -78,8 +100,21 @@ class Prefs(context: Context) {
     }
 
     fun updateProfile(profile: Profile) {
+        if (profile.photo != _profile.value.photo) {
+            runCatching { if (profile.photo == null) photoFile.delete() else photoFile.writeText(profile.photo) }
+        }
         _profile.value = profile
-        sp.edit().putString(KEY_NAME, profile.name).putInt(KEY_AVATAR, profile.avatar).apply()
+        sp.edit()
+            .putString(KEY_NAME, profile.name)
+            .putInt(KEY_AVATAR, profile.avatar)
+            .putInt(KEY_AVATAR_COLOR, profile.avatarColor)
+            .putInt(KEY_AVATAR_FRAME, profile.avatarFrame)
+            .apply()
+    }
+
+    fun updateLooks(looks: LookSettings) {
+        _looks.value = looks
+        sp.edit().putInt(KEY_TABLE, looks.table).putInt(KEY_CARD_BACK, looks.cardBack).apply()
     }
 
     fun updateFeedback(settings: FeedbackSettings) {
@@ -111,8 +146,13 @@ class Prefs(context: Context) {
         }
 
     private companion object {
+        const val PHOTO_FILE = "avatar_photo.txt"
         const val KEY_NAME = "name"
         const val KEY_AVATAR = "avatar"
+        const val KEY_AVATAR_COLOR = "avatar_color"
+        const val KEY_AVATAR_FRAME = "avatar_frame"
+        const val KEY_TABLE = "table"
+        const val KEY_CARD_BACK = "card_back"
         const val KEY_SOUND = "sound"
         const val KEY_MUSIC = "music"
         const val KEY_HAPTICS = "haptics"

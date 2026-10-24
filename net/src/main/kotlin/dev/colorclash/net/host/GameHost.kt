@@ -1,5 +1,6 @@
 package dev.colorclash.net.host
 
+import dev.colorclash.protocol.AUTO_AVATAR_COLOR
 import dev.colorclash.protocol.ClientMessage
 import dev.colorclash.protocol.GameSettings
 import dev.colorclash.protocol.JoinError
@@ -37,7 +38,6 @@ import kotlin.time.TimeSource
 /**
  * The authoritative room: seats, lobby, the engine state, bots and timers.
  * Everything runs on one actor coroutine, so none of the state below needs locking.
- * Transport-agnostic; [HostServer] plugs WebSockets into it.
  */
 class GameHost(
     private val scope: CoroutineScope,
@@ -80,9 +80,15 @@ class GameHost(
     fun onDisconnect(connection: Connection) = post(Command.Disconnected(connection))
 
     /** Creates the host player's own seat. Its client joins with the returned token. */
-    fun reserveHostSeat(name: String, avatar: Int = 0): String {
+    fun reserveHostSeat(
+        name: String,
+        avatar: Int = 0,
+        avatarColor: Int = AUTO_AVATAR_COLOR,
+        avatarFrame: Int = 0,
+        photo: String? = null,
+    ): String {
         val token = RoomCode.newSessionToken()
-        post(Command.ReserveHostSeat(token, name, avatar))
+        post(Command.ReserveHostSeat(token, name, Look(avatar, avatarColor, avatarFrame, checkedPhoto(photo))))
         return token
     }
 
@@ -112,7 +118,7 @@ class GameHost(
             is Command.Received -> receive(command.connection, command.message)
             is Command.Disconnected -> disconnected(command.connection)
             is Command.ReserveHostSeat -> if (game == null && seats.size < GameEngine.MAX_PLAYERS) {
-                seats += Seat(command.token, cleanName(command.name), command.avatar, isBot = false, isHost = true)
+                seats += Seat(command.token, cleanName(command.name), command.look, isBot = false, isHost = true)
                 lobbyChanged()
             }
             is Command.UpdateSettings -> if (game == null) {
@@ -120,7 +126,7 @@ class GameHost(
                 lobbyChanged()
             }
             Command.AddBot -> if (game == null && seats.size < GameEngine.MAX_PLAYERS) {
-                seats += Seat(RoomCode.newSessionToken(), nextBotName(), seats.size, isBot = true, isHost = false)
+                seats += Seat(RoomCode.newSessionToken(), nextBotName(), Look(avatar = seats.size), isBot = true, isHost = false)
                 lobbyChanged()
             }
             is Command.RemoveBot -> if (game == null && seats.getOrNull(command.seat)?.isBot == true) {
@@ -143,8 +149,6 @@ class GameHost(
             Command.Close -> shutDown()
         }
     }
-
-    // Connections
 
     private fun receive(connection: Connection, message: ClientMessage) {
         if (message is ClientMessage.Ping) return connection.send(ServerMessage.Pong(message.nonce))
@@ -190,7 +194,8 @@ class GameHost(
         if (game != null) return reject(connection, JoinError.GAME_IN_PROGRESS, "A game is already running in this room.")
         if (seats.size >= GameEngine.MAX_PLAYERS) return reject(connection, JoinError.ROOM_FULL, "The room is full.")
 
-        val seat = Seat(RoomCode.newSessionToken(), cleanName(hello.name), hello.avatar, isBot = false, isHost = false)
+        val look = Look(hello.avatar, hello.avatarColor, hello.avatarFrame, checkedPhoto(hello.photo))
+        val seat = Seat(RoomCode.newSessionToken(), cleanName(hello.name), look, isBot = false, isHost = false)
         seats += seat
         attach(seat, connection)
     }
@@ -208,6 +213,11 @@ class GameHost(
         seat.timeouts = 0
         seatByConnection[connection] = seat
         connection.send(ServerMessage.Welcome(seats.indexOf(seat), seat.token, roomCode))
+        // Photos go before the views that refer to them.
+        seats.mapNotNull { it.look.photo }.distinctBy { it.id }.forEach { connection.send(ServerMessage.Photo(it.id, it.data)) }
+        seat.look.photo?.let { photo ->
+            seats.forEach { other -> other.connection?.takeIf { it != connection }?.send(ServerMessage.Photo(photo.id, photo.data)) }
+        }
         if (game == null) lobbyChanged() else gameChanged(emptyList())
     }
 
@@ -248,8 +258,6 @@ class GameHost(
         }
         gameChanged(emptyList())
     }
-
-    // Game flow
 
     private fun rematch(seed: Long) {
         if (game?.phase !is Phase.GameOver) return
@@ -349,8 +357,6 @@ class GameHost(
         commands.close()
     }
 
-    // Bots and timers
-
     private fun isAutomated(seat: Int) = seats[seat].isBot || seats[seat].botControlled
 
     private fun scheduleAutomation(state: GameState) {
@@ -405,11 +411,7 @@ class GameHost(
         }
     }
 
-    /**
-     * The current player ran out of time: they draw and keep it (a color or swap pick is made
-     * for them). Run out of time [AWAY_AFTER] turns in a row and a bot plays for them until they
-     * do something again.
-     */
+    /** Out of time: draw and keep it. [AWAY_AFTER] timeouts in a row and a bot plays until they're back. */
     private fun playForTimedOutSeat() {
         val current = game?.current ?: return
         val seat = seats[current]
@@ -440,15 +442,16 @@ class GameHost(
         turnClock = null
     }
 
-    // Helpers
-
     private fun canStart() = game == null && seats.size >= GameEngine.MIN_PLAYERS && seats.all { it.isReady }
 
     private fun seatInfos() = seats.mapIndexed { i, s ->
         SeatInfo(
             seat = i,
             name = s.name,
-            avatar = s.avatar,
+            avatar = s.look.avatar,
+            avatarColor = s.look.color,
+            avatarFrame = s.look.frame,
+            photoId = s.look.photo?.id,
             isBot = s.isBot,
             isHost = s.isHost,
             ready = s.isReady,
@@ -477,7 +480,7 @@ class GameHost(
     private class Seat(
         val token: String,
         val name: String,
-        val avatar: Int,
+        val look: Look,
         val isBot: Boolean,
         val isHost: Boolean,
     ) {
@@ -493,6 +496,9 @@ class GameHost(
         val isReady get() = ready || isBot || isHost
     }
 
+    /** Indexes only; the app wraps anything out of range. */
+    private class Look(val avatar: Int, val color: Int = AUTO_AVATAR_COLOR, val frame: Int = 0, val photo: SeatPhoto? = null)
+
     private data class TurnClock(val seat: Int, val phase: Phase, val round: Int, val deadline: TimeMark) {
         fun remaining(): Duration = (-deadline.elapsedNow()).coerceAtLeast(Duration.ZERO)
         fun millisLeft(): Long = remaining().inWholeMilliseconds
@@ -501,7 +507,7 @@ class GameHost(
     private sealed interface Command {
         class Received(val connection: Connection, val message: ClientMessage) : Command
         class Disconnected(val connection: Connection) : Command
-        class ReserveHostSeat(val token: String, val name: String, val avatar: Int) : Command
+        class ReserveHostSeat(val token: String, val name: String, val look: Look) : Command
         class UpdateSettings(val settings: GameSettings) : Command
         data object AddBot : Command
         class RemoveBot(val seat: Int) : Command

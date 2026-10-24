@@ -162,7 +162,7 @@ private fun PlayerRow(seat: SeatInfo, isYou: Boolean, onRemove: (() -> Unit)?) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        AvatarBadge(seat.avatar, size = 44.dp)
+        AvatarBadge(seat, size = 44.dp)
         Column(Modifier.weight(1f)) {
             Text(seat.name + if (isYou) " (you)" else "", fontWeight = FontWeight.Bold)
             val tag = when {

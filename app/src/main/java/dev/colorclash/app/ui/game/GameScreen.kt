@@ -42,7 +42,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -160,12 +159,7 @@ private fun GameTable(
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().graphicsLayer { translationX = fx.shake.value }) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onLeave) { Text("‹ Leave", color = GameTheme.text) }
-                Text("Round ${view.round}", Modifier.weight(1f), color = GameTheme.mutedText, textAlign = TextAlign.Center)
-                Text("${view.seats[view.you].score} pts", color = GameTheme.text, fontWeight = FontWeight.Bold)
-                TextButton(onClick = { showSettings = true }) { Text("⚙", fontSize = 20.sp, color = GameTheme.text) }
-            }
+            TableTopBar(view, onLeave = onLeave, onSettings = { showSettings = true })
 
             OpponentsArc(
                 view = view,
@@ -186,7 +180,11 @@ private fun GameTable(
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
 
-            Column(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 16.dp), verticalArrangement = Arrangement.Bottom) {
+            // Kept clear of the UNO buzzer, which sits over its right end.
+            Column(
+                Modifier.fillMaxWidth().height(54.dp).padding(start = 16.dp, end = BUZZER_SIZE + 16.dp),
+                verticalArrangement = Arrangement.Bottom,
+            ) {
                 log.forEachIndexed { i, line ->
                     Text(
                         line,
@@ -198,7 +196,6 @@ private fun GameTable(
                 }
             }
 
-            // Your actions, with the sort switch and the reaction button at either side of them.
             Box(Modifier.fillMaxWidth()) {
                 val sides = Modifier.padding(horizontal = REACTION_BUTTON_SIZE)
                 if (roundOver && scoresClosed) {
@@ -228,11 +225,10 @@ private fun GameTable(
             Hand(view, fx, play, onPlay = { onIntent(PlayerIntent.Play(it)) })
         }
 
-        // UNO is a buzzer of its own, right where your thumb rests.
-        if (controls.canCallLastCard && !roundOver) {
+        // Always shown and always the same, so it never hints when to press it. Out of turn it does nothing.
+        if (!roundOver) {
             UnoBuzzer(
-                urge = controls.urgeLastCard,
-                onPress = { onIntent(PlayerIntent.CallLastCard) },
+                onPress = { if (controls.canCallLastCard) onIntent(PlayerIntent.CallLastCard) },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 2.dp, bottom = HAND_HEIGHT + ACTION_BAR_HEIGHT - 10.dp),
             )
         }
@@ -251,7 +247,6 @@ private fun GameTable(
                     onReact(it)
                     showReactions = false
                 },
-                // Opens upwards from the reaction button, just above the action row and the hand.
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = HAND_HEIGHT + ACTION_BAR_HEIGHT),
             )
         }
@@ -327,7 +322,7 @@ private fun OpponentSeat(
     onCatch: () -> Unit,
     modifier: Modifier,
 ) {
-    // Tap a seat to see exactly how many cards they hold; big hands bunch up in the fan.
+    // Tap a seat for the exact count; big hands bunch up in the fan.
     var showCount by remember { mutableStateOf(false) }
     LaunchedEffect(showCount) {
         if (showCount) {
@@ -342,7 +337,7 @@ private fun OpponentSeat(
         Box(contentAlignment = Alignment.Center) {
             if (isCurrent) TurnRing(turnMillisLeft, turnSeconds, size = 58.dp)
             AvatarBadge(
-                seat.info.avatar,
+                seat.info,
                 size = 46.dp,
                 ring = if (isCurrent) GameTheme.yellow else null,
                 modifier = if (isCurrent) Modifier.scale(pulse()) else Modifier,
@@ -373,7 +368,6 @@ private fun OpponentSeat(
                 )
             }
         }
-        // Their cards, face down and fanned, held just in front of them: count them like at a real table.
         HandFan(seat.cardCount, Modifier.offset(y = (-8).dp))
         Text(
             seat.info.name + when {
@@ -381,7 +375,7 @@ private fun OpponentSeat(
                 !seat.info.connected -> " 📶"
                 else -> ""
             },
-            // On a dark pill so it reads over anything, and yellow while it's their turn.
+            // Dark pill so it reads over anything; yellow on their turn.
             Modifier
                 .offset(y = (-6).dp)
                 .clip(RoundedCornerShape(10.dp))
@@ -452,12 +446,11 @@ private fun CenterTable(
                 fontWeight = FontWeight.Black,
             )
 
-            // Tap the pile to see who played what lately.
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = fx.anchor(Anchor.DiscardPile).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onPeek),
             ) {
-                // A halo in the active color, which matters most after a wild.
+                // Halo in the active color, which matters most after a wild.
                 Box(
                     Modifier
                         .size(TABLE_CARD_WIDTH + 22.dp, TABLE_CARD_WIDTH * CARD_ASPECT + 22.dp)
@@ -475,7 +468,6 @@ private fun CenterTable(
                             TABLE_CARD_WIDTH,
                             Modifier.graphicsLayer {
                                 rotationZ = TableFx.discardTilt(top)
-                                // Settles with a little squash when a card lands.
                                 val bump = 1f + 0.06f * fx.pileBump.value
                                 scaleX = bump
                                 scaleY = bump
@@ -586,7 +578,6 @@ private fun ActionButton(text: String, color: Color, modifier: Modifier = Modifi
 @Composable
 private fun Hand(view: PlayerView, fx: TableFx, play: PlaySettings, onPlay: (Int) -> Unit) {
     val cards = sortHand(view.hand, play.sortByNumber).filter { it.id !in fx.hiddenCards }
-    // With tap-to-select on, the first tap picks a card up and a second tap plays it.
     var selected by remember { mutableStateOf<Int?>(null) }
     if (selected != null && selected !in view.playable) selected = null
     val mid = (cards.size - 1) / 2f
@@ -653,7 +644,6 @@ private fun HandCard(
     var dragY by remember { mutableFloatStateOf(0f) }
     var dragging by remember { mutableStateOf(false) }
     val playThreshold = with(LocalDensity.current) { 70.dp.toPx() }
-    // Everything springs, so the fan re-spreads smoothly when cards come and go.
     val lift by animateDpAsState(
         when {
             selected -> (-34).dp
@@ -678,7 +668,6 @@ private fun HandCard(
                 rotationZ = tilt
                 translationY = pull
                 transformOrigin = TransformOrigin(0.5f, HAND_PIVOT)
-                // Grows a little as you drag it up towards the pile.
                 val reach = 1f + 0.08f * (-pull / playThreshold).coerceIn(0f, 1f)
                 scaleX = reach
                 scaleY = reach
@@ -717,7 +706,7 @@ private fun HandCard(
     }
 }
 
-/** Countdown ring for the turn timer, run locally from the time the host said was left. Optionally shows the seconds inside. */
+/** Turn timer ring, counted down locally from what the host said was left. */
 @Composable
 fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boolean = false, onFinalSeconds: (() -> Unit)? = null) {
     if (millisLeft == null || totalSeconds == null) return
@@ -730,7 +719,6 @@ fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boole
     // Recompose once a second for the number, not every frame.
     val seconds by remember(totalSeconds) { derivedStateOf { ceil(progress.value * totalSeconds).toInt() } }
     val urgent by remember { derivedStateOf { progress.value < 0.25f } }
-    // A tick for each of the last few seconds.
     LaunchedEffect(seconds) { if (seconds in 1..FINAL_SECONDS && progress.isRunning) onFinalSeconds?.invoke() }
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
@@ -755,18 +743,14 @@ fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boole
     }
 }
 
-/**
- * The UNO call as an arcade buzzer: a glossy red dome on a dark rim that pops in when you may
- * call, glows while you should, and sinks into its base when pressed.
- */
+/** The UNO call as an arcade buzzer that sinks into its base when pressed. */
 @Composable
-private fun UnoBuzzer(urge: Boolean, onPress: () -> Unit, modifier: Modifier) {
+private fun UnoBuzzer(onPress: () -> Unit, modifier: Modifier) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val sink by animateFloatAsState(if (pressed) 1f else 0f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessHigh), label = "sink")
     val appear = remember { Animatable(0f) }
     LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMediumLow)) }
-    val glow = if (urge) pulse(1.2f) else 1f
     Box(
         modifier
             .size(BUZZER_SIZE * 1.3f)
@@ -783,11 +767,6 @@ private fun UnoBuzzer(urge: Boolean, onPress: () -> Unit, modifier: Modifier) {
             val dome = d * 0.4f
             val lift = d * 0.07f
             val top = center + Offset(0f, -lift + d * 0.05f * sink)
-            if (urge) {
-                // A ring that breathes out from the rim.
-                val t = (glow - 1f) / 0.2f
-                drawCircle(GameTheme.red.copy(alpha = 0.55f * (1f - t)), rim * (1.05f + 0.25f * t), center, style = Stroke(d * 0.07f))
-            }
             drawOval(Color.Black.copy(alpha = 0.35f), center - Offset(rim, rim * 0.97f - d * 0.06f), Size(rim * 2, rim * 1.94f))
             drawCircle(Brush.radialGradient(listOf(GameTheme.buzzerRim, GameTheme.buzzerRimDeep), center - Offset(0f, rim * 0.3f), rim * 1.4f), rim)
             drawCircle(Color.White.copy(alpha = 0.18f), rim * 0.98f, style = Stroke(d * 0.015f))
@@ -824,7 +803,6 @@ private fun UnoBuzzer(urge: Boolean, onPress: () -> Unit, modifier: Modifier) {
     }
 }
 
-/** Flips your hand between sorted by color and sorted by number. */
 @Composable
 private fun SortSwitch(byNumber: Boolean, onToggle: () -> Unit, modifier: Modifier) {
     Box(
@@ -853,7 +831,7 @@ private fun ReactionButton(open: Boolean, onClick: () -> Unit, modifier: Modifie
     }
 }
 
-/** The mood emoji and quick chat you can send. Pops open above the reaction button. */
+/** Emoji and quick chat you can send. */
 @Composable
 private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
     val appear = remember { Animatable(0f) }

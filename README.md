@@ -15,6 +15,10 @@ A private project for playing with friends, not published anywhere.
 - House rules you can toggle in the lobby: stacking +2/+4, jump-in, 7-0 swaps, draw until playable, a penalty for finishing on a power card
 - Action cards and picked colors are called out on screen and out loud ("Skip!", "Blue!")
 - Emoji reactions that float up from your seat for everyone to see
+- Use any photo from your phone as your avatar (a favourite character, yourself…), cropped to a circle,
+  or pick one of 50 built-in avatars: animals plus emoji for characters from Malayalam, Tamil and English
+  films and series. Add a color and a frame (gold, rainbow, flames…); everyone at the table sees it
+- Pick your own table color and card back design in Settings
 - Join by QR code (the in-app scanner or the stock camera app), room code, nearby-room list, or IP address
 - Dropped players get 60 seconds to come back; after that a bot keeps their seat warm until they rejoin
 - Card animations, sound effects, music and haptics, all switchable in Settings
