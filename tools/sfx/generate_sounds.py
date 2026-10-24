@@ -394,6 +394,15 @@ def sfx_turn():
     return reverb(t.buf, wet=0.3, tail=0.5)
 
 
+def sfx_pop():
+    # A bubbly blip for emoji reactions: a quick upward chirp with a soft click on the front.
+    t = Track(0.25)
+    t.add(env_ad(sine(520, 0.12, 1500), 0.002, 30), vol=0.8)
+    t.add(env_ad(sine(1040, 0.08, 2600), 0.002, 45), at=0.01, vol=0.25)
+    t.add(snap(0.006, 3500, 1.5), vol=0.3)
+    return reverb(t.buf, wet=0.15, tail=0.2)
+
+
 # --- music -----------------------------------------------------------------
 
 def music_loop():
@@ -472,3 +481,5 @@ if __name__ == "__main__":
     write("sfx_lose", sfx_lose(), peak=0.7)
     write("sfx_turn", sfx_turn(), peak=0.6)
     write("music_loop", music_loop(), peak=0.55, trim=False)  # exact length, so it loops on the beat
+    # New sounds go last: they share the seeded generator, so this keeps the files above unchanged.
+    write("sfx_pop", sfx_pop(), peak=0.55)

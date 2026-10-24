@@ -10,6 +10,7 @@ import dev.colorclash.protocol.JoinError
 import dev.colorclash.protocol.PROTOCOL_VERSION
 import dev.colorclash.protocol.PhaseKind
 import dev.colorclash.protocol.PlayerIntent
+import dev.colorclash.protocol.REACTION_COUNT
 import dev.colorclash.protocol.ServerMessage
 import dev.colorclash.protocol.WS_PATH
 import dev.colorclash.rules.RuleSet
@@ -209,6 +210,33 @@ class HostClientIntegrationTest {
             waiting.send(PlayerIntent.Draw)
             assertTrue(notice.await() in setOf("Not your turn", "Can't draw now"))
             assertEquals(view.hand, a.game.value?.hand)
+        }
+    }
+
+    @Test
+    fun `reactions reach everyone, but not too often and not made up`(): Unit = runBlocking {
+        Harness().start().use { h ->
+            val a = h.client("A")
+            val b = h.client("B")
+            listOf(a, b).forEach { it.awaitConnected(); it.setReady(true) }
+            h.awaitHost { it.seats.size == 2 && it.canStart }
+            assertNull(h.host.startGame())
+            val seatA = withTimeout(5.seconds) { a.game.filterNotNull().first() }.you
+            val seen = Collections.synchronizedList(mutableListOf<ServerMessage.Reaction>())
+            h.scope.launch { b.reactions.collect { seen += it } }
+            delay(50)
+
+            a.react(4)
+            a.react(5) // inside the cooldown: dropped
+            a.react(REACTION_COUNT) // no such emoji: dropped
+            withTimeout(5.seconds) { while (seen.isEmpty()) delay(10) }
+            delay(300)
+            assertEquals(listOf(ServerMessage.Reaction(seatA, 4)), seen.toList())
+
+            delay(h.host.config.reactionCooldown)
+            a.react(6)
+            withTimeout(5.seconds) { while (seen.size < 2) delay(10) }
+            assertEquals(ServerMessage.Reaction(seatA, 6), seen.last())
         }
     }
 

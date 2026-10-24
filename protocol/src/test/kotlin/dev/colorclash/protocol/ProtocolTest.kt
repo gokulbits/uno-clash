@@ -32,6 +32,7 @@ class ProtocolTest {
             ClientMessage.Intent(PlayerIntent.Draw),
             ClientMessage.Ping(5),
             ClientMessage.Leave,
+            ClientMessage.React(3),
         )
         client.forEach { assertEquals(it, Codec.decodeClient(Codec.encode(it))) }
 
@@ -41,6 +42,7 @@ class ProtocolTest {
             ServerMessage.JoinRejected(JoinError.ROOM_FULL, "full"),
             ServerMessage.Game(view, listOf(EventView.Drew(1, 2, DrawReason.TURN))),
             ServerMessage.Lobby(LobbyView("ABCD", 0, seats, settings, canStart = true)),
+            ServerMessage.Reaction(2, 7),
             ServerMessage.Closed("bye"),
         )
         server.forEach { assertEquals(it, Codec.decodeServer(Codec.encode(it))) }

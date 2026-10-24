@@ -34,6 +34,7 @@ import dev.colorclash.app.ui.game.GameScreen
 import dev.colorclash.app.ui.game.RoundResult
 import dev.colorclash.app.ui.game.describe
 import dev.colorclash.app.ui.game.fx.TableFx
+import dev.colorclash.app.feedback.Sfx
 import dev.colorclash.protocol.EventView
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.net.client.ClientStatus
@@ -70,6 +71,12 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
         }
     }
     LaunchedEffect(fx) { fx.run(app.feedback) }
+    LaunchedEffect(session) {
+        session.client.reactions.collect {
+            fx.react(it.seat, it.reaction)
+            app.feedback.sfx(Sfx.POP, 0.7f)
+        }
+    }
     LaunchedEffect(game == null) { if (game == null) fx.reset() }
     LaunchedEffect(session) {
         session.client.notices.collectLatest {
@@ -102,6 +109,7 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
                     feedback = feedbackSettings,
                     onFeedbackChange = app.prefs::updateFeedback,
                     onIntent = session.client::send,
+                    onReact = session.client::react,
                     onNextRound = { session.hosting?.host?.startNextRound() },
                     onBackToLobby = { session.hosting?.host?.returnToLobby() },
                     onLeave = { confirmLeave = true },

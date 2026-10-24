@@ -38,7 +38,15 @@ sealed interface ClientMessage {
     @Serializable
     @SerialName("leave")
     data object Leave : ClientMessage
+
+    /** An emoji reaction, by index into the app's list of [REACTION_COUNT]. */
+    @Serializable
+    @SerialName("react")
+    data class React(val reaction: Int) : ClientMessage
 }
+
+/** How many reaction emoji there are. The host drops anything outside this range. */
+const val REACTION_COUNT = 12
 
 /** What a player wants to do. The seat comes from the connection, never from the client. */
 @Serializable
@@ -107,6 +115,11 @@ sealed interface ServerMessage {
     @Serializable
     @SerialName("pong")
     data class Pong(val nonce: Long) : ServerMessage
+
+    /** Someone at the table reacted. Sent to everyone, the sender included. */
+    @Serializable
+    @SerialName("reaction")
+    data class Reaction(val seat: Int, val reaction: Int) : ServerMessage
 
     /** Host shut the room down. */
     @Serializable

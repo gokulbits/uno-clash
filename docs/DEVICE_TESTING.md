@@ -101,6 +101,14 @@ Host on one phone; join from the others using each method once.
 - [ ] 6 seats (mix of phones and bots), play to 500 with stacking, jump-in and 7-0 on.
 - [ ] Every rule shows something on screen: skip flash, reverse spin, color burst after a wild, shake on +2/+4,
   "UNO!" and "CATCH!", challenge result, hands swapping, confetti on a win.
+- [ ] Skip, Reverse, +2, Wild and +4 each pop a banner in the card's color as the card lands, and the phone says
+  it out loud ("Skip!", "Wild draw four!"). Picking a color says the color; calling UNO says "UNO!". The
+  "Announce cards out loud" switch silences the voice but keeps the banners. On a phone with no speech engine
+  installed, nothing breaks; there's just no voice.
+- [ ] Tap 😊 and send a few reactions. **Expect:** every phone sees the emoji pop out of your seat with a stream of
+  small copies and a soft pop; mashing the tray sends at most one every 0.7 s.
+- [ ] Each turn shows a 15-second countdown in the ring by "Your turn", red and pulsing for the last few seconds;
+  when it runs out a move is made for you.
 - [ ] Turn on Developer options › Profile HWUI rendering › On screen as bars during dealing and confetti.
   **Expect:** bars mostly under the green line on a mid-range phone.
 - [ ] Settings: sound, music and vibration toggles each take effect immediately, in the menu and from ⚙ in game.

@@ -35,7 +35,7 @@ fun cueFor(event: EventView, you: Int): Cue? = when (event) {
     is EventView.GameWon -> null
 }
 
-class Feedback(private val sound: SoundEngine, private val haptics: Haptics) {
+class Feedback(private val sound: SoundEngine, private val haptics: Haptics, private val voice: Announcer) {
     fun cue(cue: Cue?) {
         cue ?: return
         cue.sfx?.let { sound.play(it) }
@@ -45,4 +45,6 @@ class Feedback(private val sound: SoundEngine, private val haptics: Haptics) {
     fun sfx(sfx: Sfx, volume: Float = 1f) = sound.play(sfx, volume)
 
     fun buzz(kind: Buzz) = haptics.buzz(kind)
+
+    fun say(text: String) = voice.say(text)
 }

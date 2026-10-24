@@ -42,6 +42,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -82,6 +83,7 @@ import dev.colorclash.protocol.SeatView
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.Direction
 import kotlin.math.abs
+import kotlin.math.ceil
 
 /** The game table. Every move goes to the host as an intent; this only ever shows what the host sent back. */
 @Composable
@@ -95,12 +97,14 @@ fun GameScreen(
     feedback: FeedbackSettings,
     onFeedbackChange: (FeedbackSettings) -> Unit,
     onIntent: (PlayerIntent) -> Unit,
+    onReact: (Int) -> Unit,
     onNextRound: () -> Unit,
     onBackToLobby: () -> Unit,
     onLeave: () -> Unit,
 ) {
     val controls = tableControls(view)
     var showSettings by remember { mutableStateOf(false) }
+    var showReactions by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().graphicsLayer { translationX = fx.shake.value }) {
@@ -108,6 +112,7 @@ fun GameScreen(
                 TextButton(onClick = onLeave) { Text("‹ Leave", color = GameTheme.text) }
                 Text("Round ${view.round}", Modifier.weight(1f), color = GameTheme.mutedText, textAlign = TextAlign.Center)
                 Text("${view.seats[view.you].score} pts", fontWeight = FontWeight.Bold)
+                TextButton(onClick = { showReactions = !showReactions }) { Text("😊", fontSize = 20.sp) }
                 TextButton(onClick = { showSettings = true }) { Text("⚙", fontSize = 20.sp, color = GameTheme.text) }
             }
 
@@ -145,6 +150,16 @@ fun GameScreen(
         }
 
         FxLayer(fx)
+
+        if (showReactions) {
+            ReactionTray(
+                onPick = {
+                    onReact(it)
+                    showReactions = false
+                },
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 48.dp, end = 8.dp),
+            )
+        }
 
         if (controls.pickingColor) ColorPicker(view.hand, onPick = { onIntent(PlayerIntent.ChooseColor(it)) })
         if (controls.pickingSwapTarget) SwapPicker(view, onPick = { onIntent(PlayerIntent.SwapWith(it)) })
@@ -319,7 +334,7 @@ private fun CenterTable(view: PlayerView, fx: TableFx, controls: TableControls, 
             }
         }
         Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (view.isYourTurn && view.phase.isLive()) TurnRing(view.turnMillisLeft, view.settings.turnTimerSeconds, size = 26.dp)
+            if (view.isYourTurn && view.phase.isLive()) TurnRing(view.turnMillisLeft, view.settings.turnTimerSeconds, size = 36.dp, showSeconds = true)
             Text(
                 controls.headline,
                 Modifier.scale(if (view.isYourTurn && view.phase.isLive()) pulse(1.04f) else 1f),
@@ -472,9 +487,9 @@ private fun HandCard(
     }
 }
 
-/** Countdown ring for the turn timer, run locally from the time the host said was left. */
+/** Countdown ring for the turn timer, run locally from the time the host said was left. Optionally shows the seconds inside. */
 @Composable
-fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp) {
+fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boolean = false) {
     if (millisLeft == null || totalSeconds == null) return
     val total = totalSeconds * 1000f
     val progress = remember { Animatable(1f) }
@@ -482,15 +497,64 @@ fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp) {
         progress.snapTo((millisLeft / total).coerceIn(0f, 1f))
         progress.animateTo(0f, tween(millisLeft.toInt().coerceAtLeast(0), easing = LinearEasing))
     }
-    Canvas(Modifier.size(size)) {
-        val stroke = 4.dp.toPx()
-        val color = if (progress.value < 0.25f) GameTheme.red else GameTheme.yellow
-        drawArc(
-            color, startAngle = -90f, sweepAngle = 360f * progress.value, useCenter = false,
-            topLeft = Offset(stroke / 2, stroke / 2),
-            size = Size(this.size.width - stroke, this.size.height - stroke),
-            style = Stroke(stroke, cap = StrokeCap.Round),
-        )
+    // Recompose once a second for the number, not every frame.
+    val seconds by remember(totalSeconds) { derivedStateOf { ceil(progress.value * totalSeconds).toInt() } }
+    val urgent by remember { derivedStateOf { progress.value < 0.25f } }
+    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = 4.dp.toPx()
+            drawArc(
+                if (progress.value < 0.25f) GameTheme.red else GameTheme.yellow,
+                startAngle = -90f, sweepAngle = 360f * progress.value, useCenter = false,
+                topLeft = Offset(stroke / 2, stroke / 2),
+                size = Size(this.size.width - stroke, this.size.height - stroke),
+                style = Stroke(stroke, cap = StrokeCap.Round),
+            )
+        }
+        if (showSeconds) {
+            Text(
+                seconds.toString(),
+                Modifier.scale(if (urgent) pulse(1.15f) else 1f),
+                color = if (urgent) GameTheme.red else GameTheme.text,
+                fontSize = (size.value * 0.42f).sp,
+                fontWeight = FontWeight.Black,
+            )
+        }
+    }
+}
+
+/** The mood emoji you can send. Pops open under the top bar. */
+@Composable
+private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium)) }
+    Column(
+        modifier
+            .graphicsLayer {
+                scaleX = appear.value
+                scaleY = appear.value
+                alpha = appear.value.coerceIn(0f, 1f)
+                transformOrigin = TransformOrigin(1f, 0f)
+            }
+            .clip(RoundedCornerShape(20.dp))
+            .background(GameTheme.wild.copy(alpha = 0.92f))
+            .border(1.5.dp, GameTheme.panelStrong, RoundedCornerShape(20.dp))
+            .padding(8.dp),
+    ) {
+        GameTheme.reactions.indices.chunked(REACTIONS_PER_ROW).forEach { row ->
+            Row {
+                row.forEach { i ->
+                    Text(
+                        GameTheme.reaction(i),
+                        Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onPick(i) }
+                            .padding(6.dp),
+                        fontSize = 28.sp,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -510,4 +574,5 @@ private fun PhaseKind.isLive() = this != PhaseKind.ROUND_OVER && this != PhaseKi
 
 /** Hand cards lean around a point this far down their height, below the card itself. */
 private const val HAND_PIVOT = 1.2f
+private const val REACTIONS_PER_ROW = 6
 private val PILE_SHAPE = RoundedCornerShape(TABLE_CARD_WIDTH * 0.11f)

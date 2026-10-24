@@ -147,4 +147,24 @@ class TableLogicTest {
         assertEquals("Cy caught you! +2", describe(EventView.PenaltyApplied(0, 2, 2), view))
         assertNull(describe(EventView.StarterFlipped(card(9, Face.ONE)), view))
     }
+
+    @Test
+    fun `action cards, colors and UNO get announced, plain numbers don't`() {
+        val view = table().view(0)
+        assertEquals(
+            Announcement("SKIP!", "Ben played a Skip", CardColor.RED, "Skip!"),
+            announcementFor(EventView.CardPlayed(1, card(9, Face.SKIP)), view),
+        )
+        assertEquals("+4", announcementFor(EventView.CardPlayed(0, card(9, Face.WILD_DRAW_FOUR, null)), view)?.title)
+        assertEquals("You played a Wild Draw Four", announcementFor(EventView.CardPlayed(0, card(9, Face.WILD_DRAW_FOUR, null)), view)?.detail)
+        assertEquals("Draw two!", announcementFor(EventView.CardPlayed(2, card(9, Face.DRAW_TWO)), view)?.spoken)
+        assertEquals("REVERSE!", announcementFor(EventView.CardPlayed(3, card(9, Face.REVERSE)), view)?.title)
+        assertEquals(
+            Announcement("BLUE!", "Cy picked blue", CardColor.BLUE, "Blue!"),
+            announcementFor(EventView.WildColorChosen(2, CardColor.BLUE), view),
+        )
+        assertEquals("Dee called UNO", announcementFor(EventView.LastCardCalled(3), view)?.detail)
+        assertNull(announcementFor(EventView.CardPlayed(1, card(9, Face.SEVEN)), view))
+        assertNull(announcementFor(EventView.Skipped(1), view))
+    }
 }

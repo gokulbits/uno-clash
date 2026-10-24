@@ -95,6 +95,7 @@ fun FeedbackToggles(feedback: FeedbackSettings, onChange: (FeedbackSettings) -> 
     Toggle("Sound effects", feedback.sound) { onChange(feedback.copy(sound = it)) }
     Toggle("Music", feedback.music) { onChange(feedback.copy(music = it)) }
     Toggle("Vibration", feedback.haptics) { onChange(feedback.copy(haptics = it)) }
+    Toggle("Announce cards out loud", feedback.voice) { onChange(feedback.copy(voice = it)) }
 }
 
 /** The quick version for the game screen: just the switches, no leaving the table. */

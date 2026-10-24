@@ -1,25 +1,36 @@
 package dev.colorclash.app.ui.game.fx
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
@@ -57,6 +68,8 @@ fun FxLayer(fx: TableFx, modifier: Modifier = Modifier) {
         fx.bursts.forEach { BurstView(it) }
         fx.flights.forEach { FlightView(it) }
         fx.flashes.forEach { FlashView(it) }
+        fx.banner?.let { key(it) { BannerView(it) } }
+        fx.reactions.forEach { r -> key(r.id) { ReactionView(r) { fx.reactionDone(r) } } }
         Confetti(fx.confettiBursts, fx.bigConfetti)
     }
 }
@@ -138,6 +151,112 @@ private fun FlashView(flash: Flash) {
     )
 }
 
+/**
+ * The callout for an action card or a picked color: slams in a little past full size with a
+ * tilt, holds, then swells and fades. Painted in the card's color, or all four for a wild.
+ */
+@Composable
+private fun BannerView(banner: Banner) {
+    val a = banner.announcement
+    val fill = a.color?.let { SolidColor(GameTheme.cardColor(it)) } ?: Brush.linearGradient(GameTheme.cardColors)
+    val shape = RoundedCornerShape(26.dp)
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier
+                .offset(y = (-36).dp)
+                .graphicsLayer {
+                    val p = banner.progress.value
+                    val enter = if (p < 0.16f) POP.transform(p / 0.16f) else 1f
+                    val exit = ((p - 0.78f) / 0.22f).coerceIn(0f, 1f)
+                    val s = 0.35f + 0.65f * enter + 0.15f * exit
+                    scaleX = s
+                    scaleY = s
+                    rotationZ = -10f + 6f * enter
+                    alpha = 1f - exit
+                    shadowElevation = 16.dp.toPx()
+                    this.shape = shape
+                    clip = true
+                }
+                .background(fill)
+                .border(3.dp, Color.White.copy(alpha = 0.8f), shape)
+                .padding(horizontal = 30.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                a.title,
+                color = Color.White,
+                fontSize = 50.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = GameTheme.displayFont,
+                style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 5f), blurRadius = 8f)),
+            )
+            Text(
+                a.detail,
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.5f), Offset(0f, 2f), blurRadius = 4f)),
+            )
+        }
+    }
+}
+
+/**
+ * An emoji reaction: the big one pops out of the seat with a wobble and floats up a little,
+ * while a stream of small copies drifts away and fades, like hearts on a live stream.
+ */
+@Composable
+private fun ReactionView(reaction: ReactionFx, onDone: () -> Unit) {
+    val progress = remember(reaction) { Animatable(0f) }
+    LaunchedEffect(reaction) {
+        progress.animateTo(1f, tween(REACTION_MILLIS, easing = LinearEasing))
+        onDone()
+    }
+    val emoji = GameTheme.reaction(reaction.reaction)
+    val density = LocalDensity.current
+    val rise = with(density) { 96.dp.toPx() }
+    val sway = with(density) { 28.dp.toPx() }
+    val sparks = remember(reaction) {
+        val r = Random(reaction.id)
+        List(SPARKS) { i -> Spark(start = i * 0.06f + r.nextFloat() * 0.05f, drift = r.nextFloat() * 2 - 1, size = 16f + r.nextFloat() * 10f, phase = r.nextFloat() * 6.28f) }
+    }
+    sparks.forEach { s ->
+        Text(
+            emoji,
+            Modifier
+                .placeAt(reaction.at, centered = true)
+                .graphicsLayer {
+                    val p = ((progress.value - s.start) / (1 - s.start)).coerceIn(0f, 1f)
+                    translationY = -rise * 1.4f * p
+                    translationX = sway * (s.drift * p + 0.35f * sin(p * 9f + s.phase))
+                    val grow = (p / 0.12f).coerceAtMost(1f)
+                    scaleX = grow
+                    scaleY = grow
+                    alpha = if (p <= 0f) 0f else 1f - p
+                },
+            fontSize = s.size.sp,
+        )
+    }
+    Text(
+        emoji,
+        Modifier
+            .placeAt(reaction.at, centered = true)
+            .graphicsLayer {
+                val p = progress.value
+                val pop = if (p < 0.18f) POP.transform(p / 0.18f) else 1f
+                scaleX = pop
+                scaleY = pop
+                rotationZ = sin(p * 6 * PI).toFloat() * 16f * (1 - p)
+                translationY = -rise * 0.45f * p
+                alpha = if (p < 0.75f) 1f else (1 - p) / 0.25f
+            },
+        fontSize = 48.sp,
+        style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.35f), Offset(0f, 4f), blurRadius = 8f)),
+    )
+}
+
+private class Spark(val start: Float, val drift: Float, val size: Float, val phase: Float)
+
 @Composable
 private fun BurstView(burst: Burst) {
     Canvas(Modifier.fillMaxSize()) {
@@ -212,5 +331,7 @@ private fun Modifier.placeAt(at: Offset, centered: Boolean = false): Modifier = 
 }
 
 private const val BURST_RAYS = 12
+private const val REACTION_MILLIS = 2400
+private const val SPARKS = 6
 private const val MAX_CONFETTI = 120
 private const val CONFETTI_NANOS = 3_200_000_000L

@@ -59,6 +59,11 @@ object GameTheme {
     val avatars = listOf("🦊", "🐼", "🐸", "🐙", "🦄", "🐯", "🐵", "🐧", "🐲", "🐝", "🦁", "🐨")
     val avatarBackgrounds = listOf(red, blue, green, yellow, Color(0xFFB04DFF), Color(0xFF00C2D1))
 
+    /** Mood emoji players can send. Exactly REACTION_COUNT of them, in the order the protocol numbers them. */
+    val reactions = listOf("😂", "😍", "😎", "😮", "😢", "😡", "🤯", "🥳", "👍", "👏", "🔥", "😴")
+
+    fun reaction(index: Int): String = reactions[index.mod(reactions.size)]
+
     fun avatar(index: Int): String = avatars[index.mod(avatars.size)]
     fun avatarBackground(index: Int): Color = avatarBackgrounds[index.mod(avatarBackgrounds.size)]
 }

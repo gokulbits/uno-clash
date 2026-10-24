@@ -24,8 +24,10 @@ import dev.colorclash.app.feedback.Feedback
 import dev.colorclash.app.feedback.Sfx
 import dev.colorclash.app.feedback.YOUR_TURN_CUE
 import dev.colorclash.app.feedback.cueFor
+import dev.colorclash.app.ui.game.Announcement
 import dev.colorclash.app.ui.game.HAND_CARD_WIDTH
 import dev.colorclash.app.ui.game.TABLE_CARD_WIDTH
+import dev.colorclash.app.ui.game.announcementFor
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.EventView
 import dev.colorclash.protocol.PhaseKind
@@ -35,6 +37,7 @@ import dev.colorclash.rules.Card
 import dev.colorclash.rules.Direction
 import dev.colorclash.rules.Face
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -90,6 +93,14 @@ class Burst(val at: Offset, val color: Color) {
     val progress = Animatable(0f)
 }
 
+/** The big callout in the middle of the table. */
+class Banner(val announcement: Announcement) {
+    val progress = Animatable(0f)
+}
+
+/** One emoji reaction floating up from a seat. Its own composable runs the animation. */
+class ReactionFx(val id: Int, val at: Offset, val reaction: Int)
+
 /**
  * Turns host updates into animations, one update at a time. The table shows [displayed], which
  * only moves on once an update's events have played, so effects never trip over each other.
@@ -120,6 +131,10 @@ class TableFx {
         private set
     val pileBump = Animatable(0f)
 
+    var banner by mutableStateOf<Banner?>(null)
+        private set
+    val reactions = mutableStateListOf<ReactionFx>()
+
     val arrowSpin = Animatable(0f)
     val shake = Animatable(0f)
     val penaltyGlow = Animatable(0f)
@@ -135,6 +150,8 @@ class TableFx {
     private val pending = AtomicInteger(0)
     /** For effects that shouldn't hold up the next event, like the pile settling. */
     private var sideEffects: CoroutineScope? = null
+    private var bannerJob: Job? = null
+    private var nextReactionId = 0
 
     fun submit(update: ServerMessage.Game) {
         pending.incrementAndGet()
@@ -151,6 +168,17 @@ class TableFx {
     }
 
     fun layer(): Modifier = Modifier.onGloballyPositioned { layerOrigin = it.positionInWindow() }
+
+    /** Someone's emoji. Shown straight away, not queued behind the game's own effects. */
+    fun react(seat: Int, reaction: Int) {
+        val at = center(Anchor.Seat(seat)) ?: return
+        reactions += ReactionFx(nextReactionId++, at, reaction)
+        while (reactions.size > MAX_REACTIONS) reactions.removeAt(0)
+    }
+
+    fun reactionDone(reaction: ReactionFx) {
+        reactions -= reaction
+    }
 
     /** Runs for as long as the room screen is up. Must be launched from composition so animations have a frame clock. */
     suspend fun run(feedback: Feedback) = coroutineScope {
@@ -170,6 +198,8 @@ class TableFx {
         hiddenCards.clear()
         incomingCards.clear()
         clearPile(cleared = false)
+        reactions.clear()
+        banner = null
     }
 
     private suspend fun play(update: ServerMessage.Game, feedback: Feedback) {
@@ -189,7 +219,11 @@ class TableFx {
                 continue
             }
             feedback.cue(cueFor(event, view.you))
+            val callout = announcementFor(event, view)
+            // A played card is called out as it lands; a picked color or an UNO call straight away.
+            if (event !is EventView.CardPlayed) callout?.let { announce(it, feedback) }
             animate(event, view, feedback)
+            if (event is EventView.CardPlayed) callout?.let { announce(it, feedback) }
         }
     }
 
@@ -356,6 +390,21 @@ class TableFx {
         }
     }
 
+    /** Pops the callout over the table and says it out loud. Doesn't hold up the next event. */
+    private fun announce(announcement: Announcement, feedback: Feedback) {
+        feedback.say(announcement.spoken)
+        bannerJob?.cancel()
+        val shown = Banner(announcement)
+        banner = shown
+        bannerJob = sideEffects?.launch {
+            try {
+                shown.progress.animateTo(1f, tween(BANNER_MILLIS, easing = LinearEasing))
+            } finally {
+                if (banner === shown) banner = null
+            }
+        }
+    }
+
     /** A card hits the pile: it joins it straight away, with a soft thud. */
     private fun land(card: Card, feedback: Feedback) {
         placeOnPile(card)
@@ -449,6 +498,8 @@ class TableFx {
         private const val DEAL_FLIGHTS_PER_PLAYER = 3
         private const val DEAL_GAP_MILLIS = 55L
         private const val PILE_DEPTH = 3
+        private const val BANNER_MILLIS = 1400
+        private const val MAX_REACTIONS = 12
         private val HAND_SCALE = HAND_CARD_WIDTH / TABLE_CARD_WIDTH
         private const val SEAT_SCALE = 0.42f
         /** Quick off the hand, gentle into place. */

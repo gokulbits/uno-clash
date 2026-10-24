@@ -5,6 +5,7 @@ import dev.colorclash.protocol.GameSettings
 import dev.colorclash.protocol.JoinError
 import dev.colorclash.protocol.LobbyView
 import dev.colorclash.protocol.PROTOCOL_VERSION
+import dev.colorclash.protocol.REACTION_COUNT
 import dev.colorclash.protocol.SeatInfo
 import dev.colorclash.protocol.ServerMessage
 import dev.colorclash.protocol.toAction
@@ -152,6 +153,7 @@ class GameHost(
                 val error = apply(message.intent.toAction(seats.indexOf(seat)))
                 if (error != null) connection.send(ServerMessage.ActionRejected(error))
             }
+            is ClientMessage.React -> react(seat, message.reaction)
             ClientMessage.Leave -> {
                 seatByConnection.remove(connection)
                 seat.connection = null
@@ -196,6 +198,14 @@ class GameHost(
         seatByConnection[connection] = seat
         connection.send(ServerMessage.Welcome(seats.indexOf(seat), seat.token, roomCode))
         if (game == null) lobbyChanged() else gameChanged(emptyList())
+    }
+
+    private fun react(seat: Seat, reaction: Int) {
+        if (game == null || reaction !in 0 until REACTION_COUNT) return
+        if (seat.lastReaction?.let { it.elapsedNow() < config.reactionCooldown } == true) return
+        seat.lastReaction = TimeSource.Monotonic.markNow()
+        val from = seats.indexOf(seat)
+        seats.forEach { it.connection?.send(ServerMessage.Reaction(from, reaction)) }
     }
 
     private fun reject(connection: Connection, error: JoinError, message: String) {
@@ -425,6 +435,7 @@ class GameHost(
         var ready = false
         var botControlled = false
         var graceJob: Job? = null
+        var lastReaction: TimeMark? = null
         val isReady get() = ready || isBot || isHost
     }
 

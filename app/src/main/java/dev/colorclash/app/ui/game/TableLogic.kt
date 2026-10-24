@@ -4,6 +4,7 @@ import dev.colorclash.protocol.EventView
 import dev.colorclash.protocol.PhaseKind
 import dev.colorclash.protocol.PlayerView
 import dev.colorclash.rules.Card
+import dev.colorclash.rules.CardColor
 import dev.colorclash.rules.Direction
 import dev.colorclash.rules.DrawReason
 import dev.colorclash.rules.Face
@@ -84,9 +85,35 @@ fun arcPositions(count: Int): List<Pair<Float, Float>> {
 fun sortHand(hand: List<Card>): List<Card> =
     hand.sortedWith(compareBy<Card>({ it.color?.ordinal ?: Int.MAX_VALUE }, { it.face.ordinal }))
 
+/** A big table-wide callout: a card that does something landing, a color being picked, someone calling UNO. */
+data class Announcement(val title: String, val detail: String, val color: CardColor?, val spoken: String)
+
+fun announcementFor(event: EventView, view: PlayerView): Announcement? {
+    fun who(seat: Int) = view.who(seat)
+    return when (event) {
+        is EventView.CardPlayed -> {
+            val (title, spoken, name) = when (event.card.face) {
+                Face.SKIP -> Triple("SKIP!", "Skip!", "a Skip")
+                Face.REVERSE -> Triple("REVERSE!", "Reverse!", "a Reverse")
+                Face.DRAW_TWO -> Triple("+2", "Draw two!", "a Draw Two")
+                Face.WILD -> Triple("WILD!", "Wild!", "a Wild")
+                Face.WILD_DRAW_FOUR -> Triple("+4", "Wild draw four!", "a Wild Draw Four")
+                else -> return null
+            }
+            Announcement(title, "${who(event.player)} played $name", event.card.color, spoken)
+        }
+        is EventView.WildColorChosen -> {
+            val name = event.color.name.lowercase()
+            Announcement("${event.color.name}!", "${who(event.player)} picked $name", event.color, name.replaceFirstChar { it.uppercase() } + "!")
+        }
+        is EventView.LastCardCalled -> Announcement("UNO!", "${who(event.player)} called UNO", null, "UNO!")
+        else -> null
+    }
+}
+
 /** One line of table chatter for an event, or null for events not worth a line. */
 fun describe(event: EventView, view: PlayerView): String? {
-    fun who(seat: Int) = if (seat == view.you) "You" else view.nameOf(seat)
+    fun who(seat: Int) = view.who(seat)
     return when (event) {
         is EventView.RoundStarted -> "Round ${event.round} — ${who(event.dealer)} dealt"
         is EventView.CardPlayed -> "${who(event.player)} ${if (event.jumpIn) "jumped in with" else "played"} ${event.card.label()}"
@@ -128,5 +155,7 @@ fun Card.label(): String {
 }
 
 fun PlayerView.nameOf(seat: Int): String = seats.getOrNull(seat)?.info?.name ?: "Someone"
+
+private fun PlayerView.who(seat: Int) = if (seat == you) "You" else nameOf(seat)
 
 private fun plural(count: Int, word: String) = if (count == 1) "1 $word" else "$count ${word}s"

@@ -10,7 +10,11 @@ A private project for playing with friends, not published anywhere.
 - 2–6 players, any mix of friends and bots, portrait only
 - Standard 108-card deck: Skip, Reverse, Draw 2, Wild, Wild Draw 4
 - "UNO!" calls with catching, the +4 challenge, scoring over rounds to a target
-- House rules you can toggle in the lobby: stacking +2/+4, jump-in, 7-0 swaps, draw until playable, turn timer
+- A fair shuffle: every round is dealt one card at a time around the table from a freshly shuffled deck
+- 15-second turn timer by default (the host can change or turn it off in the lobby)
+- House rules you can toggle in the lobby: stacking +2/+4, jump-in, 7-0 swaps, draw until playable
+- Action cards and picked colors are called out on screen and out loud ("Skip!", "Blue!")
+- Emoji reactions that float up from your seat for everyone to see
 - Join by QR code (the in-app scanner or the stock camera app), room code, nearby-room list, or IP address
 - Dropped players get 60 seconds to come back; after that a bot keeps their seat warm until they rejoin
 - Card animations, sound effects, music and haptics, all switchable in Settings
