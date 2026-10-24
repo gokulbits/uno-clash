@@ -12,7 +12,8 @@ All files in `app/src/main/res/raw/` are synthesized by [`tools/sfx/generate_sou
 | --- | --- |
 | `sfx_shuffle.wav` | Round start, reshuffle, hands swapped or passed |
 | `sfx_deal.wav` | Each card dealt |
-| `sfx_flip.wav` | Card played, starter card |
+| `sfx_flip.wav` | Card thrown, starter card turned over |
+| `sfx_land.wav` | A card landing on the discard pile |
 | `sfx_draw.wav` | Drawing |
 | `sfx_skip.wav` | Skip |
 | `sfx_reverse.wav` | Reverse |
@@ -22,7 +23,7 @@ All files in `app/src/main/res/raw/` are synthesized by [`tools/sfx/generate_sou
 | `sfx_win.wav` | You won the round |
 | `sfx_lose.wav` | Someone else won the round |
 | `sfx_turn.wav` | Your turn |
-| `music_loop.wav` | Background music (128 bpm chiptune, loops) |
+| `music_loop.wav` | Background music (112 bpm electric piano, loops seamlessly) |
 
 To regenerate after tweaking the script:
 

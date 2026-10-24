@@ -12,6 +12,7 @@ enum class Sfx(val res: Int) {
     SHUFFLE(R.raw.sfx_shuffle),
     DEAL(R.raw.sfx_deal),
     FLIP(R.raw.sfx_flip),
+    LAND(R.raw.sfx_land),
     DRAW(R.raw.sfx_draw),
     SKIP(R.raw.sfx_skip),
     REVERSE(R.raw.sfx_reverse),
@@ -59,7 +60,8 @@ class SoundEngine(private val context: Context, private val settings: StateFlow<
     }
 
     private companion object {
-        const val MAX_STREAMS = 6
+        // Dealing overlaps a lot of short sounds.
+        const val MAX_STREAMS = 8
         const val MUSIC_VOLUME = 0.35f
     }
 }
