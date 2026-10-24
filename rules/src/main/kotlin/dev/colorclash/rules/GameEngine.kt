@@ -75,6 +75,8 @@ object GameEngine {
                 else -> null
             }
             is CallLastCard -> when {
+                // Like at a real table: you call it as you play your second-to-last card, not whenever.
+                !isCurrent -> "Call UNO on your turn"
                 state.hand(p).size > 2 -> "Too many cards to call"
                 state.players[p].calledLastCard -> "Already called"
                 else -> null

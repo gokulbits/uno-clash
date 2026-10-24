@@ -14,7 +14,7 @@ data class HostConfig(
     val heartbeatTimeout: Duration = 6.seconds,
     val botTurnDelay: Duration = 900.milliseconds,
     val botCallDelay: Duration = 300.milliseconds,
-    /** Gives humans a fair chance to call "UNO" late before a bot catches them. */
+    /** Gives the humans at the table a fair chance to catch a missed UNO before a bot does. */
     val botCatchDelay: Duration = 2.seconds,
     /** Start the next round on its own after this long. Null waits for the host to do it. */
     val autoNextRound: Duration? = null,

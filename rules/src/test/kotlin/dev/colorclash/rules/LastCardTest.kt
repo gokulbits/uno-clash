@@ -56,11 +56,26 @@ class LastCardTest {
     }
 
     @Test
-    fun `calling late still saves you if nobody caught you yet`() {
+    fun `once your turn has passed it's too late to call`() {
         val (exposed, _) = twoCards.act(PlayCard(0, r5.id))
-        val (after, _) = exposed.act(CallLastCard(0))
-        assertNull(after.exposedPlayer)
-        after.rejects(CatchLastCard(1, 0))
+        exposed.rejects(CallLastCard(0))
+        assertEquals(0, exposed.exposedPlayer)
+        exposed.act(CatchLastCard(1, 0))
+    }
+
+    @Test
+    fun `only the player whose turn it is can call`() {
+        twoCards.copy(current = 1).rejects(CallLastCard(0))
+    }
+
+    @Test
+    fun `you can still call while picking a wild's color, it's your turn`() {
+        val wild = t.wild()
+        val s = t.state(listOf(wild, t.blue(ONE)), others(), top = t.red(NINE))
+        val (picking, _) = s.act(PlayCard(0, wild.id))
+        val (called, _) = picking.act(CallLastCard(0))
+        assertNull(called.exposedPlayer)
+        called.rejects(CatchLastCard(1, 0))
     }
 
     @Test

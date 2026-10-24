@@ -45,8 +45,8 @@ Requires Android 8.0 (API 26) or newer.
 On Android 17 and newer the app asks for permission to talk to devices on your local network the first
 time you host or join. The game can't work without it.
 
-During play: tap a highlighted card (or drag it up) to play it, tap the draw pile to draw, and hit
-**UNO!** before you're down to one. If someone forgets, a **CATCH!** button appears on their seat.
+During play: tap a highlighted card (or drag it up) to play it, tap the draw pile to draw, and on your
+turn hit **UNO!** before you play your second-to-last card. If someone forgets, a **CATCH!** button appears on their seat.
 
 ## Troubleshooting
 
