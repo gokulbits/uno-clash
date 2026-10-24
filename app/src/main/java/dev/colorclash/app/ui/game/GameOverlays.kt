@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -15,9 +16,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -42,26 +47,48 @@ private const val MAX_HISTORY_ROWS = 5
 
 /** Dims the table and holds a choice the player has to make. */
 @Composable
-private fun Overlay(content: @Composable ColumnScope.() -> Unit) {
+private fun Overlay(onDismiss: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.6f))
-            // Swallow taps so nothing underneath gets played by accident.
-            .clickable(enabled = true, onClick = {}),
+            // Taps outside close it if it can be closed, and never reach the table underneath.
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss?.invoke() },
         contentAlignment = Alignment.Center,
     ) {
-        Column(
+        Box(
             Modifier
                 .fillMaxWidth()
                 .padding(24.dp)
                 .clip(RoundedCornerShape(28.dp))
                 .background(GameTheme.tableTop)
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            content = content,
-        )
+                // Taps on the card itself mustn't count as tapping outside.
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                content = content,
+            )
+            if (onDismiss != null) {
+                Text(
+                    "✕",
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(10.dp)
+                        .clip(CircleShape)
+                        .background(GameTheme.panel)
+                        .clickable(onClick = onDismiss)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
     }
 }
 
@@ -135,13 +162,14 @@ fun ScoreBoard(
     onNextRound: () -> Unit,
     onBackToLobby: () -> Unit,
     onLeave: () -> Unit,
+    onClose: () -> Unit,
 ) {
     val gameOver = view.phase == PhaseKind.GAME_OVER
     val target = view.settings.rules.targetScore
     val pop = remember { Animatable(0.6f) }
     LaunchedEffect(view.round, view.phase) { pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 300f)) }
 
-    Overlay {
+    Overlay(onDismiss = onClose) {
         Text(if (gameOver) "🏆" else "🎉", fontSize = 48.sp, modifier = Modifier.scale(pop.value))
         Text(headline, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
         view.roundPoints?.let { Text("+$it points", color = GameTheme.yellow, fontWeight = FontWeight.Black) }
@@ -196,6 +224,11 @@ fun ScoreBoard(
             isHost -> BigButton("Next round", GameTheme.green, onNextRound)
             gameOver -> BigButton("Leave", GameTheme.blue, onLeave)
             else -> Text("Waiting for the host to start the next round…", color = GameTheme.mutedText, textAlign = TextAlign.Center)
+        }
+        if (!gameOver) {
+            TextButton(onClick = onLeave) {
+                Text(if (isHost) "Close room" else "Leave game", color = GameTheme.mutedText)
+            }
         }
     }
 }

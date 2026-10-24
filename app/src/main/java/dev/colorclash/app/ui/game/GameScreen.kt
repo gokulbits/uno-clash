@@ -1,5 +1,6 @@
 package dev.colorclash.app.ui.game
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -106,6 +107,10 @@ fun GameScreen(
     val controls = tableControls(view)
     var showSettings by remember { mutableStateOf(false) }
     var showReactions by remember { mutableStateOf(false) }
+    val roundOver = view.phase == PhaseKind.ROUND_OVER || view.phase == PhaseKind.GAME_OVER
+    // Closing the scoreboard lasts until the next round ends; then it opens again by itself.
+    var scoresClosed by remember(view.round, view.phase) { mutableStateOf(false) }
+    BackHandler(enabled = roundOver && !scoresClosed) { scoresClosed = true }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().graphicsLayer { translationX = fx.shake.value }) {
@@ -146,7 +151,18 @@ fun GameScreen(
 
             // Your actions, with the reaction button at your side of the table.
             Box(Modifier.fillMaxWidth()) {
+                if (roundOver && scoresClosed) {
+                RoundOverBar(
+                    gameOver = view.phase == PhaseKind.GAME_OVER,
+                    isHost = isHost,
+                    onScores = { scoresClosed = false },
+                    onNextRound = onNextRound,
+                    onBackToLobby = onBackToLobby,
+                    modifier = Modifier.padding(end = REACTION_BUTTON_SIZE),
+                )
+            } else {
                 ActionBar(view, controls, onIntent, Modifier.padding(end = REACTION_BUTTON_SIZE))
+            }
                 ReactionButton(
                     open = showReactions,
                     onClick = { showReactions = !showReactions },
@@ -172,8 +188,8 @@ fun GameScreen(
 
         if (controls.pickingColor) ColorPicker(view.hand, onPick = { onIntent(PlayerIntent.ChooseColor(it)) })
         if (controls.pickingSwapTarget) SwapPicker(view, onPick = { onIntent(PlayerIntent.SwapWith(it)) })
-        if (view.phase == PhaseKind.ROUND_OVER || view.phase == PhaseKind.GAME_OVER) {
-            ScoreBoard(view, controls.headline, history, isHost, onNextRound, onBackToLobby, onLeave)
+        if (roundOver && !scoresClosed) {
+            ScoreBoard(view, controls.headline, history, isHost, onNextRound, onBackToLobby, onLeave, onClose = { scoresClosed = true })
         }
 
         notice?.let {
@@ -384,6 +400,32 @@ private fun ActionBar(view: PlayerView, controls: TableControls, onIntent: (Play
                 Modifier.scale(if (controls.urgeLastCard) pulse(1.12f) else 1f),
                 textColor = Color.Black,
             ) { onIntent(PlayerIntent.CallLastCard) }
+        }
+    }
+}
+
+/** With the scoreboard closed: a way back to it, and for the host, a way on. */
+@Composable
+private fun RoundOverBar(
+    gameOver: Boolean,
+    isHost: Boolean,
+    onScores: () -> Unit,
+    onNextRound: () -> Unit,
+    onBackToLobby: () -> Unit,
+    modifier: Modifier,
+) {
+    Row(
+        modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).height(48.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ActionButton("Scores", GameTheme.blue, onClick = onScores)
+        if (isHost) {
+            if (gameOver) {
+                ActionButton("Back to lobby", GameTheme.green, onClick = onBackToLobby)
+            } else {
+                ActionButton("Next round", GameTheme.green, onClick = onNextRound)
+            }
         }
     }
 }
