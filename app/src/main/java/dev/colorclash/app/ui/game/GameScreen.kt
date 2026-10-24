@@ -112,7 +112,7 @@ fun GameScreen(
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onLeave) { Text("‹ Leave", color = GameTheme.text) }
                 Text("Round ${view.round}", Modifier.weight(1f), color = GameTheme.mutedText, textAlign = TextAlign.Center)
-                Text("${view.seats[view.you].score} pts", fontWeight = FontWeight.Bold)
+                Text("${view.seats[view.you].score} pts", color = GameTheme.text, fontWeight = FontWeight.Bold)
                 TextButton(onClick = { showSettings = true }) { Text("⚙", fontSize = 20.sp, color = GameTheme.text) }
             }
 
@@ -256,10 +256,17 @@ private fun OpponentSeat(
                 !seat.info.connected -> " 📶"
                 else -> ""
             },
+            // On a dark pill so it reads over anything, and yellow while it's their turn.
+            Modifier
+                .offset(y = (-6).dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(GameTheme.wild.copy(alpha = 0.8f))
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+            color = if (isCurrent) GameTheme.yellow else GameTheme.text,
             fontWeight = if (isCurrent) FontWeight.Black else FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            fontSize = 13.sp,
+            fontSize = 14.sp,
         )
         when {
             canCatch -> Text(
