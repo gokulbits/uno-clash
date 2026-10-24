@@ -1,5 +1,6 @@
 package dev.colorclash.net.client
 
+import dev.colorclash.protocol.AUTO_AVATAR_COLOR
 import dev.colorclash.protocol.ClientMessage
 import dev.colorclash.protocol.Codec
 import dev.colorclash.protocol.JoinError
@@ -29,6 +30,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
@@ -86,15 +88,19 @@ class GameClient(
     private val _game = MutableStateFlow<PlayerView?>(null)
     val game: StateFlow<PlayerView?> = _game.asStateFlow()
 
-    /** Every game update in order, events included. Drives animations and sounds. */
+    /** Every game update in order, for animations and sounds. */
     private val _updates = MutableSharedFlow<ServerMessage.Game>(extraBufferCapacity = 256)
     val updates: SharedFlow<ServerMessage.Game> = _updates.asSharedFlow()
 
-    /** Emoji reactions from anyone at the table, yours included once the host echoes them. */
+    /** Reactions from everyone, yours included once the host echoes them. */
     private val _reactions = MutableSharedFlow<ServerMessage.Reaction>(extraBufferCapacity = 32)
     val reactions: SharedFlow<ServerMessage.Reaction> = _reactions.asSharedFlow()
 
     /** Short messages worth showing, like a rejected move. */
+    /** Photos by id (base64 JPEG), kept across reconnects. */
+    private val _photos = MutableStateFlow<Map<String, String>>(emptyMap())
+    val photos: StateFlow<Map<String, String>> = _photos.asStateFlow()
+
     private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val notices: SharedFlow<String> = _notices.asSharedFlow()
 
@@ -110,10 +116,20 @@ class GameClient(
     private var attempt = 0
     private var lostAt: TimeMark? = null
 
-    fun connect(host: String, port: Int, roomCode: String, name: String, avatar: Int = 0, sessionToken: String? = null) {
+    fun connect(
+        host: String,
+        port: Int,
+        roomCode: String,
+        name: String,
+        avatar: Int = 0,
+        sessionToken: String? = null,
+        avatarColor: Int = AUTO_AVATAR_COLOR,
+        avatarFrame: Int = 0,
+        photo: String? = null,
+    ) {
         check(loop == null) { "Already connected; make a new client to join somewhere else" }
         this.sessionToken = sessionToken
-        val target = Target(host, port, roomCode.trim().uppercase(), name, avatar)
+        val target = Target(host, port, roomCode.trim().uppercase(), name, avatar, avatarColor, avatarFrame, photo)
         loop = scope.launch { connectLoop(target) }
     }
 
@@ -219,7 +235,7 @@ class GameClient(
             session = this
             opened.complete(Unit)
             val out = Channel<ClientMessage>(Channel.UNLIMITED)
-            out.trySend(ClientMessage.Hello(PROTOCOL_VERSION, target.roomCode, target.name, target.avatar, sessionToken))
+            out.trySend(ClientMessage.Hello(PROTOCOL_VERSION, target.roomCode, target.name, target.avatar, sessionToken, target.avatarColor, target.avatarFrame, target.photo))
             val writer = launch { for (message in out) send(Frame.Text(Codec.encode(message))) }
             val pinger = launch {
                 var nonce = 0L
@@ -279,6 +295,7 @@ class GameClient(
             }
             is ServerMessage.ActionRejected -> _notices.tryEmit(message.reason)
             is ServerMessage.Reaction -> _reactions.tryEmit(message)
+            is ServerMessage.Photo -> _photos.update { it + (message.id to message.data) }
             is ServerMessage.Pong -> Unit
             is ServerMessage.Closed -> return Outcome.Ended(message.reason)
         }
@@ -288,7 +305,16 @@ class GameClient(
     private fun backoff(attempt: Int): Duration =
         (config.minBackoff * (1 shl (attempt - 1).coerceAtMost(6))).coerceAtMost(config.maxBackoff)
 
-    private data class Target(val host: String, val port: Int, val roomCode: String, val name: String, val avatar: Int)
+    private data class Target(
+        val host: String,
+        val port: Int,
+        val roomCode: String,
+        val name: String,
+        val avatar: Int,
+        val avatarColor: Int,
+        val avatarFrame: Int,
+        val photo: String?,
+    )
 
     private sealed interface Outcome {
         data object Dropped : Outcome

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -68,20 +67,6 @@ fun Logo(modifier: Modifier = Modifier, letterSize: Dp = 34.dp) {
 }
 
 @Composable
-fun AvatarBadge(index: Int, modifier: Modifier = Modifier, size: Dp = 48.dp, ring: Color? = null) {
-    Box(
-        modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(GameTheme.avatarBackground(index))
-            .then(if (ring != null) Modifier.border(3.dp, ring, CircleShape) else Modifier),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(GameTheme.avatar(index), fontSize = (size.value * 0.55f).sp)
-    }
-}
-
-@Composable
 fun BigButton(
     text: String,
     color: Color,
@@ -107,7 +92,6 @@ fun BigButton(
     }
 }
 
-/** Translucent rounded box that sits on the table background. */
 @Composable
 fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(

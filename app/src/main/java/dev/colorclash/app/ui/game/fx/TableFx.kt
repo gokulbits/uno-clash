@@ -57,7 +57,7 @@ sealed interface Anchor {
     data object DiscardPile : Anchor
 }
 
-/** Where an anchor sits and how it's turned. Hand cards lean around a point below them ([pivotY] of their height). */
+/** Hand cards lean around a point [pivotY] of their height down. */
 class Spot(val bounds: Rect, val rotation: Float = 0f, val pivotY: Float = 0.5f) {
     val center: Offset
         get() {
@@ -87,7 +87,6 @@ class Flight(
     val progress = Animatable(0f)
 }
 
-/** A stamp slammed onto a player's seat (skip, +N, challenge result), bigger when it's you. */
 class StampFx(val at: Offset, val forYou: Boolean, val stamp: SeatStamp) {
     val progress = Animatable(0f)
 }
@@ -100,12 +99,10 @@ class Burst(val at: Offset, val color: Color) {
     val progress = Animatable(0f)
 }
 
-/** The big callout in the middle of the table. */
 class Banner(val announcement: Announcement) {
     val progress = Animatable(0f)
 }
 
-/** One emoji reaction floating up from a seat. Its own composable runs the animation. */
 class ReactionFx(val id: Int, val at: Offset, val reaction: Int)
 
 /**
@@ -126,10 +123,7 @@ class TableFx {
     /** Cards already in your hand's layout but still flying in; their slot stays empty until they land. */
     val incomingCards = mutableStateListOf<Int>()
 
-    /**
-     * The discard pile as it looks right now. A thrown card joins it the moment it lands rather
-     * than when the whole update is done, and the last few stay underneath at their own angle.
-     */
+    /** The pile as it looks now: a thrown card joins it as it lands, not when the update is done. */
     var pileTop by mutableStateOf<Card?>(null)
         private set
     val pileUnder = mutableStateListOf<Card>()
@@ -145,11 +139,11 @@ class TableFx {
     val arrowSpin = Animatable(0f)
     val shake = Animatable(0f)
     val stamps = mutableStateListOf<StampFx>()
-    /** The seat a bad stamp is knocking sideways right now (yours means your hand), and by how much. */
+    /** The seat a bad stamp is knocking sideways (yours means your hand). */
     var joltedSeat by mutableStateOf<Int?>(null)
         private set
     val jolt = Animatable(0f)
-    /** The seat a good stamp is bouncing for joy, and how high. */
+    /** The seat a good stamp is bouncing. */
     var cheeredSeat by mutableStateOf<Int?>(null)
         private set
     val cheer = Animatable(0f)
@@ -185,7 +179,7 @@ class TableFx {
 
     fun layer(): Modifier = Modifier.onGloballyPositioned { layerOrigin = it.positionInWindow() }
 
-    /** Someone's emoji. Shown straight away, not queued behind the game's own effects. */
+    /** Shown straight away, not queued behind the game's effects. */
     fun react(seat: Int, reaction: Int) {
         val at = center(Anchor.Seat(seat)) ?: return
         reactions += ReactionFx(nextReactionId++, at, reaction)
@@ -196,7 +190,7 @@ class TableFx {
         reactions -= reaction
     }
 
-    /** Runs for as long as the room screen is up. Must be launched from composition so animations have a frame clock. */
+    /** Launch from composition so animations have a frame clock. */
     suspend fun run(feedback: Feedback) = coroutineScope {
         sideEffects = this
         for (update in queue) {
@@ -323,11 +317,7 @@ class TableFx {
         }
     }
 
-    /**
-     * Deals like a dealer would, a card to each player in turn. Yours fly into their own slots
-     * and turn over as they land, so the hand fans out card by card. Everyone else gets a few
-     * face-down cards, which is enough to read as dealing without dragging on.
-     */
+    /** A card to each player in turn; yours fly into their slots and turn over as they land. */
     private suspend fun deal(dealt: List<EventView.Dealt>, view: PlayerView, feedback: Feedback) = coroutineScope {
         val mine = dealt.firstOrNull { it.player == view.you }?.cards.orEmpty()
         val rounds = dealt.maxOf { it.count }
@@ -408,7 +398,7 @@ class TableFx {
         }
     }
 
-    /** Pops the callout over the table and says it out loud. Doesn't hold up the next event. */
+    /** Doesn't hold up the next event. */
     private fun announce(announcement: Announcement, feedback: Feedback) {
         feedback.say(announcement.spoken)
         bannerJob?.cancel()
@@ -423,7 +413,6 @@ class TableFx {
         }
     }
 
-    /** A card hits the pile: it joins it straight away, with a soft thud. */
     private fun land(card: Card, feedback: Feedback) {
         placeOnPile(card)
         feedback.sfx(Sfx.LAND)

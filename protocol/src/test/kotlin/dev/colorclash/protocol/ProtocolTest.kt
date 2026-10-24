@@ -27,6 +27,7 @@ class ProtocolTest {
     fun `messages round trip through json`() {
         val client = listOf(
             ClientMessage.Hello(PROTOCOL_VERSION, "ABCD", "Sam", 2, "tok"),
+            ClientMessage.Hello(PROTOCOL_VERSION, "ABCD", "Sam", 20, null, avatarColor = 4, avatarFrame = 3, photo = "/9j/AA=="),
             ClientMessage.Intent(PlayerIntent.Play(12)),
             ClientMessage.Intent(PlayerIntent.ChooseColor(CardColor.BLUE)),
             ClientMessage.Intent(PlayerIntent.Draw),
@@ -43,6 +44,7 @@ class ProtocolTest {
             ServerMessage.Game(view, listOf(EventView.Drew(1, 2, DrawReason.TURN))),
             ServerMessage.Lobby(LobbyView("ABCD", 0, seats, settings, canStart = true)),
             ServerMessage.Reaction(2, 7),
+            ServerMessage.Photo("abc123", "/9j/AA=="),
             ServerMessage.Closed("bye"),
         )
         server.forEach { assertEquals(it, Codec.decodeServer(Codec.encode(it))) }
@@ -52,6 +54,14 @@ class ProtocolTest {
     fun `hello json shape is stable`() {
         val json = Codec.encode(ClientMessage.Hello(1, "ABCD", "Sam"))
         assertEquals("""{"type":"hello","protocolVersion":1,"roomCode":"ABCD","name":"Sam"}""", json)
+    }
+
+    @Test
+    fun `an older hello without avatar looks still decodes`() {
+        val hello = Codec.decodeClient("""{"type":"hello","protocolVersion":2,"roomCode":"ABCD","name":"Sam","avatar":5}""")
+        assertEquals(ClientMessage.Hello(2, "ABCD", "Sam", 5), hello)
+        assertEquals(AUTO_AVATAR_COLOR, (hello as ClientMessage.Hello).avatarColor)
+        assertEquals(0, hello.avatarFrame)
     }
 
     @Test

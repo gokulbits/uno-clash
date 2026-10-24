@@ -1,21 +1,15 @@
 package dev.colorclash.app.ui.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -23,17 +17,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import dev.colorclash.app.data.FeedbackSettings
+import dev.colorclash.app.data.LookSettings
 import dev.colorclash.app.data.PlaySettings
 import dev.colorclash.app.data.Stats
 import dev.colorclash.app.data.Profile
-import dev.colorclash.app.ui.components.AvatarBadge
 import dev.colorclash.app.ui.components.Panel
 import dev.colorclash.app.ui.components.SectionTitle
 import dev.colorclash.app.ui.theme.GAME_TITLE
@@ -47,6 +38,8 @@ fun SettingsScreen(
     onFeedbackChange: (FeedbackSettings) -> Unit,
     play: PlaySettings,
     onPlayChange: (PlaySettings) -> Unit,
+    looks: LookSettings,
+    onLooksChange: (LookSettings) -> Unit,
     stats: Stats,
     onBack: () -> Unit,
 ) {
@@ -61,24 +54,13 @@ fun SettingsScreen(
 
         Panel {
             SectionTitle("You")
-            OutlinedTextField(
-                value = profile.name,
-                onValueChange = { onProfileChange(profile.copy(name = it.take(16))) },
-                label = { Text("Your name") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
-            )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
-                itemsIndexed(GameTheme.avatars) { i, _ ->
-                    AvatarBadge(
-                        index = i, size = 52.dp,
-                        ring = if (i == profile.avatar) Color.White else null,
-                        modifier = Modifier.clickable { onProfileChange(profile.copy(avatar = i)) },
-                    )
-                }
-            }
+            ProfileEditor(profile, onProfileChange)
             Text("Name and avatar changes apply the next time you join a room.", color = GameTheme.mutedText, style = MaterialTheme.typography.bodyMedium)
+        }
+
+        Panel {
+            SectionTitle("Table and cards")
+            LooksPicker(looks, onLooksChange)
         }
 
         Panel {

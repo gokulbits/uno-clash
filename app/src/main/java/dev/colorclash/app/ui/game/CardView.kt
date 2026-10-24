@@ -12,6 +12,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextLayoutResult
@@ -33,7 +35,10 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import dev.colorclash.app.ui.theme.BackPattern
+import dev.colorclash.app.ui.theme.CardBackStyle
 import dev.colorclash.app.ui.theme.GameTheme
+import dev.colorclash.app.ui.theme.LocalCardBack
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.CardColor
 import dev.colorclash.rules.Face
@@ -43,15 +48,12 @@ import kotlin.math.min
 
 const val CARD_ASPECT = 1.5f
 
-/** Colorblind-friendly cards: each color also gets its own shape. Provided by the game screen from the player's settings. */
+/** Colorblind mode: each color also gets its own shape. */
 val LocalColorShapes = staticCompositionLocalOf { false }
 val HAND_CARD_WIDTH = 76.dp
 val TABLE_CARD_WIDTH = 92.dp
 
-/**
- * A card face drawn from scratch at whatever size it's shown: paper frame, shaded body, tilted
- * oval, the symbol, and corner marks. Every measurement is a fraction of the card's width.
- */
+/** A card face drawn from scratch. Every measurement is a fraction of the card's width. */
 @Composable
 fun CardFace(card: Card, width: Dp, modifier: Modifier = Modifier, dimmed: Boolean = false, elevation: Dp = 2.dp) {
     val measurer = rememberTextMeasurer()
@@ -71,9 +73,8 @@ fun CardFace(card: Card, width: Dp, modifier: Modifier = Modifier, dimmed: Boole
     )
 }
 
-/** The back every face-down card shares. */
 @Composable
-fun CardBack(width: Dp, modifier: Modifier = Modifier, elevation: Dp = 2.dp) {
+fun CardBack(width: Dp, modifier: Modifier = Modifier, elevation: Dp = 2.dp, style: CardBackStyle = LocalCardBack.current) {
     val measurer = rememberTextMeasurer()
     Spacer(
         modifier
@@ -81,18 +82,15 @@ fun CardBack(width: Dp, modifier: Modifier = Modifier, elevation: Dp = 2.dp) {
             .shadow(elevation, RoundedCornerShape(width * CORNER))
             .drawWithCache {
                 val words = BACK_WORDS.map { measurer.label(it, 0.17f * size.width, this) }
-                onDrawBehind { drawBack(words) }
+                onDrawBehind { drawBack(words, style) }
             },
     )
 }
 
-/**
- * An opponent's hand as you'd see it across a table: one small card back per card, fanned out,
- * so the count reads at a glance. Big hands bunch up like a real one. One canvas draws the
- * whole hand, so a big hand costs one draw, not a composable per card.
- */
+/** An opponent's hand as fanned card backs, so the count reads at a glance. One canvas for the whole hand. */
 @Composable
 fun HandFan(count: Int, modifier: Modifier = Modifier) {
+    val style = LocalCardBack.current
     Canvas(modifier.size(FAN_WIDTH, FAN_HEIGHT)) {
         if (count <= 0) return@Canvas
         val cw = FAN_CARD_WIDTH.toPx()
@@ -102,8 +100,8 @@ fun HandFan(count: Int, modifier: Modifier = Modifier) {
         val top = 4.dp.toPx()
         val drop = Offset(0.6.dp.toPx(), 0.9.dp.toPx())
         val inset = cw * INSET
-        val body = lerp(GameTheme.cardBackGlow, GameTheme.cardBackDeep, 0.5f)
-        val oval = lerp(GameTheme.cardBackOval, GameTheme.cardBackOvalDeep, 0.5f)
+        val body = lerp(style.glow, style.deep, 0.5f)
+        val oval = lerp(style.oval, style.ovalDeep, 0.5f)
         for (i in 0 until count) {
             val t = i - (count - 1) / 2f
             val topLeft = Offset(center.x + t * step - cw / 2, top)
@@ -159,8 +157,6 @@ private fun TextMeasurer.label(text: String, px: Float, density: Density): TextL
     maxLines = 1,
 )
 
-// Shared card stock
-
 private fun DrawScope.drawPaperAndBody(body: Brush, tint: Tint) {
     val w = size.width
     drawRoundRect(
@@ -174,7 +170,6 @@ private fun DrawScope.drawPaperAndBody(body: Brush, tint: Tint) {
         size = Size(w - inset * 2, size.height - inset * 2),
         cornerRadius = CornerRadius(w * 0.075f),
     )
-    // A fine highlight just inside the body's edge.
     val hl = inset + w * 0.022f
     drawRoundRect(
         Color.White.copy(alpha = 0.22f),
@@ -202,8 +197,6 @@ private fun DrawScope.drawQuadrants(topLeft: Offset, ovalSize: Size, tint: Tint)
         drawArc(tint(color), startAngle = i * 90f - 90f, sweepAngle = 90f, useCenter = true, topLeft = topLeft, size = ovalSize)
     }
 }
-
-// Faces
 
 private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResult?, corner: TextLayoutResult?, shapes: Boolean) {
     val w = size.width
@@ -245,7 +238,7 @@ private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResul
         else -> if (bigLabel != null) {
             drawLabel(bigLabel, mid, ink, shade, w, outline = shade)
             if (card.face == Face.SIX || card.face == Face.NINE) {
-                // Tucked right under the digit and a bit narrower than it, like a printed card.
+                // Under the digit and a bit narrower, like a printed card.
                 underline(mid.x, mid.y + w * 0.27f, Size(bigLabel.size.width * 0.75f, w * 0.04f), ink, shade, w * 0.011f)
             }
         }
@@ -263,7 +256,6 @@ private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResul
         rotate(if (at == near) 0f else 180f, pivot = at) {
             when {
                 corner != null -> {
-                    // Outlined and shadowed so they read at a glance in a tight fan.
                     drawLabel(corner, at, white, cornerShade, w * 0.9f, outline = cornerShade, outlineWidth = outline)
                     if (card.face == Face.SIX || card.face == Face.NINE) {
                         underline(at.x, at.y + w * 0.108f, Size(w * 0.13f, w * 0.024f), white, cornerShade, w * 0.01f)
@@ -280,10 +272,7 @@ private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResul
     }
 }
 
-/**
- * The shape that stands for [color] in colorblind mode: red triangle, blue square, green
- * circle, yellow diamond. Drawn in [fill] with an [edge] outline.
- */
+/** Colorblind shapes: red triangle, blue square, green circle, yellow diamond. */
 fun DrawScope.colorShape(color: CardColor, at: Offset, r: Float, fill: Color, edge: Color, edgeWidth: Float) {
     val path = Path().apply {
         when (color) {
@@ -307,20 +296,21 @@ fun DrawScope.colorShape(color: CardColor, at: Offset, r: Float, fill: Color, ed
     drawPath(path, fill)
 }
 
-private fun DrawScope.drawBack(words: List<TextLayoutResult>) {
+private fun DrawScope.drawBack(words: List<TextLayoutResult>, style: CardBackStyle) {
     val w = size.width
     val tint = Tint(false)
     val inset = w * INSET
     val body = Brush.radialGradient(
-        listOf(GameTheme.cardBackGlow, GameTheme.cardBackDeep),
+        listOf(style.glow, style.deep),
         center = Offset(size.width / 2, inset + (size.height - inset * 2) * 0.45f),
         radius = size.height * 0.62f,
     )
     drawPaperAndBody(body, tint)
+    drawPattern(style.pattern)
     inOval { topLeft, ovalSize ->
         drawOvalShadow(topLeft, ovalSize, 0.3f)
         val glow = Brush.radialGradient(
-            listOf(GameTheme.cardBackOval, GameTheme.cardBackOvalDeep),
+            listOf(style.oval, style.ovalDeep),
             center = topLeft + Offset(ovalSize.width * 0.4f, ovalSize.height * 0.35f),
             radius = w * 0.65f,
         )
@@ -328,12 +318,83 @@ private fun DrawScope.drawBack(words: List<TextLayoutResult>) {
         drawOval(Color.White, topLeft, ovalSize, style = Stroke(w * 0.025f))
     }
     rotate(-18f, pivot = center) {
-        drawLabel(words[0], center - Offset(0f, w * 0.1f), Color.White, GameTheme.cardBackInk, w * 0.6f)
-        drawLabel(words[1], center + Offset(0f, w * 0.1f), GameTheme.yellow, GameTheme.cardBackInk, w * 0.6f)
+        drawLabel(words[0], center - Offset(0f, w * 0.1f), Color.White, style.ink, w * 0.6f)
+        drawLabel(words[1], center + Offset(0f, w * 0.1f), style.accent, style.ink, w * 0.6f)
     }
 }
 
-// Symbols
+/** A faint repeating pattern over a card back's body, kept inside its rounded edge. */
+private fun DrawScope.drawPattern(pattern: BackPattern) {
+    if (pattern == BackPattern.PLAIN) return
+    val w = size.width
+    val inset = w * INSET
+    val body = Rect(inset, inset, w - inset, size.height - inset)
+    val ink = Color.White.copy(alpha = 0.09f)
+    val clip = Path().apply { addRoundRect(RoundRect(body, CornerRadius(w * 0.075f))) }
+    clipPath(clip) {
+        val step = w * 0.16f
+        when (pattern) {
+            BackPattern.DIAMONDS -> {
+                val r = step * 0.32f
+                var row = 0
+                var y = body.top
+                while (y < body.bottom + step) {
+                    var x = body.left + if (row % 2 == 0) 0f else step / 2
+                    while (x < body.right + step) {
+                        val d = Path().apply {
+                            moveTo(x, y - r)
+                            lineTo(x + r, y)
+                            lineTo(x, y + r)
+                            lineTo(x - r, y)
+                            close()
+                        }
+                        drawPath(d, ink)
+                        x += step
+                    }
+                    y += step / 2
+                    row++
+                }
+            }
+            BackPattern.STRIPES -> {
+                var x = body.left - body.height
+                while (x < body.right) {
+                    drawLine(ink, Offset(x, body.bottom), Offset(x + body.height, body.top), strokeWidth = step * 0.28f)
+                    x += step
+                }
+            }
+            BackPattern.DOTS -> {
+                var row = 0
+                var y = body.top + step / 2
+                while (y < body.bottom) {
+                    var x = body.left + if (row % 2 == 0) step / 2 else step
+                    while (x < body.right) {
+                        drawCircle(ink, step * 0.2f, Offset(x, y))
+                        x += step
+                    }
+                    y += step * 0.75f
+                    row++
+                }
+            }
+            BackPattern.WAVES -> {
+                var y = body.top
+                while (y < body.bottom + step) {
+                    val wave = Path().apply {
+                        moveTo(body.left, y)
+                        var x = body.left
+                        while (x < body.right) {
+                            quadraticTo(x + step / 4, y - step * 0.22f, x + step / 2, y)
+                            quadraticTo(x + step * 0.75f, y + step * 0.22f, x + step, y)
+                            x += step
+                        }
+                    }
+                    drawPath(wave, ink, style = Stroke(step * 0.14f, cap = StrokeCap.Round))
+                    y += step * 0.6f
+                }
+            }
+            BackPattern.PLAIN -> Unit
+        }
+    }
+}
 
 /**
  * Draws [text] centred on [at], with a soft drop shadow and an optional outline. Shadow offsets
@@ -387,7 +448,6 @@ private fun DrawScope.skipIcon(c: Offset, r: Float, ink: Color) {
     drawLine(ink, Offset(c.x - d, c.y + d), Offset(c.x + d, c.y - d), sw)
 }
 
-/** Two straight arrows on the diagonal, pointing opposite ways. */
 private fun DrawScope.reverseIcon(c: Offset, r: Float, ink: Color) {
     reverseArrow(c, r, ink, flip = false)
     reverseArrow(c, r, ink, flip = true)

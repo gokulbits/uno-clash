@@ -65,14 +65,14 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
         val host = GameHost(scope, HostConfig(autoNextRound = NEXT_ROUND_AFTER))
         val (server, port) = startServer(host) ?: return "Couldn't open a game server on this phone."
         val profile = prefs.profile.value
-        val token = host.reserveHostSeat(profile.name, profile.avatar)
+        val token = host.reserveHostSeat(profile.name, profile.avatar, profile.avatarColor, profile.avatarFrame, profile.photo)
         repeat(bots) { host.addBot() }
         HostService.start(app, host.roomCode)
         val advert = discovery.advertise(host.roomCode, port, profile.name)
 
         // The host plays through the same client code as everyone else, over loopback.
         val client = GameClient(scope)
-        client.connect("127.0.0.1", port, host.roomCode, profile.name, profile.avatar, token)
+        client.connect("127.0.0.1", port, host.roomCode, profile.name, profile.avatar, token, profile.avatarColor, profile.avatarFrame, profile.photo)
         _session.value = Session(client, host.roomCode, Hosting(host, server, port, advert))
         return null
     }
@@ -106,7 +106,7 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
         }
         val profile = prefs.profile.value
         val client = GameClient(scope)
-        client.connect(address, port, roomCode, profile.name, profile.avatar, token)
+        client.connect(address, port, roomCode, profile.name, profile.avatar, token, profile.avatarColor, profile.avatarFrame, profile.photo)
         val session = Session(client, roomCode, hosting = null)
         session.watcher = scope.launch {
             client.status.collect { status ->

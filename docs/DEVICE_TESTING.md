@@ -113,6 +113,15 @@ Host on one phone; join from the others using each method once.
   **Expect:** bars mostly under the green line on a mid-range phone.
 - [ ] Settings: sound, music and vibration toggles each take effect immediately, in the menu and from ⚙ in game.
   Music stops when the app goes to the background.
+- [ ] Home › tap your avatar: flip through the four tabs, pick a character, a color and each frame. **Expect:**
+  every emoji shows (no empty boxes on older phones) and the preview updates straight away. Join a room:
+  other phones show the same avatar, color and frame in the lobby and at the table.
+- [ ] Avatar picker › Photo › Choose a photo: pick a portrait camera shot and a screenshot. **Expect:** the
+  picture is the right way up, drags and pinches smoothly, and the circle shows exactly what you framed.
+  Join a room: every phone shows your photo (with your frame) in the lobby, at the table and on the
+  scoreboard. Try it on an Android 8 phone too (older picture loading path).
+- [ ] Settings › Table and cards: pick each table color and card back. **Expect:** the background changes
+  at once; the deck, opponents' fanned hands and dealt cards use the new back.
 - [ ] Set the phone's font size to the largest. **Expect:** the table still fits without overlapping text.
 - [ ] Take a phone call mid-game on a guest. **Expect:** back in the game after hanging up.
 

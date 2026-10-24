@@ -44,7 +44,11 @@ WAV and OGG both work. Add a row here with the source when you do.
 - Cards, card backs, the logo, avatars' backgrounds, confetti and every other effect are drawn in code
   with Compose. Colors and fonts all come from `GameTheme` in
   `app/src/main/java/dev/colorclash/app/ui/theme/GameTheme.kt`.
-- Avatars are standard emoji rendered by the phone's own emoji font.
+- Avatars are standard emoji rendered by the phone's own emoji font. Character avatars are an emoji that
+  stands for the character (⚡ for Minnal Murali, 🛺 for Baasha), with the name shown in the picker. No
+  artwork or likeness from any film is used. Frames and card back patterns are drawn in code.
+- Photo avatars come from each player's own phone; the app ships none. They're shrunk to a 160 px JPEG
+  and only travel to the phones in the room.
 - The launcher and notification icons are vector drawables made for this project (CC0).
 
 ## Fonts

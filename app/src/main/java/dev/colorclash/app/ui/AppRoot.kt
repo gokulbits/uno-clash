@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,6 +31,8 @@ import dev.colorclash.app.ui.room.RoomScreen
 import dev.colorclash.app.ui.settings.SettingsScreen
 import dev.colorclash.app.ui.theme.GAME_TITLE
 import dev.colorclash.app.ui.theme.GameTheme
+import dev.colorclash.app.ui.theme.LocalCardBack
+import dev.colorclash.app.ui.theme.LocalTableStyle
 import dev.colorclash.protocol.JoinLink
 import kotlinx.coroutines.launch
 
@@ -46,6 +49,8 @@ fun AppRoot(app: ColorClashApp, incomingLink: JoinLink?, onLinkHandled: () -> Un
     val feedback by app.prefs.feedback.collectAsState()
     val play by app.prefs.play.collectAsState()
     val stats by app.prefs.stats.collectAsState()
+    val looks by app.prefs.looks.collectAsState()
+    val table = GameTheme.table(looks.table)
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -90,72 +95,76 @@ fun AppRoot(app: ColorClashApp, incomingLink: JoinLink?, onLinkHandled: () -> Un
         }
     }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(GameTheme.tableBrush)
-            .safeDrawingPadding(),
-    ) {
-        val current = session
-        if (current != null) {
-            RoomScreen(current, onLeave = {
-                sessions.leave()
-                screen = Screen.HOME
-            })
-            return@Box
-        }
-        when (screen) {
-            Screen.HOME -> HomeScreen(
-                profile = profile,
-                onProfileChange = app.prefs::updateProfile,
-                rejoin = remember(session) { sessions.rejoinable() },
-                busy = busy,
-                message = message,
-                onHost = { withPermissions(Permissions.hosting()) { sessions.host() } },
-                onJoin = {
-                    message = null
-                    screen = Screen.JOIN
-                },
-                onPractice = { withPermissions(Permissions.hosting()) { sessions.host(bots = PRACTICE_BOTS) } },
-                onRejoin = { saved -> withPermissions(Permissions.network()) { sessions.rejoin(saved) } },
-                onSettings = { screen = Screen.SETTINGS },
-            )
-            Screen.JOIN -> {
-                BackHandler { screen = Screen.HOME }
-                val rooms by remember { sessions.discovery.rooms() }.collectAsState(emptyList())
-                JoinScreen(
-                    rooms = rooms,
-                    busy = busy,
-                    message = message,
-                    onBack = { screen = Screen.HOME },
-                    onPickRoom = { room -> withPermissions(Permissions.network()) { sessions.join(listOf(room.address), room.port, room.roomCode) } },
-                    onScan = { screen = Screen.SCAN },
-                    onJoinCode = { code -> withPermissions(Permissions.network()) { sessions.joinByCode(code) } },
-                    onJoinAddress = { ip, port, code -> withPermissions(Permissions.network()) { sessions.join(listOf(ip), port, code) } },
-                )
+    CompositionLocalProvider(LocalTableStyle provides table, LocalCardBack provides GameTheme.cardBack(looks.cardBack)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(table.brush)
+                .safeDrawingPadding(),
+        ) {
+            val current = session
+            if (current != null) {
+                RoomScreen(current, onLeave = {
+                    sessions.leave()
+                    screen = Screen.HOME
+                })
+                return@Box
             }
-            Screen.SETTINGS -> {
-                BackHandler { screen = Screen.HOME }
-                SettingsScreen(
+            when (screen) {
+                Screen.HOME -> HomeScreen(
                     profile = profile,
                     onProfileChange = app.prefs::updateProfile,
-                    feedback = feedback,
-                    onFeedbackChange = app.prefs::updateFeedback,
-                    play = play,
-                    onPlayChange = app.prefs::updatePlay,
-                    stats = stats,
-                    onBack = { screen = Screen.HOME },
-                )
-            }
-            Screen.SCAN -> {
-                BackHandler { screen = Screen.JOIN }
-                ScanScreen(
-                    onBack = { screen = Screen.JOIN },
-                    onScanned = { link ->
+                    rejoin = remember(session) { sessions.rejoinable() },
+                    busy = busy,
+                    message = message,
+                    onHost = { withPermissions(Permissions.hosting()) { sessions.host() } },
+                    onJoin = {
+                        message = null
                         screen = Screen.JOIN
-                        withPermissions(Permissions.network()) { sessions.join(link) }
                     },
+                    onPractice = { withPermissions(Permissions.hosting()) { sessions.host(bots = PRACTICE_BOTS) } },
+                    onRejoin = { saved -> withPermissions(Permissions.network()) { sessions.rejoin(saved) } },
+                    onSettings = { screen = Screen.SETTINGS },
                 )
+                Screen.JOIN -> {
+                    BackHandler { screen = Screen.HOME }
+                    val rooms by remember { sessions.discovery.rooms() }.collectAsState(emptyList())
+                    JoinScreen(
+                        rooms = rooms,
+                        busy = busy,
+                        message = message,
+                        onBack = { screen = Screen.HOME },
+                        onPickRoom = { room -> withPermissions(Permissions.network()) { sessions.join(listOf(room.address), room.port, room.roomCode) } },
+                        onScan = { screen = Screen.SCAN },
+                        onJoinCode = { code -> withPermissions(Permissions.network()) { sessions.joinByCode(code) } },
+                        onJoinAddress = { ip, port, code -> withPermissions(Permissions.network()) { sessions.join(listOf(ip), port, code) } },
+                    )
+                }
+                Screen.SETTINGS -> {
+                    BackHandler { screen = Screen.HOME }
+                    SettingsScreen(
+                        profile = profile,
+                        onProfileChange = app.prefs::updateProfile,
+                        feedback = feedback,
+                        onFeedbackChange = app.prefs::updateFeedback,
+                        play = play,
+                        onPlayChange = app.prefs::updatePlay,
+                        looks = looks,
+                        onLooksChange = app.prefs::updateLooks,
+                        stats = stats,
+                        onBack = { screen = Screen.HOME },
+                    )
+                }
+                Screen.SCAN -> {
+                    BackHandler { screen = Screen.JOIN }
+                    ScanScreen(
+                        onBack = { screen = Screen.JOIN },
+                        onScanned = { link ->
+                            screen = Screen.JOIN
+                            withPermissions(Permissions.network()) { sessions.join(link) }
+                        },
+                    )
+                }
             }
         }
     }

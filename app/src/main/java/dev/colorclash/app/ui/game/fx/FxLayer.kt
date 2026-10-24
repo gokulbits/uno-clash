@@ -65,7 +65,6 @@ private val POP = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
 @Composable
 fun FxLayer(fx: TableFx, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize().then(fx.layer())) {
-        // Red edge glow when you get penalised.
         if (fx.penaltyGlow.value > 0f) {
             Canvas(Modifier.fillMaxSize()) {
                 val a = fx.penaltyGlow.value * 0.7f
@@ -99,7 +98,7 @@ private fun FlightView(flight: Flight) {
             .graphicsLayer {
                 val p = flight.progress.value
                 val to = flight.to()
-                // Quadratic curve with the control point lifted above the midpoint: a nice toss arc.
+                // Quadratic curve lifted above the midpoint: a toss arc.
                 val mid = (flight.from + to) / 2f
                 val arc = (to - flight.from).getDistance() * 0.28f
                 val control = Offset(mid.x, mid.y - arc)
@@ -109,7 +108,6 @@ private fun FlightView(flight: Flight) {
                 translationY = pos.y - halfH
                 rotationZ = mix(flight.fromRotation, flight.toRotation, p)
                 val height = sin(p * PI).toFloat()
-                // Swells a touch at the top of the arc, as if it came off the table towards you.
                 val s = mix(flight.fromScale, flight.toScale, p) * (1 + 0.1f * height)
                 scaleX = if (flight.flips) s * abs(cos(turn(p) * PI)).toFloat() else s
                 scaleY = s
@@ -128,7 +126,7 @@ private fun FlightView(flight: Flight) {
     }
 }
 
-/** How far through turning over a flipping card is, 0 to 1. It turns in the middle stretch of the flight. */
+/** Flip progress, 0 to 1, over the middle of the flight. */
 private fun turn(p: Float) = ((p - 0.1f) / 0.55f).coerceIn(0f, 1f)
 
 private fun mix(a: Float, b: Float, t: Float) = a + (b - a) * t
@@ -143,7 +141,6 @@ private fun FlashView(flash: Flash) {
             .placeAt(flash.at, centered = true)
             .graphicsLayer {
                 val p = flash.progress.value
-                // Pops in past full size, settles, then drifts up and fades.
                 val pop = if (p < 0.25f) POP.transform(p / 0.25f) else 1f
                 val s = 0.5f + 0.6f * pop
                 scaleX = s
@@ -159,12 +156,7 @@ private fun FlashView(flash: Flash) {
     )
 }
 
-/**
- * A seat stamp: a big disc slams down out of nowhere (huge and tilted, then a squash on impact),
- * a shockwave rings out from the seat, the disc wobbles, and a tag pops up under it. Red with a
- * skip sign, "+N" or a cross when it's bad news; green with a tick when it's good. Everything is
- * bigger when it's yours.
- */
+/** A disc slams onto the seat with a shockwave and a tag; red for bad news, green for good. */
 @Composable
 private fun StampView(fx: StampFx) {
     val density = LocalDensity.current
@@ -267,10 +259,7 @@ private fun StampView(fx: StampFx) {
     )
 }
 
-/**
- * The callout for an action card or a picked color: slams in a little past full size with a
- * tilt, holds, then swells and fades. Painted in the card's color, or all four for a wild.
- */
+/** Callout for an action card or a picked color, in its color (all four for a wild). */
 @Composable
 private fun BannerView(banner: Banner) {
     val a = banner.announcement
@@ -317,10 +306,7 @@ private fun BannerView(banner: Banner) {
     }
 }
 
-/**
- * An emoji reaction: the big one pops out of the seat with a wobble and floats up a little,
- * while a stream of small copies drifts away and fades, like hearts on a live stream.
- */
+/** An emoji pops out of the seat while small copies drift away, like hearts on a live stream. */
 @Composable
 private fun ReactionView(reaction: ReactionFx, onDone: () -> Unit) {
     val progress = remember(reaction) { Animatable(0f) }
@@ -372,7 +358,7 @@ private fun ReactionView(reaction: ReactionFx, onDone: () -> Unit) {
     )
 }
 
-/** Quick chat: a speech bubble pops out of the seat, drifts up a little and fades. */
+/** Quick chat as a speech bubble over the seat. */
 @Composable
 private fun SpeechBubble(reaction: ReactionFx, text: String, progress: () -> Float) {
     val rise = with(LocalDensity.current) { 56.dp.toPx() }
@@ -410,7 +396,6 @@ private fun BurstView(burst: Burst) {
         val maxRadius = size.minDimension * 0.45f
         val alpha = 1 - p
         drawCircle(burst.color.copy(alpha = alpha * 0.45f), radius = maxRadius * p, center = burst.at)
-        // Rays of dots shooting outward.
         for (i in 0 until BURST_RAYS) {
             val angle = i * (2 * Math.PI / BURST_RAYS)
             val r = maxRadius * (0.3f + 0.9f * p)
@@ -420,10 +405,7 @@ private fun BurstView(burst: Burst) {
     }
 }
 
-/**
- * Confetti from the top of the screen. Particle positions are worked out from elapsed time
- * alone, so a frame only redraws the canvas and never recomposes.
- */
+/** Confetti. Positions come from elapsed time alone, so frames redraw without recomposing. */
 @Composable
 private fun Confetti(trigger: Int, big: Boolean) {
     if (trigger == 0) return

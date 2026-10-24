@@ -10,10 +10,8 @@ import dev.colorclash.rules.Action.SwapWith
 import kotlin.random.Random
 
 /**
- * Plays a legal card, goes on the attack when an opponent is close to going out,
- * and picks the color it holds most. Never jumps in and never plays a +4 it isn't allowed to.
- * At [BotLevel.EASY] it plays any legal card, picks colors at random, never challenges, and
- * forgets to call UNO about half the time, so there's something to catch.
+ * Attacks when an opponent is close to going out and picks the color it holds most.
+ * [BotLevel.EASY] plays any legal card, never challenges and forgets UNO about half the time.
  */
 class SimpleBot(
     private val random: Random = Random.Default,
@@ -30,11 +28,7 @@ class SimpleBot(
         return chooseTurnAction(state, seat, legal)
     }
 
-    /**
-     * What happens when a person's turn timer runs out: they draw (taking any draw penalty,
-     * which also gives up a challenge) and keep what they drew. Colors and swaps still need a
-     * pick, so the bot makes it. Never plays a card for them.
-     */
+    /** A timed-out turn: draw and keep it, picking a color or swap target if needed. Never plays a card. */
     fun chooseTimeoutAction(state: GameState, seat: Int): PlayerAction? {
         if (seat != state.current) return null
         return when (state.phase) {
@@ -50,7 +44,7 @@ class SimpleBot(
     private fun forgetsUno(state: GameState, seat: Int): Boolean =
         level == BotLevel.EASY && (state.round * 31 + seat * 7 + state.discardPile.size) % 2 == 0
 
-    /** Only a move that moves the seat's own turn along; no calls or catches. Used when a turn timer runs out. */
+    /** A move that advances the seat's own turn; no calls or catches. */
     fun chooseTurnAction(state: GameState, seat: Int): PlayerAction? =
         chooseTurnAction(state, seat, GameEngine.legalActions(state, seat))
 

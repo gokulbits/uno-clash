@@ -13,10 +13,7 @@ import dev.colorclash.rules.GameEvent.Challenged
 import dev.colorclash.rules.GameEvent.Drew
 import dev.colorclash.rules.GameEvent.Skipped
 
-/**
- * Mutable scratch copy of a [GameState] used to apply one already-validated action.
- * Keeps the reducer readable; nothing here escapes as mutable.
- */
+/** Mutable scratch copy of a [GameState] for applying one validated action. */
 internal class Transition(state: GameState) {
     private val rules = state.rules
     private val hands = state.players.map { it.hand.toMutableList() }.toMutableList()
@@ -150,7 +147,6 @@ internal class Transition(state: GameState) {
         drawFourCheck = null
 
         if (hand.isEmpty() && rules.powerFinishPenalty > 0 && card.face.number == null) {
-            // This table doesn't let you go out on a power card: it still works, but you draw instead of winning.
             drawCards(player, rules.powerFinishPenalty, DrawReason.POWER_FINISH)
         }
         if (hand.isEmpty()) return goOut(player, card)

@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -29,6 +30,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.colorclash.app.session.Session
 import dev.colorclash.app.ui.components.BigButton
+import dev.colorclash.app.ui.components.LocalSeatPhotos
+import dev.colorclash.app.ui.components.rememberSeatPhotos
 import dev.colorclash.app.colorClash
 import dev.colorclash.app.ui.game.GameScreen
 import dev.colorclash.app.ui.game.RoundResult
@@ -47,7 +50,7 @@ import kotlinx.coroutines.flow.collectLatest
 private const val LOG_LINES = 3
 private const val RECENT_PLAYS = 8
 
-/** Your wins and games, kept on the phone. Counted from what the host sends, once per event. */
+/** Counted from what the host sends, once per event. */
 private fun recordStats(event: EventView, you: Int, prefs: Prefs) {
     when (event) {
         is EventView.RoundWon -> if (event.player == you) {
@@ -66,6 +69,8 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
     val status by session.client.status.collectAsState()
     val lobby by session.client.lobby.collectAsState()
     val game by session.client.game.collectAsState()
+    val photoData by session.client.photos.collectAsState()
+    val photos = rememberSeatPhotos(photoData)
     var confirmLeave by remember { mutableStateOf(false) }
     var startError by remember { mutableStateOf<String?>(null) }
     var log by remember { mutableStateOf(emptyList<String>()) }
@@ -115,58 +120,60 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
     }
     BackHandler { confirmLeave = true }
 
-    Box(Modifier.fillMaxSize()) {
-        when (val s = status) {
-            is ClientStatus.Failed -> EndCard("Couldn't stay connected", s.message, onLeave)
-            is ClientStatus.Closed -> EndCard("Room closed", s.reason, onLeave)
-            else -> when {
-                game != null -> GameScreen(
-                    // The animated view lags the latest one by an effect or two; fall back to it until the first lands.
-                    view = fx.displayed ?: game!!,
-                    fx = fx,
-                    log = log,
-                    history = history,
-                    notice = notice,
-                    isHost = session.isHost,
-                    feedback = feedbackSettings,
-                    onFeedbackChange = app.prefs::updateFeedback,
-                    play = playSettings,
-                    onPlayChange = app.prefs::updatePlay,
-                    recentPlays = recentPlays,
-                    onTick = {
-                        app.feedback.sfx(Sfx.TICK, 0.6f)
-                        app.feedback.buzz(Buzz.TICK)
-                    },
-                    onIntent = session.client::send,
-                    onReact = session.client::react,
-                    onNextRound = { session.hosting?.host?.startNextRound() },
-                    onRematch = { session.hosting?.host?.rematch() },
-                    onResume = session.client::resume,
-                    onBackToLobby = { session.hosting?.host?.returnToLobby() },
-                    onLeave = { confirmLeave = true },
-                )
-                lobby != null -> LobbyScreen(
-                    lobby = lobby!!,
-                    hosting = session.hosting,
-                    startError = startError,
-                    onStartError = { startError = it },
-                    onReady = { session.client.setReady(it) },
-                    onLeave = { confirmLeave = true },
-                )
-                else -> Connecting()
+    CompositionLocalProvider(LocalSeatPhotos provides photos) {
+        Box(Modifier.fillMaxSize()) {
+            when (val s = status) {
+                is ClientStatus.Failed -> EndCard("Couldn't stay connected", s.message, onLeave)
+                is ClientStatus.Closed -> EndCard("Room closed", s.reason, onLeave)
+                else -> when {
+                    game != null -> GameScreen(
+                        // The animated view lags the latest one by an effect or two; fall back to it until the first lands.
+                        view = fx.displayed ?: game!!,
+                        fx = fx,
+                        log = log,
+                        history = history,
+                        notice = notice,
+                        isHost = session.isHost,
+                        feedback = feedbackSettings,
+                        onFeedbackChange = app.prefs::updateFeedback,
+                        play = playSettings,
+                        onPlayChange = app.prefs::updatePlay,
+                        recentPlays = recentPlays,
+                        onTick = {
+                            app.feedback.sfx(Sfx.TICK, 0.6f)
+                            app.feedback.buzz(Buzz.TICK)
+                        },
+                        onIntent = session.client::send,
+                        onReact = session.client::react,
+                        onNextRound = { session.hosting?.host?.startNextRound() },
+                        onRematch = { session.hosting?.host?.rematch() },
+                        onResume = session.client::resume,
+                        onBackToLobby = { session.hosting?.host?.returnToLobby() },
+                        onLeave = { confirmLeave = true },
+                    )
+                    lobby != null -> LobbyScreen(
+                        lobby = lobby!!,
+                        hosting = session.hosting,
+                        startError = startError,
+                        onStartError = { startError = it },
+                        onReady = { session.client.setReady(it) },
+                        onLeave = { confirmLeave = true },
+                    )
+                    else -> Connecting()
+                }
             }
-        }
 
-        if (status is ClientStatus.Reconnecting) {
-            Text(
-                "Connection lost, reconnecting…",
-                Modifier
-                    .fillMaxWidth()
-                    .background(GameTheme.danger)
-                    .padding(10.dp)
-                    .align(Alignment.TopCenter),
-                textAlign = TextAlign.Center,
-            )
+            if (status is ClientStatus.Reconnecting) {
+                Text(
+                    "Connection lost, reconnecting…",
+                    Modifier
+                        .fillMaxWidth()
+                        .background(GameTheme.danger)
+                        .padding(10.dp)
+                        .align(Alignment.TopCenter),
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 
