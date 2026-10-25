@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import dev.colorclash.app.data.Prefs
 import dev.colorclash.app.data.SavedSession
+import dev.colorclash.app.net.FoundRoom
 import dev.colorclash.app.net.LocalNetwork
 import dev.colorclash.app.net.RoomDiscovery
 import dev.colorclash.app.net.WifiBinder
@@ -13,6 +14,7 @@ import dev.colorclash.net.host.GameHost
 import dev.colorclash.net.host.HostConfig
 import dev.colorclash.net.host.HostServer
 import dev.colorclash.protocol.DEFAULT_PORT
+import dev.colorclash.protocol.JoinError
 import dev.colorclash.protocol.JoinLink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,9 +24,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -63,12 +63,13 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
         leave()
         // Rounds roll on by themselves after a short look at the scores, so nobody waits on the host.
         val host = GameHost(scope, HostConfig(autoNextRound = NEXT_ROUND_AFTER))
+        host.updateSettings(prefs.lobbySettings)
         val (server, port) = startServer(host) ?: return "Couldn't open a game server on this phone."
         val profile = prefs.profile.value
         val token = host.reserveHostSeat(profile.name, profile.avatar, profile.avatarColor, profile.avatarFrame, profile.photo)
         repeat(bots) { host.addBot() }
         HostService.start(app, host.roomCode)
-        val advert = discovery.advertise(host.roomCode, port, profile.name)
+        val advert = discovery.advertise(port, profile.name)
 
         // The host plays through the same client code as everyone else, over loopback.
         val client = GameClient(scope)
@@ -80,18 +81,76 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
     suspend fun join(link: JoinLink, token: String? = null): String? =
         join(link.hosts, link.port, link.roomCode, token)
 
-    /** Finds a room by its code: mDNS first, then the Wi-Fi gateway in case we're on the host's hotspot. */
+    /**
+     * Finds the room with this code. Rooms don't advertise their code, so every room nearby (and the
+     * Wi-Fi gateway, in case we're on the host's hotspot) is asked in turn until one accepts it.
+     */
     suspend fun joinByCode(code: String): String? {
         val roomCode = code.trim().uppercase()
+        leave()
         wifi.bind()
-        val found = withTimeoutOrNull(4.seconds) {
-            discovery.rooms().map { rooms -> rooms.firstOrNull { it.roomCode == roomCode } }.filterNotNull().first()
+        var nearby = emptyList<FoundRoom>()
+        withTimeoutOrNull(DISCOVERY_WAIT) { discovery.rooms().collect { nearby = it } }
+        val candidates = nearby.map { it.address to it.port } + listOfNotNull(LocalNetwork.wifiGateway(app)?.let { it to DEFAULT_PORT })
+        return when (val attempt = joinChecked(candidates.distinct(), roomCode)) {
+            Attempt.Joined -> null
+            is Attempt.Refused -> attempt.message
+            Attempt.NoMatch -> "No room with code $roomCode here. Check the code on the host's phone, or scan its QR."
+            Attempt.Unreachable -> "Couldn't find any room on this network. Make sure you're on the host's Wi-Fi or hotspot."
         }
-        if (found != null) return join(listOf(found.address), found.port, roomCode)
-        val gateway = LocalNetwork.wifiGateway(app)
-        if (gateway != null && reachable(gateway, DEFAULT_PORT)) return join(listOf(gateway), DEFAULT_PORT, roomCode)
+    }
+
+    /** A room from the nearby list, with the code the player typed for it. */
+    suspend fun joinRoom(room: FoundRoom, code: String): String? =
+        joinAt(room.address, room.port, code, "That's not ${room.hostName}'s room code. Check it on their phone.")
+
+    /** A host's address typed in by hand. */
+    suspend fun joinAddress(address: String, port: Int, code: String): String? =
+        joinAt(address, port, code, "No room with that code at $address. Check the code on the host's phone.")
+
+    private suspend fun joinAt(address: String, port: Int, code: String, noMatch: String): String? {
+        leave()
+        wifi.bind()
+        return when (val attempt = joinChecked(listOf(address to port), code.trim().uppercase())) {
+            Attempt.Joined -> null
+            is Attempt.Refused -> attempt.message
+            Attempt.NoMatch -> noMatch
+            Attempt.Unreachable -> "Couldn't reach the host at $address. Make sure you're on the same Wi-Fi or hotspot."
+        }
+    }
+
+    private sealed interface Attempt {
+        data object Joined : Attempt
+        data class Refused(val message: String) : Attempt
+        data object NoMatch : Attempt
+        data object Unreachable : Attempt
+    }
+
+    /** Tries each address until a host takes the code, and only then opens the room, so a wrong code stays on the join screen. */
+    private suspend fun joinChecked(candidates: List<Pair<String, Int>>, roomCode: String): Attempt {
+        val profile = prefs.profile.value
+        var reachedAny = false
+        for ((address, port) in candidates) {
+            if (!reachable(address, port)) continue
+            reachedAny = true
+            val client = GameClient(scope)
+            client.connect(address, port, roomCode, profile.name, profile.avatar, null, profile.avatarColor, profile.avatarFrame, profile.photo)
+            val status = withTimeoutOrNull(ANSWER_WAIT) { client.status.first { it == ClientStatus.Connected || it is ClientStatus.Failed } }
+            when {
+                status == ClientStatus.Connected -> {
+                    open(client, address, port, roomCode)
+                    return Attempt.Joined
+                }
+                status is ClientStatus.Failed && status.error != JoinError.WRONG_ROOM -> {
+                    client.close()
+                    wifi.unbind()
+                    return Attempt.Refused(status.message)
+                }
+                else -> client.close()
+            }
+        }
         wifi.unbind()
-        return "Couldn't find room $roomCode on this network. Try scanning the QR code or typing the host's IP."
+        return if (reachedAny) Attempt.NoMatch else Attempt.Unreachable
     }
 
     suspend fun rejoin(saved: SavedSession): String? = join(listOf(saved.host), saved.port, saved.roomCode, saved.token)
@@ -107,6 +166,11 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
         val profile = prefs.profile.value
         val client = GameClient(scope)
         client.connect(address, port, roomCode, profile.name, profile.avatar, token, profile.avatarColor, profile.avatarFrame, profile.photo)
+        open(client, address, port, roomCode)
+        return null
+    }
+
+    private fun open(client: GameClient, address: String, port: Int, roomCode: String) {
         val session = Session(client, roomCode, hosting = null)
         session.watcher = scope.launch {
             client.status.collect { status ->
@@ -120,7 +184,6 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
             }
         }
         _session.value = session
-        return null
     }
 
     /** Leaves the room (and shuts it down if we're hosting). */
@@ -163,6 +226,8 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
     private companion object {
         const val TAG = "SessionManager"
         const val PROBE_TIMEOUT_MS = 1_500
+        val DISCOVERY_WAIT = 2.5.seconds
+        val ANSWER_WAIT = 8.seconds
         val REJOIN_WINDOW = 2.hours
     }
 }

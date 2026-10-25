@@ -29,15 +29,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.colorclash.app.ui.components.exitIcon
+import dev.colorclash.app.ui.components.gearIcon
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.PlayerView
 import kotlin.math.PI
@@ -152,42 +150,6 @@ private fun ScoreChip(score: Int, target: Int) {
             }
         }
     }
-}
-
-private fun DrawScope.exitIcon() {
-    val w = size.width
-    val stroke = Stroke(w * 0.11f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-    val door = Path().apply {
-        moveTo(w * 0.5f, w * 0.12f)
-        lineTo(w * 0.88f, w * 0.12f)
-        lineTo(w * 0.88f, w * 0.88f)
-        lineTo(w * 0.5f, w * 0.88f)
-    }
-    drawPath(door, GameTheme.text, style = stroke)
-    val arrow = Path().apply {
-        moveTo(w * 0.66f, w * 0.5f)
-        lineTo(w * 0.12f, w * 0.5f)
-        moveTo(w * 0.32f, w * 0.3f)
-        lineTo(w * 0.12f, w * 0.5f)
-        lineTo(w * 0.32f, w * 0.7f)
-    }
-    drawPath(arrow, GameTheme.text, style = stroke)
-}
-
-private fun DrawScope.gearIcon() {
-    val w = size.width
-    val tooth = Size(w * 0.2f, w * 0.22f)
-    repeat(8) { i ->
-        rotate(i * 45f) {
-            drawRoundRect(
-                GameTheme.text,
-                topLeft = Offset(center.x - tooth.width / 2, w * 0.02f),
-                size = tooth,
-                cornerRadius = CornerRadius(w * 0.05f),
-            )
-        }
-    }
-    drawCircle(GameTheme.text, radius = w * 0.27f, style = Stroke(w * 0.15f))
 }
 
 private fun DrawScope.star() {

@@ -34,12 +34,13 @@ adb logcat -s GameHost SessionManager RoomDiscovery AndroidRuntime
 
 Host on one phone; join from the others using each method once.
 
-- [ ] **Rooms nearby:** the room shows up within ~5 s on the Join screen. Tap it.
+- [ ] **Rooms nearby:** the room shows up within ~5 s on the Join screen, without its code. Tap it.
+  **Expect:** a box asking for the code; a wrong code says so and stays on the Join screen.
 - [ ] **In-app QR scan:** scan the lobby QR.
 - [ ] **Stock camera app:** point the phone's normal camera at the QR, tap the link it offers.
   **Expect:** the game opens and joins.
 - [ ] **Room code:** type the 4-letter code.
-- [ ] **Manual IP:** type the IP shown under the QR.
+- [ ] **Manual IP:** tap the host's QR to enlarge it and type the IP shown underneath.
 - [ ] **Expect for all:** the joiner appears in every phone's lobby within a second or two; toggling Ready
   updates everywhere; the host's rule toggles show up on guests.
 - [ ] Try joining with a wrong code. **Expect:** a clear "doesn't match" message, back on the join screen.
@@ -122,6 +123,10 @@ Host on one phone; join from the others using each method once.
   scoreboard. Try it on an Android 8 phone too (older picture loading path).
 - [ ] Settings › Table and cards: pick each table color and card back. **Expect:** the background changes
   at once; the deck, opponents' fanned hands and dealt cards use the new back.
+- [ ] Host a room, change a few house rules, close it and host again. **Expect:** the new room starts with
+  those rules.
+- [ ] Join as a guest. **Expect:** without scrolling, the I'm ready button sits at the bottom, pulsing until
+  it's tapped. The lobby fits on about one screen (the host's scrolls a little further for the QR card).
 - [ ] Set the phone's font size to the largest. **Expect:** the table still fits without overlapping text.
 - [ ] Take a phone call mid-game on a guest. **Expect:** back in the game after hanging up.
 

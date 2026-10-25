@@ -336,11 +336,14 @@ class HostClientIntegrationTest {
     }
 
     @Test
-    fun `wrong room code is refused`(): Unit = runBlocking {
+    fun `wrong room code is refused without taking a seat`(): Unit = runBlocking {
         Harness().start().use { h ->
+            val host = h.client("Host")
+            host.awaitConnected()
             val client = h.client("Lost", room = "NOPE")
             val status = client.awaitStatus { it is ClientStatus.Failed }
             assertEquals(JoinError.WRONG_ROOM, (status as ClientStatus.Failed).error)
+            assertEquals(listOf("Host"), h.host.status.value.seats.map { it.name })
         }
     }
 

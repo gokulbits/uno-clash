@@ -134,10 +134,10 @@ fun AppRoot(app: ColorClashApp, incomingLink: JoinLink?, onLinkHandled: () -> Un
                         busy = busy,
                         message = message,
                         onBack = { screen = Screen.HOME },
-                        onPickRoom = { room -> withPermissions(Permissions.network()) { sessions.join(listOf(room.address), room.port, room.roomCode) } },
+                        onPickRoom = { room, code -> withPermissions(Permissions.network()) { sessions.joinRoom(room, code) } },
                         onScan = { screen = Screen.SCAN },
                         onJoinCode = { code -> withPermissions(Permissions.network()) { sessions.joinByCode(code) } },
-                        onJoinAddress = { ip, port, code -> withPermissions(Permissions.network()) { sessions.join(listOf(ip), port, code) } },
+                        onJoinAddress = { ip, port, code -> withPermissions(Permissions.network()) { sessions.joinAddress(ip, port, code) } },
                     )
                 }
                 Screen.SETTINGS -> {
