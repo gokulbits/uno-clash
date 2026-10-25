@@ -1,93 +1,118 @@
-# Color Clash
+<p align="center">
+  <img src="docs/images/banner.svg" alt="Color Clash" width="100%">
+</p>
 
-A colorful, offline card game for 2–6 Android phones: shed your hand, call UNO, don't get caught. One
-phone hosts and everyone else joins over the same Wi-Fi or the host's hotspot. No internet, no
-accounts, no ads.
+<p align="center">
+  <b>A colorful, offline card game for 2–6 Android phones.</b><br>
+  One phone hosts, everyone else joins over the same Wi-Fi or the host's hotspot.<br>
+  No internet, no accounts, no ads.
+</p>
 
-A private project for playing with friends, not published anywhere.
+<p align="center">
+  <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android 8.0+">
+  <img src="https://img.shields.io/badge/players-2--6-FF3B5C" alt="2 to 6 players">
+  <img src="https://img.shields.io/badge/works-offline-FFC61A" alt="Works offline">
+  <img src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin and Jetpack Compose">
+</p>
 
-## Features
+<p align="center">
+  <a href="../../releases/latest"><img src="https://img.shields.io/badge/Download-APK-3B5BFF?style=for-the-badge&logo=android&logoColor=white" alt="Download the APK"></a>
+</p>
 
-**The game**
-- 2–6 players, any mix of friends and bots (Easy or Normal), portrait only
-- Standard 108-card deck: Skip, Reverse, Draw 2, Wild, Wild Draw 4, with a fair shuffle and a real
-  one-card-at-a-time deal every round
-- UNO buzzer that's always on screen and never hints when to press it; forget and anyone can **CATCH!** you
-- Challenge a Wild Draw 4, score every round, play to 100, 250 or 500 points, or a single round
-- House rules: stack +2/+4, jump-in, 7-0 swaps, draw until playable, and a penalty for going out on a
-  power card. The host's phone remembers them for the next room
-- 15-second turn timer (or 30 s, 60 s, off). Run out three times in a row and a bot plays for you until
-  you tap **I'm back**
-- Next round starts by itself after a 15-second look at the scores; **Play again** for a rematch
+---
 
-**At the table**
-- Cards fly, flip and land; skips, draws and challenges slam a stamp onto the player they hit
-- Action cards and picked colors are called out on screen and out loud ("Skip!", "Blue!")
-- Emoji reactions and quick-chat phrases that pop out of your seat
-- Fanned card backs show how many cards everyone holds; tap a seat for the exact count, tap the pile to
-  see the last few plays, and a NEXT tag shows who's up
-- Sort your hand by color or number; optional tap-twice-to-play; optional colorblind shapes on every card
-- Sound effects, music, voice and vibration, each switchable in Settings
+## ✨ Highlights
 
-**Make it yours**
-- Use any photo from your phone as your avatar, cropped to a circle, or pick one of 50 built-in ones:
-  animals plus characters from Malayalam, Tamil and English films and series
-- Give it a color and a frame (gold, silver, rainbow, neon, sparkle, flames); everyone at the table sees it
-- Pick your table color and card back design (just for your phone)
-- Your games, wins and best round are kept in Settings
+- 🃏 **The real thing:** the full 108-card deck, a fair shuffle, and a deal that goes round the table one card at a time
+- 🔴 **UNO buzzer:** always on screen, never hints when to press it. Forget, and anyone can **CATCH!** you
+- 🤖 **Friends or bots:** fill empty seats with Easy or Normal bots, or practise alone on one phone
+- 🏠 **House rules:** stacking, jump-in, 7-0, draw until playable, +4 challenges, a power-card finish penalty
+- 💥 **Juicy table:** flying cards, stamps that slam onto whoever gets skipped or hit with a +2/+4, spoken call-outs
+- 😂 **Trash talk:** emoji reactions and quick-chat bubbles that pop out of your seat
+- 🖼️ **Make it yours:** use a photo or one of 50 avatars (animals plus Malayalam, Tamil and English film
+  characters), add a color and a frame, and pick your own table color and card back
+- ⏭️ **Keeps moving:** a turn timer, the next round starting by itself, and **Play again** for a rematch
+- 🎛️ **Your way:** sort your hand by color or number, tap-twice-to-play, colorblind shapes on every card,
+  and your wins and best round in Settings
+- 📶 **Built for a room full of phones:** join by QR or room code, rejoin after a dropped connection,
+  and a bot keeps your seat warm if you're gone too long
 
-**Getting together**
-- Rooms show up as "Sam's Clash". Join by QR code (the in-app scanner or any camera app), room code,
-  the nearby-rooms list, or the host's IP. Every way in needs the room code
-- A compact lobby: players, house rules and the Start / I'm ready button on about one screen
-- Dropped players get 60 seconds to come back; after that a bot keeps their seat warm until they rejoin
-- Practice against bots on a single phone
+## 🎮 How to play
 
-## Install
+1. **Install** the [latest APK](../../releases/latest) on every phone (they all need the same version).
+2. **Host:** one phone taps **Host a game**. Everyone joins the host's Wi-Fi, or the host turns on their
+   hotspot from the lobby.
+3. **Join:** everyone else taps **Join a game** and scans the QR code or types the room code.
+4. **Start:** players tap **I'm ready**, the host picks the house rules and taps **Start game**.
 
-1. Download `color-clash-<version>.apk` from the [latest release](../../releases/latest).
-2. Open it on the phone and allow installing from your browser or file manager when asked.
-3. Everyone at the table needs **the same version**. A phone on a different one is told so when it joins.
+Match the top card by **color** or **number**, or play a wild. First to empty their hand wins the round
+and scores the cards left in everyone else's hands. Play to 100, 250 or 500 points, or just one round.
 
-Requires Android 8.0 or newer. **Coming from a build before 1.0.0?** Uninstall it first: those were
-signed with a temporary key, so Android won't update them. From 1.0.0 on, new versions install over the top.
+| Card | What it does |
+| --- | --- |
+| **0–9** | Match by color or number. Scores its face value |
+| **Skip** | The next player loses their turn. Scores 20 |
+| **Reverse** | Flips the direction of play (with two players it works like Skip). Scores 20 |
+| **+2** | The next player draws 2 and misses their turn. Scores 20 |
+| **Wild** | Pick the next color. Scores 50 |
+| **Wild +4** | Pick the color; the next player draws 4 and misses their turn. If you played it while holding the color in play, they can challenge you. Scores 50 |
 
-## Play
+On your turn, hit **UNO!** before playing your second-to-last card. Every turn has a 15-second timer
+(the host can change it); run out three times in a row and a bot plays for you until you tap **I'm back**.
 
-1. Everyone opens the app, picks a name and taps their avatar to choose a picture, color and frame.
-2. **One phone taps Host a game.** The lobby shows the room ("Sam's Clash"), its code and a QR code.
-   - **Same Wi-Fi:** everyone joins the host's Wi-Fi.
-   - **No Wi-Fi around:** the host taps *Turn on your hotspot* and the others connect to it. The QR code
-     updates by itself once the hotspot is up.
-3. **Everyone else taps Join a game** and scans the QR, types the room code, or picks the room from
-   *Rooms nearby* and types its code.
-4. Players tap **I'm ready**; the host sets the house rules, adds bots for empty seats if wanted, and taps
-   **Start game**.
+Coming from a build before 1.0.0? Uninstall it first: those were signed with a temporary key, so
+Android won't update them. From 1.0.0 on, new versions install over the top.
 
-During play: tap a highlighted card (or drag it up) to play it, and tap the draw pile to draw. On your turn,
-hit the **UNO!** buzzer before you play your second-to-last card. If someone forgets, **CATCH!** appears on
-their seat.
+<details>
+<summary><b>🏠 House rules</b></summary>
 
-On Android 17 and newer the app asks for permission to talk to devices on your local network the first
-time you host or join. The game can't work without it.
+| Rule | What changes |
+| --- | --- |
+| Stack +2 / +4 | Pass a draw penalty along by playing another +2 or +4 on it |
+| Jump in | Play an identical card (same color and number) even when it's not your turn |
+| 7-0 | A 7 swaps hands with a player you pick; a 0 passes every hand along |
+| Draw till playable | Keep drawing until you get a card you can play |
+| Challenge +4 | Call out a Wild +4 played while its owner had the color in play |
+| Power finish | Going out on a Skip, Reverse, +2 or wild makes you draw 2 or 4 instead of winning |
 
-## Troubleshooting
+The host's phone remembers these for the next room it opens.
+</details>
+
+<details>
+<summary><b>🛠️ Troubleshooting</b></summary>
 
 | Problem | Try |
 | --- | --- |
 | Room doesn't show under *Rooms nearby* | Normal on many routers, which block discovery. Scan the QR or type the room code. |
 | "Couldn't reach the host" on a shared Wi-Fi | Guest and office networks often stop phones talking to each other. Use the host's hotspot. |
 | Joined the hotspot but can't connect | Make sure the phone stayed on the hotspot (some hop to mobile data when Wi-Fi has no internet), then type the room code. |
-| Manual join by IP | On the host, tap the QR to enlarge it; the IP and port are underneath. |
+| Joining by IP address | On the host, tap the QR to enlarge it; the IP and port are underneath. |
 | Host's game stops when its screen is off | Some makers (Samsung, Xiaomi, OnePlus, Huawei…) kill background apps hard. On the host set battery usage to **Unrestricted**: Settings › Apps › Color Clash › Battery. See [dontkillmyapp.com](https://dontkillmyapp.com). |
 | Someone's app was closed mid-game | Open it again and tap **Rejoin game**. Within 60 s nobody notices; after that a bot was keeping the seat warm. |
 | "Install the same build on every phone" | Everyone needs the same version. |
-| "App not installed" when updating | The installed copy is from before 1.0.0. Uninstall it, then install. |
+| "App not installed" when updating | The installed copy is from before 1.0.0 (signed with a different key). Uninstall it, then install. |
 | The host's app was closed | The game can't move to another phone; start a new room. |
 
-Before a big game night, run through the [device test checklist](docs/DEVICE_TESTING.md) once with your phones.
+On Android 17 and newer the app asks for permission to talk to devices on your local network the first
+time you host or join; the game can't work without it. Before a big game night, run through the
+[device test checklist](docs/DEVICE_TESTING.md) once with your phones.
+</details>
 
-## Build
+## 🏗️ How it works
+
+The host phone runs the whole game; the other phones only send what their player wants to do
+("play this card", "draw") and show what the host sends back. The host never sends anyone another
+player's cards and checks every move against the rules.
+
+| Module | What's in it |
+| --- | --- |
+| `:rules` | The game itself: a pure `(state, action) -> (new state, events)` reducer, the bots, a seedable RNG. Plain Kotlin. |
+| `:protocol` | The JSON messages between phones and each player's redacted view of the game. |
+| `:net` | The Ktor WebSocket host (seats, reconnects, bots, turn timer, photos) and client (heartbeat, auto-reconnect). |
+| `:app` | The Android app: Compose UI and animations, sound and voice, the service that keeps the host alive, Wi-Fi and mDNS. |
+
+<details>
+<summary><b>🧑‍💻 Building from source</b></summary>
 
 Needs JDK 17 or newer (21 recommended) and the Android SDK. Gradle comes with the wrapper.
 
@@ -99,21 +124,23 @@ Needs JDK 17 or newer (21 recommended) and the Android SDK. Gradle comes with th
 
 Install on a USB-connected phone with `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
 Fuzz the rules harder with `./gradlew :rules:test -PfuzzGames=20000`.
+</details>
 
-## Releases
+<details>
+<summary><b>📦 Releases and signing</b></summary>
 
 The [`Build APK`](.github/workflows/release.yml) workflow runs the tests and lint and builds a signed
 APK on every push to `main` and every pull request (download it from the run's artifacts).
 
-**Publishing a version:** tag `main` and push the tag. The build is named after the tag and published
-as a GitHub Release with the APK attached.
+To publish a version, tag `main` and push the tag. The build is named after the tag and published as a
+GitHub Release with the APK attached:
 
 ```bash
 git tag v1.0.1 && git push origin v1.0.1
 ```
 
-**The release key** (already set up). Android only installs an update over an existing copy signed
-with the same key, so CI signs with a permanent key kept in four repository secrets. To set it up again:
+Android only installs an update over an existing copy signed with the same key, so CI signs with a
+permanent key kept in four repository secrets (already set up). To set it up again:
 
 1. Make a key. `keytool` comes with Android Studio (`jbr\bin\keytool.exe`) or any JDK:
    ```bash
@@ -135,18 +162,9 @@ Keep the `.jks` and its password somewhere safe outside the repo: losing them me
 uninstall before they can update. Without the secrets, CI signs with a throwaway key and refuses to
 publish a release. To sign locally, export `CC_KEYSTORE_PATH`, `CC_KEYSTORE_PASSWORD`, `CC_KEY_ALIAS`
 and `CC_KEY_PASSWORD` before `assembleRelease`.
+</details>
 
-## How it works
+## 🙏 Credits
 
-The host phone runs the whole game; the other phones only send what their player wants to do
-("play this card", "draw") and show what the host sends back.
-
-| Module | What's in it |
-| --- | --- |
-| `:rules` | The game itself: a pure `(state, action) -> (new state, events)` reducer, the bots, a seedable RNG. Plain Kotlin, no Android. |
-| `:protocol` | The JSON messages between phones, each player's redacted view of the game, the join link format. |
-| `:net` | The Ktor WebSocket host (seats, reconnects, bots, turn timer, photos) and client (heartbeat, auto-reconnect). Plain Kotlin, tested headless. |
-| `:app` | The Android app: Compose UI, animations, sound and voice, the foreground service that keeps the host alive, Wi-Fi and mDNS glue. |
-
-The host never sends anyone another player's cards and checks every move against the rules before
-applying it. See [ASSETS.md](ASSETS.md) for where sounds and graphics come from.
+Cards, effects and the logo are drawn in code; sounds and music were made for this game and are free to
+reuse (CC0). See [ASSETS.md](ASSETS.md). A private project for playing with friends, not published anywhere.
