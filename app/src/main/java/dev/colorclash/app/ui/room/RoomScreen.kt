@@ -40,6 +40,7 @@ import dev.colorclash.app.ui.game.fx.TableFx
 import dev.colorclash.app.data.Prefs
 import dev.colorclash.app.feedback.Buzz
 import dev.colorclash.app.feedback.Sfx
+import dev.colorclash.app.feedback.reactionSfx
 import dev.colorclash.app.ui.game.RecentPlay
 import dev.colorclash.protocol.EventView
 import dev.colorclash.app.ui.theme.GameTheme
@@ -101,7 +102,7 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
     LaunchedEffect(session) {
         session.client.reactions.collect {
             fx.react(it.seat, it.reaction)
-            app.feedback.sfx(Sfx.POP, 0.7f)
+            app.feedback.sfx(reactionSfx(it.reaction), 0.7f)
         }
     }
     LaunchedEffect(game == null) { if (game == null) fx.reset() }

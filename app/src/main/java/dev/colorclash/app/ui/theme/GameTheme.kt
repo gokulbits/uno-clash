@@ -189,7 +189,9 @@ object GameTheme {
     /** Numbered as the protocol's reactions, with [phrases] after them. */
     val reactions = listOf("😂", "😍", "😎", "😮", "😢", "😡", "🤯", "🥳", "👍", "👏", "🔥", "😴")
     /** Quick chat, numbered straight after the emoji. */
-    val phrases = listOf("Nice one!", "Hurry up!", "Noooo!", "Gotcha 😏", "Oops", "GG", "Watch out!", "So close!")
+    val phrases = listOf("Nice one!", "Hurry up!", "Noooo!", "Gotcha 😏", "Oops", "GG", "Watch out!", "So close!", FAAA)
+    /** The one phrase that plays its own sound instead of a pop. */
+    const val FAAA = "Faaa!"
 
     fun isPhrase(index: Int): Boolean = index >= reactions.size
 

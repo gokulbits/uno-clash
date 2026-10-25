@@ -26,6 +26,8 @@ enum class Sfx(val res: Int) {
     YOUR_TURN(R.raw.sfx_turn),
     POP(R.raw.sfx_pop),
     TICK(R.raw.sfx_tick),
+    // Not generated: the owner's clip of the meme.
+    FAAA(R.raw.sfx_faaa),
 }
 
 /** Short effects through SoundPool, plus the optional music loop. Both follow the player's settings. */

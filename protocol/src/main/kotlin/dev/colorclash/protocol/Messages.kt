@@ -55,7 +55,7 @@ sealed interface ClientMessage {
 }
 
 /** The host drops reactions outside this range. */
-const val REACTION_COUNT = 20
+const val REACTION_COUNT = 21
 
 /** What a player wants to do. The seat comes from the connection, never from the client. */
 @Serializable

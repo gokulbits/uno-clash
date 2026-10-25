@@ -1,5 +1,6 @@
 package dev.colorclash.app.feedback
 
+import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.EventView
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.CardColor
@@ -47,5 +48,13 @@ class CuesTest {
         assertEquals(Cue(Sfx.REVERSE), cueFor(EventView.Reversed(Direction.COUNTER_CLOCKWISE), you = 0))
         assertEquals(Cue(Sfx.WILD), cueFor(EventView.WildColorChosen(1, CardColor.BLUE), you = 0))
         assertNull(cueFor(EventView.Dealt(0, 7), you = 0))
+    }
+
+    @Test
+    fun `only the Faaa phrase plays the clip`() {
+        val faaa = GameTheme.reactions.size + GameTheme.phrases.indexOf(GameTheme.FAAA)
+        assertEquals(Sfx.FAAA, reactionSfx(faaa))
+        assertEquals(Sfx.POP, reactionSfx(0))
+        assertEquals(Sfx.POP, reactionSfx(GameTheme.reactions.size))
     }
 }

@@ -112,6 +112,8 @@ Host on one phone; join from the others using each method once.
   silence while a call-out plays, and comes straight back after it.
 - [ ] Tap 😊 and send a few reactions. **Expect:** every phone sees the emoji pop out of your seat with a stream of
   small copies and a soft pop; mashing the tray sends at most one every 0.7 s.
+- [ ] Send the **Faaa!** bubble. **Expect:** every phone shows it and plays the Faaa clip instead of the pop,
+  at a sensible volume next to the other sounds; with sound off in Settings, it's silent.
 - [ ] Each turn shows a 15-second countdown in the ring by "Your turn", red and pulsing for the last few seconds;
   when it runs out a move is made for you.
 - [ ] Turn on Developer options › Profile HWUI rendering › On screen as bars during dealing and confetti.

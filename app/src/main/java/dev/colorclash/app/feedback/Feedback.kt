@@ -1,5 +1,6 @@
 package dev.colorclash.app.feedback
 
+import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.EventView
 import dev.colorclash.rules.DrawReason
 
@@ -34,6 +35,9 @@ fun cueFor(event: EventView, you: Int): Cue? = when (event) {
     // The RoundWon just before it already played the fanfare.
     is EventView.GameWon -> null
 }
+
+/** Reactions pop, except Faaa, which plays the clip. */
+fun reactionSfx(reaction: Int): Sfx = if (GameTheme.reaction(reaction) == GameTheme.FAAA) Sfx.FAAA else Sfx.POP
 
 class Feedback(private val sound: SoundEngine, private val haptics: Haptics, private val voice: Announcer) {
     fun cue(cue: Cue?) {
