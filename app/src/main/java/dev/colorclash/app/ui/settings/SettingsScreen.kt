@@ -1,5 +1,6 @@
 package dev.colorclash.app.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,7 +19,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import dev.colorclash.app.data.FeedbackSettings
 import dev.colorclash.app.data.LookSettings
@@ -82,6 +88,15 @@ fun SettingsScreen(
             SectionTitle("About")
             Text(GAME_TITLE, fontWeight = FontWeight.Bold)
             Text("Version ${appVersion()}", color = GameTheme.mutedText)
+            val links = LocalUriHandler.current
+            Text(
+                buildAnnotatedString {
+                    append("Made by ")
+                    withStyle(SpanStyle(color = GameTheme.yellow, fontWeight = FontWeight.Bold)) { append("gokulbits") }
+                },
+                Modifier.clickable(onClickLabel = "Open on GitHub", role = Role.Button) { runCatching { links.openUri(AUTHOR_URL) } },
+                color = GameTheme.mutedText,
+            )
             Text("Sounds and music are made for this game and free to reuse (CC0). See ASSETS.md.", color = GameTheme.mutedText)
         }
     }
@@ -152,3 +167,5 @@ private fun appVersion(): String {
     val context = LocalContext.current
     return runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
 }
+
+private const val AUTHOR_URL = "https://github.com/gokulbits"

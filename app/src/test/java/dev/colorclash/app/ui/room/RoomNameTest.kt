@@ -7,8 +7,8 @@ import kotlin.test.assertEquals
 class RoomNameTest {
     @Test
     fun `a room is named after its host`() {
-        assertEquals("Gokul's Clash", clashName("Gokul"))
-        assertEquals("Gokul's Clash", clashName(" Gokul "))
+        assertEquals("Sam's Clash", clashName("Sam"))
+        assertEquals("Sam's Clash", clashName(" Sam "))
         assertEquals(GAME_TITLE, clashName(""))
     }
 }
