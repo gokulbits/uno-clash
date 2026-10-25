@@ -87,6 +87,8 @@ Host on one phone; join from the others using each method once.
   the right hand, no duplicate or missing cards.
 - [ ] Airplane mode on a guest for 70 s. **Expect:** a bot covers them after 60 s; back in their seat on return.
 - [ ] Walk a guest phone to the edge of Wi-Fi range and back during play. **Expect:** recovers on its own.
+- [ ] Play 10 minutes on the host's hotspot with Bluetooth headphones connected to a guest.
+  **Expect:** no "reconnecting" banner at all (a short freeze is fine; the link should ride it out).
 - [ ] Turn the **host's** Wi-Fi off for 5 s and on (router mode only). **Expect:** guests reconnect once it's back
   (the host's IP may change; if it does, guests can't find it, which is expected).
 - [ ] Spam taps on cards and the draw pile during a reconnect. **Expect:** nothing played twice, a short

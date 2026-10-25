@@ -43,9 +43,14 @@ import kotlin.time.TimeSource
 
 data class ClientConfig(
     val pingInterval: Duration = 2.seconds,
-    /** No message from the host for this long and we assume the link died. */
-    val pingTimeout: Duration = 6.seconds,
+    /**
+     * No message from the host for this long and we assume the link died. Phone Wi-Fi can stall for
+     * several seconds (power save, scans, Bluetooth sharing the radio), so this must ride those out.
+     */
+    val pingTimeout: Duration = 15.seconds,
     val connectTimeout: Duration = 4.seconds,
+    /** From starting a connection to the socket being open. */
+    val handshakeTimeout: Duration = 10.seconds,
     /** Give up on a first connection that never worked after this long. */
     val firstConnectFor: Duration = 10.seconds,
     /** Keep trying to get back into a game we were in for this long. */
@@ -218,7 +223,7 @@ class GameClient(
             }
         }
         sessionJob = job
-        val handshake = withTimeoutOrNull(config.connectTimeout + config.pingTimeout) {
+        val handshake = withTimeoutOrNull(config.handshakeTimeout) {
             select {
                 opened.onAwait { true }
                 result.onAwait { false }

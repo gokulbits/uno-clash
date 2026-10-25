@@ -10,8 +10,11 @@ import kotlin.time.Duration.Companion.seconds
 data class HostConfig(
     /** How long a dropped player's seat is held before a bot takes over. */
     val reconnectGrace: Duration = 60.seconds,
-    /** A connection that sends nothing (not even a ping) for this long is treated as dead. */
-    val heartbeatTimeout: Duration = 6.seconds,
+    /**
+     * A connection that sends nothing (not even a ping) for this long is treated as dead. Longer than
+     * the client's own timeout, so the client is the one that notices and reconnects.
+     */
+    val heartbeatTimeout: Duration = 20.seconds,
     val botTurnDelay: Duration = 900.milliseconds,
     val botCallDelay: Duration = 300.milliseconds,
     /** Gives the humans at the table a fair chance to catch a missed UNO before a bot does. */

@@ -43,6 +43,7 @@ val fastClient = ClientConfig(
     pingInterval = 200.milliseconds,
     pingTimeout = 1.seconds,
     connectTimeout = 1.seconds,
+    handshakeTimeout = 2.seconds,
     firstConnectFor = 2.seconds,
     reconnectFor = 10.seconds,
     minBackoff = 150.milliseconds,

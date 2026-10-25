@@ -5,6 +5,8 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiManager
+import android.os.Build
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
@@ -12,14 +14,18 @@ import kotlin.time.Duration.Companion.milliseconds
 /**
  * Pins this process's sockets to Wi-Fi. Without it, Android happily sends traffic for a Wi-Fi
  * with no internet (like a phone hotspot with data off) over mobile data, and the host is unreachable.
+ * Also keeps the guest's Wi-Fi out of power save while bound, which otherwise stalls the link for seconds.
  */
 class WifiBinder(context: Context) {
     private val cm = context.getSystemService(ConnectivityManager::class.java)
+    private val wifi = context.applicationContext.getSystemService(WifiManager::class.java)
     private var callback: ConnectivityManager.NetworkCallback? = null
+    private var lock: WifiManager.WifiLock? = null
 
     /** Waits briefly for a Wi-Fi network so the first connection attempt already goes the right way. */
     suspend fun bind(): Boolean {
         if (callback != null) return cm.boundNetworkForProcess != null
+        acquireLock()
         val ready = CompletableDeferred<Unit>()
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
@@ -50,5 +56,20 @@ class WifiBinder(context: Context) {
         callback?.let { runCatching { cm.unregisterNetworkCallback(it) } }
         callback = null
         cm.bindProcessToNetwork(null)
+        lock?.takeIf { it.isHeld }?.release()
+        lock = null
+    }
+
+    /** LOW_LATENCY only counts with the screen on and the app in front, which is when a guest plays. */
+    @Suppress("DEPRECATION")
+    private fun acquireLock() {
+        if (lock != null) return
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) WifiManager.WIFI_MODE_FULL_LOW_LATENCY else WifiManager.WIFI_MODE_FULL_HIGH_PERF
+        lock = runCatching {
+            wifi.createWifiLock(mode, "ColorClash:guest").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        }.getOrNull()
     }
 }
