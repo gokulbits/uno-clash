@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -22,6 +23,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -35,6 +37,7 @@ import dev.colorclash.app.net.FoundRoom
 import dev.colorclash.app.ui.components.BigButton
 import dev.colorclash.app.ui.components.Panel
 import dev.colorclash.app.ui.components.SectionTitle
+import dev.colorclash.app.ui.room.clashName
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.DEFAULT_PORT
 import dev.colorclash.protocol.JoinLink
@@ -45,7 +48,7 @@ fun JoinScreen(
     busy: Boolean,
     message: String?,
     onBack: () -> Unit,
-    onPickRoom: (FoundRoom) -> Unit,
+    onPickRoom: (FoundRoom, code: String) -> Unit,
     onScan: () -> Unit,
     onJoinCode: (String) -> Unit,
     onJoinAddress: (ip: String, port: Int, code: String) -> Unit,
@@ -54,6 +57,7 @@ fun JoinScreen(
     var ip by rememberSaveable { mutableStateOf("") }
     var port by rememberSaveable { mutableStateOf(DEFAULT_PORT.toString()) }
     var showManual by rememberSaveable { mutableStateOf(false) }
+    var codeFor by remember { mutableStateOf<FoundRoom?>(null) }
 
     Column(
         Modifier
@@ -86,15 +90,14 @@ fun JoinScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
                         .background(GameTheme.cardColors[i % 4].copy(alpha = 0.85f))
-                        .clickable(enabled = !busy) { onPickRoom(room) }
+                        .clickable(enabled = !busy) { codeFor = room }
                         .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("${room.hostName}'s room", fontWeight = FontWeight.Bold)
-                        Text(room.address, color = GameTheme.text.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
+                        Text(clashName(room.hostName), fontWeight = FontWeight.Bold)
                     }
-                    Text(room.roomCode, style = MaterialTheme.typography.titleLarge)
+                    Text("Enter code ›", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -151,6 +154,41 @@ fun JoinScreen(
             }
         }
     }
+
+    codeFor?.let { room ->
+        RoomCodeDialog(
+            room,
+            onJoin = { typed ->
+                codeFor = null
+                onPickRoom(room, typed)
+            },
+            onDismiss = { codeFor = null },
+        )
+    }
+}
+
+/** A nearby room still needs its code, read off the host's screen. */
+@Composable
+private fun RoomCodeDialog(room: FoundRoom, onJoin: (String) -> Unit, onDismiss: () -> Unit) {
+    var typed by rememberSaveable { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(clashName(room.hostName)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Enter the room code shown on ${room.hostName}'s phone.", color = GameTheme.mutedText)
+                OutlinedTextField(
+                    value = typed,
+                    onValueChange = { typed = it.uppercase().filter(Char::isLetterOrDigit).take(6) },
+                    label = { Text("Room code") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onJoin(typed) }, enabled = JoinLink.isRoomCode(typed)) { Text("Join") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

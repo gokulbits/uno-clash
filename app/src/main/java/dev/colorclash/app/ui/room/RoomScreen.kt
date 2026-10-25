@@ -157,6 +157,10 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
                         startError = startError,
                         onStartError = { startError = it },
                         onReady = { session.client.setReady(it) },
+                    onSettingsChange = { settings ->
+                        session.hosting?.host?.updateSettings(settings)
+                        app.prefs.lobbySettings = settings
+                    },
                         onLeave = { confirmLeave = true },
                     )
                     else -> Connecting()

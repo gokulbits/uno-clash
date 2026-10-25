@@ -4,44 +4,62 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import dev.colorclash.app.net.LocalNetwork
 import dev.colorclash.app.session.Hosting
 import dev.colorclash.app.ui.components.AvatarBadge
 import dev.colorclash.app.ui.components.BigButton
-import dev.colorclash.app.ui.components.Panel
+import dev.colorclash.app.ui.components.FrostedPill
 import dev.colorclash.app.ui.components.QrCode
 import dev.colorclash.app.ui.components.RoomCodeTiles
 import dev.colorclash.app.ui.components.SectionTitle
+import dev.colorclash.app.ui.components.exitIcon
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.GameSettings
 import dev.colorclash.protocol.JoinLink
@@ -62,43 +80,58 @@ fun LobbyScreen(
     startError: String?,
     onStartError: (String?) -> Unit,
     onReady: (Boolean) -> Unit,
+    onSettingsChange: (GameSettings) -> Unit,
     onLeave: () -> Unit,
+) {
+    Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                FrostedPill("Leave", onLeave) { exitIcon() }
+                Text("Lobby", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+                RoomCodeBox(lobby.roomCode)
+            }
+
+            if (hosting != null) HostInvite(lobby.roomCode, hosting.port, lobby.seats.firstOrNull { it.isHost }?.name.orEmpty())
+
+            LobbyCard {
+                SectionTitle("Players ${lobby.seats.size}/${GameEngine.MAX_PLAYERS}")
+                PlayerGrid(lobby, hosting)
+            }
+
+            RulesPanel(lobby.settings, editable = hosting != null, onSettingsChange)
+        }
+        LobbyActions(lobby, hosting, startError, onStartError, onReady)
+    }
+}
+
+/** Start or ready up, pinned under the scrolling lobby so nobody has to go looking for it. */
+@Composable
+private fun LobbyActions(
+    lobby: LobbyView,
+    hosting: Hosting?,
+    startError: String?,
+    onStartError: (String?) -> Unit,
+    onReady: (Boolean) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val me = lobby.seats.getOrNull(lobby.you)
-
+    val needsReady = hosting == null && me?.ready == false
     Column(
         Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            .background(GameTheme.panel)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onLeave) { Text("‹ Leave", color = GameTheme.text) }
-            Text("Lobby", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-        }
-
-        Text("Room code", color = GameTheme.mutedText)
-        RoomCodeTiles(lobby.roomCode)
-
-        if (hosting != null) HostInvite(lobby.roomCode, hosting.port)
-
-        Panel {
-            SectionTitle("Players ${lobby.seats.size}/${GameEngine.MAX_PLAYERS}")
-            lobby.seats.forEach { seat ->
-                PlayerRow(seat, isYou = seat.seat == lobby.you, onRemove = hosting?.takeIf { seat.isBot }?.let { { it.host.removeBot(seat.seat) } })
-            }
-            if (hosting != null && lobby.seats.size < GameEngine.MAX_PLAYERS) {
-                TextButton(onClick = { hosting.host.addBot() }) { Text("+ Add a bot", color = GameTheme.green) }
-            }
-        }
-
-        RulesPanel(lobby.settings, editable = hosting != null) { hosting?.host?.updateSettings(it) }
-
         startError?.let { Text(it, color = GameTheme.yellow, textAlign = TextAlign.Center) }
-
         if (hosting != null) {
             BigButton(
                 if (lobby.canStart) "Start game" else "Waiting for players…",
@@ -107,19 +140,45 @@ fun LobbyScreen(
                 enabled = lobby.canStart,
             )
         } else if (me != null) {
+            // Nudges until they tap it.
+            val nudge = if (needsReady) {
+                val pulse = rememberInfiniteTransition(label = "ready")
+                pulse.animateFloat(1f, 1.04f, infiniteRepeatable(tween(600), RepeatMode.Reverse), label = "readyScale").value
+            } else {
+                1f
+            }
             BigButton(
                 if (me.ready) "Ready! (tap to undo)" else "I'm ready",
                 if (me.ready) GameTheme.green else GameTheme.blue,
                 { onReady(!me.ready) },
+                Modifier.scale(nudge),
             )
-            Text("The host starts the game once everyone is ready.", color = GameTheme.mutedText, textAlign = TextAlign.Center)
         }
     }
 }
 
+/** The room code, small and boxed, in the header. */
 @Composable
-private fun HostInvite(roomCode: String, port: Int) {
+private fun RoomCodeBox(code: String) {
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        Modifier
+            .clip(shape)
+            .background(GameTheme.panel)
+            .border(1.dp, GameTheme.glassEdge, shape)
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("ROOM CODE", color = GameTheme.mutedText, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Text(code, fontSize = 18.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
+    }
+}
+
+/** A small QR beside the ways in; tap it for a big one to scan from across the table. */
+@Composable
+private fun HostInvite(roomCode: String, port: Int, hostName: String) {
     val context = LocalContext.current
+    var bigQr by remember { mutableStateOf(false) }
     // Addresses change when the hotspot is switched on after the room opened, so keep checking.
     val addresses by produceState(emptyList<String>()) {
         while (true) {
@@ -127,58 +186,146 @@ private fun HostInvite(roomCode: String, port: Int) {
             delay(3_000)
         }
     }
-    Panel {
-        SectionTitle("Invite friends")
-        if (addresses.isEmpty()) {
-            Text(
-                "No Wi-Fi yet. Join a Wi-Fi network or turn on your hotspot so friends can connect.",
-                color = GameTheme.yellow,
-            )
-        } else {
-            QrCode(JoinLink(addresses, port, roomCode).toUri(), Modifier.fillMaxWidth(0.75f).align(Alignment.CenterHorizontally))
-            Text(
-                "Scan with the game or your camera app, or enter the room code.",
-                color = GameTheme.mutedText, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                "IP: " + addresses.joinToString("  ·  ") { "$it:$port" },
-                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
-            )
+    val link = JoinLink(addresses, port, roomCode).toUri()
+    LobbyCard {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (addresses.isNotEmpty()) {
+                QrCode(link, Modifier.size(112.dp).clickable(onClickLabel = "Show a bigger QR code") { bigQr = true })
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(clashName(hostName), fontWeight = FontWeight.Black, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (addresses.isEmpty()) {
+                    Text("No Wi-Fi yet. Join a Wi-Fi network or turn on your hotspot so friends can connect.", color = GameTheme.yellow, fontSize = 13.sp)
+                } else {
+                    Text("Scan with the game or any camera app (tap to enlarge), or enter the room code.", color = GameTheme.mutedText, fontSize = 13.sp)
+                }
+                Text(
+                    "No Wi-Fi? Turn on your hotspot ›",
+                    Modifier.clickable(role = Role.Button) { openHotspotSettings(context) }.padding(vertical = 4.dp),
+                    color = GameTheme.yellow,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
-        TextButton(onClick = { openHotspotSettings(context) }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-            Text("No Wi-Fi around? Turn on your hotspot ›", color = GameTheme.yellow)
+    }
+    if (bigQr && addresses.isNotEmpty()) {
+        Dialog(onDismissRequest = { bigQr = false }) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                QrCode(link, Modifier.fillMaxWidth().clickable { bigQr = false })
+                RoomCodeTiles(roomCode)
+                // Still here for anyone joining by typing the host's address.
+                Text(addresses.joinToString("  ·  ") { "$it:$port" }, color = GameTheme.mutedText, fontSize = 12.sp, textAlign = TextAlign.Center)
+            }
+        }
+    }
+}
+
+/** Everyone at the table as tiles, three to a row, with room for a bot in the next free seat. */
+@Composable
+private fun PlayerGrid(lobby: LobbyView, hosting: Hosting?) {
+    val canAddBot = hosting != null && lobby.seats.size < GameEngine.MAX_PLAYERS
+    val tiles: List<SeatInfo?> = lobby.seats + if (canAddBot) listOf(null) else emptyList()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        tiles.chunked(PLAYERS_PER_ROW).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { seat ->
+                    val tile = Modifier.weight(1f)
+                    if (seat == null) {
+                        AddBotTile(tile) { hosting?.host?.addBot() }
+                    } else {
+                        PlayerTile(
+                            seat,
+                            isYou = seat.seat == lobby.you,
+                            onRemove = hosting?.takeIf { seat.isBot }?.let { { it.host.removeBot(seat.seat) } },
+                            modifier = tile,
+                        )
+                    }
+                }
+                repeat(PLAYERS_PER_ROW - row.size) { Spacer(Modifier.weight(1f)) }
+            }
         }
     }
 }
 
 @Composable
-private fun PlayerRow(seat: SeatInfo, isYou: Boolean, onRemove: (() -> Unit)?) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (isYou) GameTheme.panelStrong else Color.Transparent)
-            .padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        AvatarBadge(seat, size = 44.dp)
-        Column(Modifier.weight(1f)) {
-            Text(seat.name + if (isYou) " (you)" else "", fontWeight = FontWeight.Bold)
-            val tag = when {
-                seat.isHost -> "Host"
-                seat.isBot -> "Bot"
-                !seat.connected -> "Reconnecting…"
-                else -> null
+private fun PlayerTile(seat: SeatInfo, isYou: Boolean, onRemove: (() -> Unit)?, modifier: Modifier) {
+    val shape = RoundedCornerShape(14.dp)
+    Box(modifier) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(if (isYou) GameTheme.panelStrong else GameTheme.panel)
+                .border(if (isYou) 1.5.dp else 0.dp, if (isYou) GameTheme.text else Color.Transparent, shape)
+                .padding(vertical = 8.dp, horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box {
+                AvatarBadge(seat, size = 42.dp)
+                // Ready shows as a tick on the avatar.
+                if (seat.ready) {
+                    Text(
+                        "✓",
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .offset(x = 4.dp, y = 2.dp)
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(GameTheme.green),
+                        color = GameTheme.text,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
-            tag?.let { Text(it, color = GameTheme.mutedText, style = MaterialTheme.typography.bodyMedium) }
+            Text(seat.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val (tag, color) = when {
+                !seat.connected -> "Reconnecting…" to GameTheme.yellow
+                !seat.ready -> "Not ready" to GameTheme.yellow
+                isYou -> "You" to GameTheme.mutedText
+                seat.isHost -> "Host" to GameTheme.mutedText
+                seat.isBot -> "Bot" to GameTheme.mutedText
+                else -> "Ready" to GameTheme.green
+            }
+            Text(tag, color = color, fontSize = 11.sp, maxLines = 1)
         }
-        Text(
-            if (seat.ready) "✔ Ready" else "Waiting",
-            color = if (seat.ready) GameTheme.green else GameTheme.mutedText,
-            fontWeight = FontWeight.Bold,
-        )
-        onRemove?.let { TextButton(onClick = it) { Text("✕", color = GameTheme.danger) } }
+        onRemove?.let {
+            Text(
+                "✕",
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(GameTheme.danger)
+                    .clickable(onClickLabel = "Remove bot", role = Role.Button, onClick = it),
+                color = GameTheme.text,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AddBotTile(modifier: Modifier, onAdd: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        modifier
+            .clip(shape)
+            .border(1.5.dp, GameTheme.green.copy(alpha = 0.7f), shape)
+            .clickable(role = Role.Button, onClick = onAdd)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+            Text("+", color = GameTheme.green, fontSize = 28.sp, fontWeight = FontWeight.Black)
+        }
+        Text("Add a bot", color = GameTheme.green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Text(" ", fontSize = 11.sp)
     }
 }
 
@@ -186,67 +333,118 @@ private fun PlayerRow(seat: SeatInfo, isYou: Boolean, onRemove: (() -> Unit)?) {
 private fun RulesPanel(settings: GameSettings, editable: Boolean, onChange: (GameSettings) -> Unit) {
     val rules = settings.rules
     fun update(block: RuleSet.() -> RuleSet) = onChange(settings.copy(rules = rules.block()))
+    val toggles = listOf(
+        Triple("Stack +2 / +4", "Pass the pain along", rules.stackDraws) to { on: Boolean -> update { copy(stackDraws = on) } },
+        Triple("Jump in", "Same card, out of turn", rules.jumpIn) to { on: Boolean -> update { copy(jumpIn = on) } },
+        Triple("7-0", "7 swaps, 0 passes all", rules.sevenZero) to { on: Boolean -> update { copy(sevenZero = on) } },
+        Triple("Draw till playable", "Draw until you can play", rules.drawUntilPlayable) to { on: Boolean -> update { copy(drawUntilPlayable = on) } },
+        Triple("Challenge +4", "Call out an illegal +4", rules.challengeDrawFour) to { on: Boolean -> update { copy(challengeDrawFour = on) } },
+    )
 
-    Panel {
+    LobbyCard {
         SectionTitle(if (editable) "House rules" else "House rules (set by host)")
-        RuleSwitch("Stack +2 and +4", "Pass the pain along instead of drawing", rules.stackDraws, editable) { update { copy(stackDraws = it) } }
-        RuleSwitch("Jump in", "Play an identical card out of turn", rules.jumpIn, editable) { update { copy(jumpIn = it) } }
-        RuleSwitch("7-0", "7 swaps hands, 0 passes every hand along", rules.sevenZero, editable) { update { copy(sevenZero = it) } }
-        RuleSwitch("Draw until playable", "Keep drawing until you can play", rules.drawUntilPlayable, editable) { update { copy(drawUntilPlayable = it) } }
-        RuleSwitch("Challenge +4", "Call out an illegal Wild Draw 4", rules.challengeDrawFour, editable) { update { copy(challengeDrawFour = it) } }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            toggles.chunked(2).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { (rule, onToggle) ->
+                        RuleTile(rule.first, rule.second, rule.third, editable, Modifier.weight(1f)) { onToggle(!rule.third) }
+                    }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
 
-
-        Text("Play to", fontWeight = FontWeight.Bold)
-        ChoiceChips(listOf(0, 100, 250, 500), rules.targetScore, editable, { if (it == 0) "1 round" else "$it pts" }) { update { copy(targetScore = it) } }
-        Text("Finishing on a power card", fontWeight = FontWeight.Bold)
-        Text("Going out on a Skip, Reverse, +2 or Wild: the card still works, but you draw instead of winning", color = GameTheme.mutedText, style = MaterialTheme.typography.bodyMedium)
-        ChoiceChips(listOf(0, 2, 4), rules.powerFinishPenalty, editable, { if (it == 0) "Allowed" else "Draw $it" }) {
+        Spacer(Modifier.height(2.dp))
+        SettingRow("Play to", listOf(0, 100, 250, 500), rules.targetScore, editable, { if (it == 0) "1 round" else "$it" }) {
+            update { copy(targetScore = it) }
+        }
+        SettingRow("Power finish", listOf(0, 2, 4), rules.powerFinishPenalty, editable, { if (it == 0) "Allowed" else "Draw $it" }) {
             update { copy(powerFinishPenalty = it) }
         }
-        Text("Bot skill", fontWeight = FontWeight.Bold)
-        ChoiceChips(BotLevel.entries, settings.botLevel, editable, { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } }) {
+        Text(
+            "Going out on a Skip, Reverse, +2 or Wild: the card still works, but you draw instead of winning",
+            color = GameTheme.mutedText,
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+        )
+        SettingRow("Bots", BotLevel.entries, settings.botLevel, editable, { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } }) {
             onChange(settings.copy(botLevel = it))
         }
-        Text("Turn timer", fontWeight = FontWeight.Bold)
-        ChoiceChips(listOf<Int?>(null, 15, 30, 60), settings.turnTimerSeconds, editable, { it?.let { s -> "${s}s" } ?: "Off" }) {
+        SettingRow("Turn timer", listOf<Int?>(null, 15, 30, 60), settings.turnTimerSeconds, editable, { it?.let { s -> "${s}s" } ?: "Off" }) {
             onChange(settings.copy(turnTimerSeconds = it))
         }
     }
 }
 
+/** A house rule as a tile you tap on and off; green when it's on. */
 @Composable
-private fun RuleSwitch(title: String, detail: String, checked: Boolean, editable: Boolean, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun RuleTile(title: String, detail: String, on: Boolean, editable: Boolean, modifier: Modifier, onToggle: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier
+            .clip(shape)
+            .background(if (on) GameTheme.green.copy(alpha = if (editable) 0.85f else 0.55f) else GameTheme.panel)
+            .clickable(enabled = editable, role = Role.Switch, onClick = onToggle)
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         Column(Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.Bold)
-            Text(detail, color = GameTheme.mutedText, style = MaterialTheme.typography.bodyMedium)
+            Text(title, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(detail, color = GameTheme.text.copy(alpha = 0.75f), fontSize = 11.sp, lineHeight = 13.sp, maxLines = 2)
         }
-        Switch(
-            checked = checked,
-            onCheckedChange = onChange,
-            enabled = editable,
-            colors = SwitchDefaults.colors(checkedTrackColor = GameTheme.green, disabledCheckedTrackColor = GameTheme.green.copy(alpha = 0.5f)),
-        )
+        Text(if (on) "✓" else "", fontWeight = FontWeight.Black, fontSize = 14.sp, modifier = Modifier.width(12.dp))
     }
 }
 
+/** A setting on one line: its name, then the options side by side. */
 @Composable
-private fun <T> ChoiceChips(options: List<T>, selected: T, editable: Boolean, label: (T) -> String, onPick: (T) -> Unit) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        options.forEachIndexed { i, option ->
-            FilterChip(
-                selected = option == selected,
-                onClick = { onPick(option) },
-                enabled = editable,
-                label = { Text(label(option)) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = GameTheme.cardColors[i % 4],
-                    selectedLabelColor = Color.White,
-                    disabledSelectedContainerColor = GameTheme.cardColors[i % 4].copy(alpha = 0.6f),
-                ),
-            )
+private fun <T> SettingRow(name: String, options: List<T>, selected: T, editable: Boolean, label: (T) -> String, onPick: (T) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(name, Modifier.width(86.dp), fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
+        Row(
+            Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(50))
+                .background(GameTheme.panel)
+                .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            options.forEachIndexed { i, option ->
+                val picked = option == selected
+                val color = GameTheme.cardColors[i % GameTheme.cardColors.size]
+                Text(
+                    label(option),
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(50))
+                        .background(if (picked) color.copy(alpha = if (editable) 1f else 0.6f) else Color.Transparent)
+                        .clickable(enabled = editable && !picked, role = Role.RadioButton) { onPick(option) }
+                        .padding(vertical = 7.dp),
+                    color = if (picked) GameTheme.text else GameTheme.mutedText,
+                    fontWeight = if (picked) FontWeight.Black else FontWeight.Medium,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
         }
     }
+}
+
+/** The lobby's cards: like [Panel], with less padding so more fits on one screen. */
+@Composable
+private fun LobbyCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(GameTheme.panel)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        content = content,
+    )
 }
 
 private fun openHotspotSettings(context: Context) {
@@ -264,3 +462,5 @@ private fun openHotspotSettings(context: Context) {
         }
     }
 }
+
+private const val PLAYERS_PER_ROW = 3

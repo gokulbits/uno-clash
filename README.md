@@ -12,14 +12,16 @@ A private project for playing with friends, not published anywhere.
 - "UNO!" calls with catching, the +4 challenge, scoring over rounds to a target
 - A fair shuffle: every round is dealt one card at a time around the table from a freshly shuffled deck
 - 15-second turn timer by default (the host can change or turn it off in the lobby)
-- House rules you can toggle in the lobby: stacking +2/+4, jump-in, 7-0 swaps, draw until playable, a penalty for finishing on a power card
+- House rules you can toggle in the lobby: stacking +2/+4, jump-in, 7-0 swaps, draw until playable, a penalty for finishing on a power card.
+  The host phone remembers them for the next room it opens
 - Action cards and picked colors are called out on screen and out loud ("Skip!", "Blue!")
 - Emoji reactions that float up from your seat for everyone to see
 - Use any photo from your phone as your avatar (a favourite character, yourself…), cropped to a circle,
   or pick one of 50 built-in avatars: animals plus emoji for characters from Malayalam, Tamil and English
   films and series. Add a color and a frame (gold, rainbow, flames…); everyone at the table sees it
 - Pick your own table color and card back design in Settings
-- Join by QR code (the in-app scanner or the stock camera app), room code, nearby-room list, or IP address
+- Join by QR code (the in-app scanner or the stock camera app), room code, nearby-room list, or IP address.
+  Every way in needs the room code: rooms nearby are listed without it, and tapping one asks for it
 - Dropped players get 60 seconds to come back; after that a bot keeps their seat warm until they rejoin
 - Card animations, sound effects, music and haptics, all switchable in Settings
 - Practice mode against bots on a single phone
@@ -38,12 +40,13 @@ Requires Android 8.0 (API 26) or newer.
 ## Play
 
 1. Everyone opens the app and picks a name and avatar.
-2. **One phone taps Host a game.** The lobby shows a room code, a QR code and the host's IP address.
+2. **One phone taps Host a game.** The lobby shows the room ("Gokul's Clash"), its code and a QR code.
+   Tap the QR for a bigger one, with the host's IP address under it.
    - **Same Wi-Fi:** everyone joins the same Wi-Fi network as the host.
    - **No Wi-Fi around:** the host taps *Turn on your hotspot*, switches the hotspot on, and the others
      connect to it. The QR code updates by itself once the hotspot is up.
-3. **Everyone else taps Join a game** and either picks the room from *Rooms nearby*, scans the QR code,
-   types the room code, or types the IP shown under the QR code.
+3. **Everyone else taps Join a game** and either scans the QR code, types the room code, picks the room
+   from *Rooms nearby* and types its code, or types the IP shown under the enlarged QR (plus the code).
 4. Players tap **I'm ready**; the host sets house rules, adds bots for empty seats if wanted, and taps **Start game**.
 
 On Android 17 and newer the app asks for permission to talk to devices on your local network the first

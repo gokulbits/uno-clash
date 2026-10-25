@@ -19,19 +19,19 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.time.Duration.Companion.seconds
 
-data class FoundRoom(val roomCode: String, val hostName: String, val address: String, val port: Int)
+/** A room seen on the network. Its code isn't advertised: joining still means typing it or scanning the QR. */
+data class FoundRoom(val hostName: String, val address: String, val port: Int)
 
 /** mDNS advertising and discovery. Handy when it works, but routers often block it, so it's never the only way in. */
 class RoomDiscovery(context: Context) {
     private val nsd = context.getSystemService(NsdManager::class.java)
     private val wifi = context.applicationContext.getSystemService(WifiManager::class.java)
 
-    fun advertise(roomCode: String, port: Int, hostName: String): AutoCloseable {
+    fun advertise(port: Int, hostName: String): AutoCloseable {
         val info = NsdServiceInfo().apply {
-            serviceName = "ColorClash $roomCode"
+            serviceName = "ColorClash ${hostName.take(20)}"
             serviceType = SERVICE_TYPE
             this.port = port
-            setAttribute(ATTR_CODE, roomCode)
             setAttribute(ATTR_NAME, hostName.take(20))
         }
         val listener = object : NsdManager.RegistrationListener {
@@ -105,20 +105,18 @@ class RoomDiscovery(context: Context) {
 
     @Suppress("DEPRECATION")
     private fun NsdServiceInfo.toRoom(): FoundRoom? {
-        val code = attributes[ATTR_CODE]?.let { String(it) } ?: return null
         val name = attributes[ATTR_NAME]?.let { String(it) } ?: "Host"
         val address = if (Build.VERSION.SDK_INT >= 34) {
             hostAddresses.filterIsInstance<Inet4Address>().firstOrNull()
         } else {
             host as? Inet4Address
         } ?: return null
-        return FoundRoom(code, name, address.hostAddress ?: return null, port)
+        return FoundRoom(name, address.hostAddress ?: return null, port)
     }
 
     private companion object {
         const val TAG = "RoomDiscovery"
         const val SERVICE_TYPE = "_colorclash._tcp"
-        const val ATTR_CODE = "code"
         const val ATTR_NAME = "name"
     }
 }

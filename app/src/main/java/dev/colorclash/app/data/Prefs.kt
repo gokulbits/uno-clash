@@ -3,6 +3,8 @@ package dev.colorclash.app.data
 import android.content.Context
 import java.io.File
 import dev.colorclash.protocol.AUTO_AVATAR_COLOR
+import dev.colorclash.protocol.Codec
+import dev.colorclash.protocol.GameSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -127,6 +129,15 @@ class Prefs(context: Context) {
             .apply()
     }
 
+    /** The house rules this phone last hosted with; the next room it opens starts with them. */
+    var lobbySettings: GameSettings
+        get() = sp.getString(KEY_LOBBY_SETTINGS, null)
+            ?.let { runCatching { Codec.json.decodeFromString(GameSettings.serializer(), it) }.getOrNull() }
+            ?: GameSettings()
+        set(value) {
+            sp.edit().putString(KEY_LOBBY_SETTINGS, Codec.json.encodeToString(GameSettings.serializer(), value)).apply()
+        }
+
     var lastSession: SavedSession?
         get() {
             val host = sp.getString(KEY_HOST, null) ?: return null
@@ -152,6 +163,7 @@ class Prefs(context: Context) {
         const val KEY_AVATAR_COLOR = "avatar_color"
         const val KEY_AVATAR_FRAME = "avatar_frame"
         const val KEY_TABLE = "table"
+        const val KEY_LOBBY_SETTINGS = "lobby_settings"
         const val KEY_CARD_BACK = "card_back"
         const val KEY_SOUND = "sound"
         const val KEY_MUSIC = "music"

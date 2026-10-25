@@ -10,7 +10,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,9 +18,11 @@ import androidx.compose.ui.unit.dp
 import dev.colorclash.app.data.Profile
 import dev.colorclash.app.data.SavedSession
 import dev.colorclash.app.ui.components.BigButton
+import dev.colorclash.app.ui.components.FrostedPill
 import dev.colorclash.app.ui.components.Logo
 import dev.colorclash.app.ui.components.Panel
 import dev.colorclash.app.ui.components.SectionTitle
+import dev.colorclash.app.ui.components.gearIcon
 import dev.colorclash.app.ui.settings.ProfileEditor
 import dev.colorclash.app.ui.theme.GameTheme
 
@@ -47,9 +48,7 @@ fun HomeScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        TextButton(onClick = onSettings, modifier = Modifier.align(Alignment.End)) {
-            Text("⚙ Settings", color = GameTheme.text)
-        }
+        FrostedPill("Settings", onSettings, Modifier.align(Alignment.End)) { gearIcon() }
         Logo()
         Spacer(Modifier.height(12.dp))
 
