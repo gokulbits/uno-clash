@@ -4,6 +4,8 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.SoundPool
+import android.os.Handler
+import android.os.Looper
 import dev.colorclash.app.R
 import dev.colorclash.app.data.FeedbackSettings
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +38,7 @@ class SoundEngine(private val context: Context, private val settings: StateFlow<
     private val ids = Sfx.entries.associateWith { pool.load(context, it.res, 1) }
     private var music: MediaPlayer? = null
     private var musicWanted = false
+    private val main = Handler(Looper.getMainLooper())
 
     fun play(sfx: Sfx, volume: Float = 1f) {
         if (!settings.value.sound) return
@@ -61,9 +64,18 @@ class SoundEngine(private val context: Context, private val settings: StateFlow<
         }
     }
 
+    /** Turns the music right down while a card effect is being called out, then back up. Any thread. */
+    fun duckMusic(ducked: Boolean) {
+        main.post {
+            val volume = if (ducked) DUCKED_VOLUME else MUSIC_VOLUME
+            music?.setVolume(volume, volume)
+        }
+    }
+
     private companion object {
         // Dealing overlaps a lot of short sounds.
         const val MAX_STREAMS = 8
-        const val MUSIC_VOLUME = 0.35f
+        const val MUSIC_VOLUME = 0.2f
+        const val DUCKED_VOLUME = 0.05f
     }
 }
