@@ -230,8 +230,8 @@ private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResul
     val shade = tint(darker(base, 0.55f))
     val mid = center
     when (card.face) {
-        Face.SKIP -> withShadow(w, shade, ink, mid) { c, color -> skipIcon(c, w * 0.25f, color) }
-        Face.REVERSE -> withShadow(w, shade, ink, mid) { c, color -> reverseIcon(c, w * 0.25f, color) }
+        Face.SKIP -> outlined(w, shade, ink, mid, w * 0.009f) { c, color, grow -> skipIcon(c, w * 0.25f, color, grow) }
+        Face.REVERSE -> outlined(w, shade, ink, mid, w * 0.009f) { c, color, grow -> reverseIcon(c, w * 0.25f, color, grow) }
         Face.DRAW_TWO -> miniCards(listOf(ink, ink), shade, tint)
         Face.WILD_DRAW_FOUR -> miniCards(DRAW_FOUR_FANS.map { tint(it) }, tint(GameTheme.wild), tint)
         Face.WILD -> Unit // the oval says it all
@@ -261,9 +261,9 @@ private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResul
                         underline(at.x, at.y + w * 0.108f, Size(w * 0.13f, w * 0.024f), white, cornerShade, w * 0.01f)
                     }
                 }
-                card.face == Face.SKIP -> withShadow(w * 0.9f, cornerShade, white, at) { c, color -> skipIcon(c, w * 0.09f, color) }
-                card.face == Face.REVERSE -> withShadow(w * 0.9f, cornerShade, white, at) { c, color -> reverseIcon(c, w * 0.09f, color) }
-                else -> wildPip(at, w * 0.08f, tint)
+                card.face == Face.SKIP -> outlined(w * 0.9f, cornerShade, white, at, w * 0.022f) { c, color, grow -> skipIcon(c, w * 0.09f, color, grow) }
+                card.face == Face.REVERSE -> outlined(w * 0.9f, cornerShade, white, at, w * 0.022f) { c, color, grow -> reverseIcon(c, w * 0.09f, color, grow) }
+                else -> wildPip(at, w * 0.08f, tint, cornerShade)
             }
             // Under the corner mark, where it still shows in a tight fan. Drawn relative to the mark, so
             // the bottom corner's half-turn carries it along.
@@ -434,26 +434,37 @@ private fun DrawScope.underline(centerX: Float, top: Float, bar: Size, fill: Col
     drawRoundRect(fill, topLeft, bar, CornerRadius(r))
 }
 
-/** Draws an icon twice: once offset in [shade] as its shadow, then on top in [ink]. */
-private inline fun DrawScope.withShadow(unit: Float, shade: Color, ink: Color, at: Offset, icon: DrawScope.(Offset, Color) -> Unit) {
-    icon(at + Offset(unit * 0.02f, unit * 0.03f), shade.copy(alpha = 0.55f))
-    icon(at, ink)
+/**
+ * Draws an icon like the digits: a soft shadow, then the icon grown by [edgeWidth] all round in [shade]
+ * as its outline, then the icon itself in [ink]. [icon] gets how much to grow its strokes by.
+ */
+private inline fun DrawScope.outlined(
+    unit: Float,
+    shade: Color,
+    ink: Color,
+    at: Offset,
+    edgeWidth: Float,
+    icon: DrawScope.(Offset, Color, Float) -> Unit,
+) {
+    icon(at + Offset(unit * 0.02f, unit * 0.03f), shade.copy(alpha = 0.55f), edgeWidth)
+    icon(at, shade, edgeWidth)
+    icon(at, ink, 0f)
 }
 
-private fun DrawScope.skipIcon(c: Offset, r: Float, ink: Color) {
+private fun DrawScope.skipIcon(c: Offset, r: Float, ink: Color, grow: Float) {
     val sw = r * 0.36f
     val rr = r - sw / 2
-    drawCircle(ink, rr, c, style = Stroke(sw))
+    drawCircle(ink, rr, c, style = Stroke(sw + grow * 2))
     val d = rr * SQRT_HALF
-    drawLine(ink, Offset(c.x - d, c.y + d), Offset(c.x + d, c.y - d), sw)
+    drawLine(ink, Offset(c.x - d, c.y + d), Offset(c.x + d, c.y - d), sw + grow * 2)
 }
 
-private fun DrawScope.reverseIcon(c: Offset, r: Float, ink: Color) {
-    reverseArrow(c, r, ink, flip = false)
-    reverseArrow(c, r, ink, flip = true)
+private fun DrawScope.reverseIcon(c: Offset, r: Float, ink: Color, grow: Float) {
+    reverseArrow(c, r, ink, flip = false, grow)
+    reverseArrow(c, r, ink, flip = true, grow)
 }
 
-private fun DrawScope.reverseArrow(c: Offset, r: Float, ink: Color, flip: Boolean) {
+private fun DrawScope.reverseArrow(c: Offset, r: Float, ink: Color, flip: Boolean, grow: Float) {
     val sw = r * 0.34f
     val len = r * 1.5f
     val sign = if (flip) -1f else 1f
@@ -464,7 +475,7 @@ private fun DrawScope.reverseArrow(c: Offset, r: Float, ink: Color, flip: Boolea
     val headBase = origin + along * (len / 2 - r * 0.42f)
     val tip = origin + along * (len / 2)
     val hw = r * 0.36f
-    drawLine(ink, tail, headBase, sw, StrokeCap.Round)
+    drawLine(ink, tail, headBase, sw + grow * 2, StrokeCap.Round)
     val head = Path().apply {
         moveTo(tip.x, tip.y)
         lineTo(headBase.x + across.x * hw, headBase.y + across.y * hw)
@@ -472,7 +483,7 @@ private fun DrawScope.reverseArrow(c: Offset, r: Float, ink: Color, flip: Boolea
         close()
     }
     drawPath(head, ink)
-    drawPath(head, ink, style = Stroke(sw * 0.3f, join = StrokeJoin.Round))
+    drawPath(head, ink, style = Stroke(sw * 0.3f + grow * 2, join = StrokeJoin.Round))
 }
 
 /** Little cards in the middle of a draw card: two stacked for +2, four fanned for +4. */
@@ -491,17 +502,22 @@ private fun DrawScope.miniCards(fills: List<Color>, shade: Color, tint: Tint) {
         val topLeft = c - Offset(mw / 2, mh / 2)
         rotate(if (n == 2) -14f else t * 14f, pivot = c) {
             val radius = CornerRadius(w * 0.035f)
+            val edge = w * 0.012f
             drawRoundRect(shade.copy(alpha = 0.45f), topLeft + Offset(w * 0.015f, w * 0.022f), Size(mw, mh), radius)
+            // A dark rim outside the white border, so the cards stand out from the white oval.
+            drawRoundRect(shade, topLeft - Offset(edge, edge), Size(mw + edge * 2, mh + edge * 2), CornerRadius(radius.x + edge))
             drawRoundRect(fill, topLeft, Size(mw, mh), radius)
             drawRoundRect(tint(Color.White), topLeft, Size(mw, mh), radius, style = Stroke(w * 0.018f))
         }
     }
 }
 
-private fun DrawScope.wildPip(at: Offset, r: Float, tint: Tint) {
+private fun DrawScope.wildPip(at: Offset, r: Float, tint: Tint, edge: Color) {
     val topLeft = at - Offset(r, r)
+    val ring = size.width * 0.014f
+    drawCircle(edge, r + ring, at, style = Stroke(ring))
     drawQuadrants(topLeft, Size(r * 2, r * 2), tint)
-    drawCircle(tint(Color.White), r, at, style = Stroke(size.width * 0.014f))
+    drawCircle(tint(Color.White), r, at, style = Stroke(ring))
 }
 
 private val FAN_CARD_WIDTH = 20.dp

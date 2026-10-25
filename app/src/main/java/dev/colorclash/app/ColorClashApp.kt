@@ -26,7 +26,7 @@ class ColorClashApp : Application() {
         prefs = Prefs(this)
         sessions = SessionManager(this, prefs)
         sound = SoundEngine(this, prefs.feedback)
-        feedback = Feedback(sound, Haptics(this, prefs.feedback), Announcer(this, prefs.feedback))
+        feedback = Feedback(sound, Haptics(this, prefs.feedback), Announcer(this, prefs.feedback, sound::duckMusic))
         // Music follows the setting as soon as it's flipped.
         MainScope().launch { prefs.feedback.collect { sound.refreshMusic() } }
     }
