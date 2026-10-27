@@ -322,13 +322,13 @@ class HostClientIntegrationTest {
             delay(50)
 
             a.react(4)
-            a.react(5) // inside the cooldown: dropped
+            a.react(5) // inside the gap: dropped
             a.react(REACTION_COUNT) // no such emoji: dropped
             withTimeout(5.seconds) { while (seen.isEmpty()) delay(10) }
             delay(300)
             assertEquals(listOf(ServerMessage.Reaction(seatA, 4)), seen.toList())
 
-            delay(h.host.config.reactionCooldown)
+            delay(h.host.config.reactionGap)
             a.react(6)
             withTimeout(5.seconds) { while (seen.size < 2) delay(10) }
             assertEquals(ServerMessage.Reaction(seatA, 6), seen.last())

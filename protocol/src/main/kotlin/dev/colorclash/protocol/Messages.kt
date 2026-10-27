@@ -55,7 +55,16 @@ sealed interface ClientMessage {
 }
 
 /** The host drops reactions outside this range. */
-const val REACTION_COUNT = 21
+const val REACTION_COUNT = 26
+
+/**
+ * Reactions make noise, so the host rations them: a few in a row for a burst of banter, then one
+ * every [REACTION_GAP_MILLIS]. The app greys the button out on the same numbers, so a dropped
+ * reaction isn't the first a player hears about it.
+ */
+const val REACTION_GAP_MILLIS = 2_000L
+const val REACTION_BURST = 3
+const val REACTION_WINDOW_MILLIS = 8_000L
 
 /** What a player wants to do. The seat comes from the connection, never from the client. */
 @Serializable

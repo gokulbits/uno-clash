@@ -36,8 +36,20 @@ fun cueFor(event: EventView, you: Int): Cue? = when (event) {
     is EventView.GameWon -> null
 }
 
-/** Reactions pop, except Faaa, which plays the clip. */
-fun reactionSfx(reaction: Int): Sfx = if (GameTheme.reaction(reaction) == GameTheme.FAAA) Sfx.FAAA else Sfx.POP
+/** Emoji pop; the joke phrases bring their own noise. */
+fun reactionSfx(reaction: Int): Sfx = when (GameTheme.reaction(reaction)) {
+    GameTheme.FAAA -> Sfx.FAAA
+    GameTheme.BOING -> Sfx.BOING
+    GameTheme.TROMBONE -> Sfx.TROMBONE
+    GameTheme.RIMSHOT -> Sfx.RIMSHOT
+    GameTheme.HORN -> Sfx.HORN
+    GameTheme.GULP -> Sfx.GULP
+    else -> Sfx.POP
+}
+
+/** An effect that just played stays quiet for its own length, however often it's asked for. */
+fun canPlayAgain(lastMillis: Long?, nowMillis: Long, minGapMillis: Long): Boolean =
+    minGapMillis <= 0 || lastMillis == null || nowMillis - lastMillis >= minGapMillis
 
 class Feedback(private val sound: SoundEngine, private val haptics: Haptics, private val voice: Announcer) {
     fun cue(cue: Cue?) {

@@ -50,11 +50,13 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
@@ -86,6 +88,7 @@ import dev.colorclash.app.ui.game.fx.TableFx
 import dev.colorclash.app.ui.settings.QuickSettingsDialog
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.PhaseKind
+import dev.colorclash.protocol.REACTION_GAP_MILLIS
 import dev.colorclash.protocol.PlayerIntent
 import dev.colorclash.protocol.PlayerView
 import dev.colorclash.protocol.SeatView
@@ -152,6 +155,15 @@ private fun GameTable(
     var showPeek by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showReactions by remember { mutableStateOf(false) }
+    // The host rations reactions; grey the button out on the same numbers so a drop is never a surprise.
+    var reactionsSent by remember { mutableIntStateOf(0) }
+    var canReact by remember { mutableStateOf(true) }
+    LaunchedEffect(reactionsSent) {
+        if (reactionsSent == 0) return@LaunchedEffect
+        canReact = false
+        delay(REACTION_GAP_MILLIS)
+        canReact = true
+    }
     val roundOver = view.phase == PhaseKind.ROUND_OVER || view.phase == PhaseKind.GAME_OVER
     // Closing the scoreboard lasts until the next round ends; then it opens again by itself.
     var scoresClosed by remember(view.round, view.phase) { mutableStateOf(false) }
@@ -217,7 +229,8 @@ private fun GameTable(
                 )
                 ReactionButton(
                     open = showReactions,
-                    onClick = { showReactions = !showReactions },
+                    enabled = canReact,
+                    onClick = { if (canReact) showReactions = !showReactions else showReactions = false },
                     modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp),
                 )
             }
@@ -241,10 +254,11 @@ private fun GameTable(
             AwayBanner(onResume, Modifier.align(Alignment.Center))
         }
 
-        if (showReactions) {
+        if (showReactions && canReact) {
             ReactionTray(
                 onPick = {
                     onReact(it)
+                    reactionsSent++
                     showReactions = false
                 },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = HAND_HEIGHT + ACTION_BAR_HEIGHT),
@@ -818,13 +832,14 @@ private fun SortSwitch(byNumber: Boolean, onToggle: () -> Unit, modifier: Modifi
 }
 
 @Composable
-private fun ReactionButton(open: Boolean, onClick: () -> Unit, modifier: Modifier) {
+private fun ReactionButton(open: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
     Box(
         modifier
             .size(REACTION_BUTTON_SIZE)
             .clip(CircleShape)
             .background(if (open) GameTheme.yellow else GameTheme.panelStrong)
-            .clickable(onClick = onClick),
+            .alpha(if (enabled) 1f else 0.4f)
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text("😊", fontSize = 24.sp)

@@ -1,5 +1,8 @@
 package dev.colorclash.net.host
 
+import dev.colorclash.protocol.REACTION_BURST
+import dev.colorclash.protocol.REACTION_GAP_MILLIS
+import dev.colorclash.protocol.REACTION_WINDOW_MILLIS
 import dev.colorclash.protocol.SeatInfo
 import dev.colorclash.protocol.ServerMessage
 import dev.colorclash.rules.GameState
@@ -21,8 +24,10 @@ data class HostConfig(
     val botCatchDelay: Duration = 2.seconds,
     /** Start the next round on its own after this long. Null waits for the host to do it. */
     val autoNextRound: Duration? = null,
-    /** At most one reaction per player this often. */
-    val reactionCooldown: Duration = 700.milliseconds,
+    /** A few reactions in a row are fine; a stream of them isn't. See [ReactionLimiter]. */
+    val reactionGap: Duration = REACTION_GAP_MILLIS.milliseconds,
+    val reactionBurst: Int = REACTION_BURST,
+    val reactionWindow: Duration = REACTION_WINDOW_MILLIS.milliseconds,
 )
 
 /** One player's link to the host. Implementations must not block. */

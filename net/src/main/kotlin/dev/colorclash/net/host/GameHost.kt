@@ -58,6 +58,8 @@ class GameHost(
     private var turnClock: TurnClock? = null
     /** When the next round starts on its own, while a round-over scoreboard is up. */
     private var nextRoundAt: TimeMark? = null
+    /** Reaction limiters count from here, so they work in plain milliseconds. */
+    private val started = TimeSource.Monotonic.markNow()
 
     private val _status = MutableStateFlow(HostStatus(HostStage.LOBBY, emptyList()))
     val status: StateFlow<HostStatus> = _status.asStateFlow()
@@ -118,7 +120,7 @@ class GameHost(
             is Command.Received -> receive(command.connection, command.message)
             is Command.Disconnected -> disconnected(command.connection)
             is Command.ReserveHostSeat -> if (game == null && seats.size < GameEngine.MAX_PLAYERS) {
-                seats += Seat(command.token, cleanName(command.name), command.look, isBot = false, isHost = true)
+                seats += Seat(command.token, cleanName(command.name), command.look, isBot = false, isHost = true, reactions = newLimiter())
                 lobbyChanged()
             }
             is Command.UpdateSettings -> if (game == null) {
@@ -126,7 +128,7 @@ class GameHost(
                 lobbyChanged()
             }
             Command.AddBot -> if (game == null && seats.size < GameEngine.MAX_PLAYERS) {
-                seats += Seat(RoomCode.newSessionToken(), nextBotName(), Look(avatar = seats.size), isBot = true, isHost = false)
+                seats += Seat(RoomCode.newSessionToken(), nextBotName(), Look(avatar = seats.size), isBot = true, isHost = false, reactions = newLimiter())
                 lobbyChanged()
             }
             is Command.RemoveBot -> if (game == null && seats.getOrNull(command.seat)?.isBot == true) {
@@ -195,7 +197,7 @@ class GameHost(
         if (seats.size >= GameEngine.MAX_PLAYERS) return reject(connection, JoinError.ROOM_FULL, "The room is full.")
 
         val look = Look(hello.avatar, hello.avatarColor, hello.avatarFrame, checkedPhoto(hello.photo))
-        val seat = Seat(RoomCode.newSessionToken(), cleanName(hello.name), look, isBot = false, isHost = false)
+        val seat = Seat(RoomCode.newSessionToken(), cleanName(hello.name), look, isBot = false, isHost = false, reactions = newLimiter())
         seats += seat
         attach(seat, connection)
     }
@@ -221,10 +223,12 @@ class GameHost(
         if (game == null) lobbyChanged() else gameChanged(emptyList())
     }
 
+    private fun newLimiter() =
+        ReactionLimiter(config.reactionBurst, config.reactionWindow.inWholeMilliseconds, config.reactionGap.inWholeMilliseconds)
+
     private fun react(seat: Seat, reaction: Int) {
         if (game == null || reaction !in 0 until REACTION_COUNT) return
-        if (seat.lastReaction?.let { it.elapsedNow() < config.reactionCooldown } == true) return
-        seat.lastReaction = TimeSource.Monotonic.markNow()
+        if (!seat.reactions.allow(started.elapsedNow().inWholeMilliseconds)) return
         val from = seats.indexOf(seat)
         seats.forEach { it.connection?.send(ServerMessage.Reaction(from, reaction)) }
     }
@@ -483,12 +487,12 @@ class GameHost(
         val look: Look,
         val isBot: Boolean,
         val isHost: Boolean,
+        val reactions: ReactionLimiter,
     ) {
         var connection: Connection? = null
         var ready = false
         var botControlled = false
         var graceJob: Job? = null
-        var lastReaction: TimeMark? = null
         /** Turns in a row this player has let the timer run out. */
         var timeouts = 0
         /** Timed out too often, so a bot is playing for them until they're back. */

@@ -6,11 +6,17 @@ import android.media.MediaPlayer
 import android.media.SoundPool
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import dev.colorclash.app.R
 import dev.colorclash.app.data.FeedbackSettings
 import kotlinx.coroutines.flow.StateFlow
+import java.util.EnumMap
 
-enum class Sfx(val res: Int) {
+/**
+ * [minGapMillis] is how long this effect refuses to start again. Card sounds can overlap freely;
+ * the reaction clips can't, or six phones' worth of them turn into noise.
+ */
+enum class Sfx(val res: Int, val minGapMillis: Long = 0) {
     SHUFFLE(R.raw.sfx_shuffle),
     DEAL(R.raw.sfx_deal),
     FLIP(R.raw.sfx_flip),
@@ -24,10 +30,15 @@ enum class Sfx(val res: Int) {
     WIN(R.raw.sfx_win),
     LOSE(R.raw.sfx_lose),
     YOUR_TURN(R.raw.sfx_turn),
-    POP(R.raw.sfx_pop),
+    POP(R.raw.sfx_pop, 250),
     TICK(R.raw.sfx_tick),
     // Not generated: the owner's clip of the meme.
-    FAAA(R.raw.sfx_faaa),
+    FAAA(R.raw.sfx_faaa, 1_400),
+    BOING(R.raw.sfx_boing, 900),
+    TROMBONE(R.raw.sfx_trombone, 2_500),
+    RIMSHOT(R.raw.sfx_rimshot, 1_400),
+    HORN(R.raw.sfx_horn, 1_000),
+    GULP(R.raw.sfx_gulp, 800),
 }
 
 /** Short effects through SoundPool, plus the optional music loop. Both follow the player's settings. */
@@ -41,9 +52,13 @@ class SoundEngine(private val context: Context, private val settings: StateFlow<
     private var music: MediaPlayer? = null
     private var musicWanted = false
     private val main = Handler(Looper.getMainLooper())
+    private val lastPlayed = EnumMap<Sfx, Long>(Sfx::class.java)
 
     fun play(sfx: Sfx, volume: Float = 1f) {
         if (!settings.value.sound) return
+        val now = SystemClock.uptimeMillis()
+        if (!canPlayAgain(lastPlayed[sfx], now, sfx.minGapMillis)) return
+        lastPlayed[sfx] = now
         ids[sfx]?.let { pool.play(it, volume, volume, 1, 0, 1f) }
     }
 

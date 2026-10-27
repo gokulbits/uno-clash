@@ -9,7 +9,9 @@ import dev.colorclash.rules.DrawReason
 import dev.colorclash.rules.Face
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CuesTest {
     private val red5 = Card(1, Face.FIVE, CardColor.RED)
@@ -56,5 +58,34 @@ class CuesTest {
         assertEquals(Sfx.FAAA, reactionSfx(faaa))
         assertEquals(Sfx.POP, reactionSfx(0))
         assertEquals(Sfx.POP, reactionSfx(GameTheme.reactions.size))
+    }
+
+    @Test
+    fun `joke phrases bring their own sound, emoji just pop`() {
+        val firstPhrase = GameTheme.reactions.size
+        fun sfxFor(phrase: String) = reactionSfx(firstPhrase + GameTheme.phrases.indexOf(phrase))
+        assertEquals(Sfx.FAAA, sfxFor(GameTheme.FAAA))
+        assertEquals(Sfx.BOING, sfxFor(GameTheme.BOING))
+        assertEquals(Sfx.TROMBONE, sfxFor(GameTheme.TROMBONE))
+        assertEquals(Sfx.RIMSHOT, sfxFor(GameTheme.RIMSHOT))
+        assertEquals(Sfx.HORN, sfxFor(GameTheme.HORN))
+        assertEquals(Sfx.GULP, sfxFor(GameTheme.GULP))
+        assertEquals(Sfx.POP, reactionSfx(0))
+        assertEquals(Sfx.POP, sfxFor("GG"))
+    }
+
+    @Test
+    fun `an effect won't start again inside its own length`() {
+        assertTrue(canPlayAgain(null, nowMillis = 0, minGapMillis = 900))
+        assertFalse(canPlayAgain(lastMillis = 0, nowMillis = 899, minGapMillis = 900))
+        assertTrue(canPlayAgain(lastMillis = 0, nowMillis = 900, minGapMillis = 900))
+        // Card sounds have no gap, so they can overlap as fast as the table plays.
+        assertTrue(canPlayAgain(lastMillis = 0, nowMillis = 0, minGapMillis = 0))
+    }
+
+    @Test
+    fun `every reaction sound has a gap long enough to stop a stream of them`() {
+        val jokes = listOf(Sfx.FAAA, Sfx.BOING, Sfx.TROMBONE, Sfx.RIMSHOT, Sfx.HORN, Sfx.GULP)
+        assertTrue(jokes.all { it.minGapMillis >= 800 })
     }
 }
