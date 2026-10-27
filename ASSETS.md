@@ -45,8 +45,10 @@ name; the gap in `Sfx` should match the new clip's length.
 | `sfx_shocked.mp3` | "No way!" |
 | `sfx_woww.mp3` | "Wowww" |
 
-They go through `SoundPool`, which keeps each clip decoded in memory, so they're kept to a few
-seconds each (about 1 MB decoded is as far as it stretches).
+Short clips go through `SoundPool`, which keeps them decoded in memory and truncates anything past
+roughly a megabyte — a few seconds of stereo. Longer ones are marked `streamed` in `Sfx` and get
+their own `MediaPlayer` instead, so length is no object; `sfx_sus`, `sfx_eh_eh_eh` and `sfx_woww`
+play that way.
 
 To regenerate after tweaking the script:
 

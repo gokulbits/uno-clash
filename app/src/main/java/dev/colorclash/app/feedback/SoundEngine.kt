@@ -15,9 +15,16 @@ import java.util.EnumMap
 /**
  * [minGapMillis] is how long this effect refuses to start again — for the reaction clips, their own
  * length, or six phones' worth of them turn into noise. Card sounds have no gap and overlap freely.
- * [ducksMusic] drops the music under a clip that has someone talking in it.
+ * [ducksMusic] drops the music under a clip that has someone talking in it. [streamed] clips get
+ * their own player: SoundPool keeps samples decoded in memory and quietly truncates anything past
+ * about a megabyte, which is a few seconds of stereo.
  */
-enum class Sfx(val res: Int, val minGapMillis: Long = 0, val ducksMusic: Boolean = false) {
+enum class Sfx(
+    val res: Int,
+    val minGapMillis: Long = 0,
+    val ducksMusic: Boolean = false,
+    val streamed: Boolean = false,
+) {
     SHUFFLE(R.raw.sfx_shuffle),
     DEAL(R.raw.sfx_deal),
     FLIP(R.raw.sfx_flip),
@@ -35,14 +42,14 @@ enum class Sfx(val res: Int, val minGapMillis: Long = 0, val ducksMusic: Boolean
     TICK(R.raw.sfx_tick),
     // Not generated: the owner's own clips. Gaps are each clip's length, so one can't overlap itself.
     FAAA(R.raw.sfx_faaa, 2_600, ducksMusic = true),
-    SUS(R.raw.sfx_sus, 4_700, ducksMusic = true),
+    SUS(R.raw.sfx_sus, 4_700, ducksMusic = true, streamed = true),
     BRUH(R.raw.sfx_bruh, 900, ducksMusic = true),
-    EH_EH_EH(R.raw.sfx_eh_eh_eh, 3_500, ducksMusic = true),
+    EH_EH_EH(R.raw.sfx_eh_eh_eh, 7_200, ducksMusic = true, streamed = true),
     QUACK(R.raw.sfx_quack, 1_200),
     PUNCH(R.raw.sfx_punch, 1_600),
     RIZZ(R.raw.sfx_rizz, 1_900, ducksMusic = true),
     SHOCKED(R.raw.sfx_shocked, 1_500, ducksMusic = true),
-    WOWW(R.raw.sfx_woww, 4_300, ducksMusic = true),
+    WOWW(R.raw.sfx_woww, 4_300, ducksMusic = true, streamed = true),
 }
 
 /** Short effects through SoundPool, plus the optional music loop. Both follow the player's settings. */
@@ -52,20 +59,36 @@ class SoundEngine(private val context: Context, private val settings: StateFlow<
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
     private val pool = SoundPool.Builder().setMaxStreams(MAX_STREAMS).setAudioAttributes(attributes).build()
-    private val ids = Sfx.entries.associateWith { pool.load(context, it.res, 1) }
+    private val ids = Sfx.entries.filterNot { it.streamed }.associateWith { pool.load(context, it.res, 1) }
     private var music: MediaPlayer? = null
     private var musicWanted = false
     private val main = Handler(Looper.getMainLooper())
     private val lastPlayed = EnumMap<Sfx, Long>(Sfx::class.java)
     private var duckedUntil = 0L
+    /** Streamed clips in flight; main thread only. */
+    private val clips = mutableListOf<MediaPlayer>()
 
     fun play(sfx: Sfx, volume: Float = 1f) {
         if (!settings.value.sound) return
         val now = SystemClock.uptimeMillis()
         if (!canPlayAgain(lastPlayed[sfx], now, sfx.minGapMillis)) return
         lastPlayed[sfx] = now
-        ids[sfx]?.let { pool.play(it, volume, volume, 1, 0, 1f) }
+        if (sfx.streamed) stream(sfx, volume) else ids[sfx]?.let { pool.play(it, volume, volume, 1, 0, 1f) }
         if (sfx.ducksMusic) duckUnder(sfx.minGapMillis)
+    }
+
+    /** A clip too long for the pool, on its own player, released as soon as it finishes. */
+    private fun stream(sfx: Sfx, volume: Float) {
+        main.post {
+            val player = MediaPlayer.create(context, sfx.res) ?: return@post
+            player.setVolume(volume, volume)
+            player.setOnCompletionListener {
+                clips -= it
+                it.release()
+            }
+            clips += player
+            player.start()
+        }
     }
 
     /** Hold the music down until the clip is done; a later clip extends the dip, never cuts it short. */
