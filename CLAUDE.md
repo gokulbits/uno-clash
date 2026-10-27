@@ -51,6 +51,9 @@ python tools/sfx/generate_sounds.py      # regenerate res/raw sounds (stdlib onl
 - Work in phases; finish each with a green build and tests, a summary, and a proposed commit.
 - Never commit or push without the owner's approval. Show what changed and how it was verified, then wait.
 - Commit messages under 10 words, plain. No AI co-author lines.
+- Commits here go out as `gokulbits <gokulgk55@proton.me>`. The global git identity is a different
+  account, so this repo sets `user.name`/`user.email` locally — check `git config --local user.email`
+  before committing, and don't touch the global config.
 - Short, human comments. Don't build features outside the brief; list ideas at the end of a phase instead.
 
 ## Network resilience
