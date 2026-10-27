@@ -61,15 +61,18 @@ class CuesTest {
     }
 
     @Test
-    fun `joke phrases bring their own sound, emoji just pop`() {
+    fun `meme phrases bring their own sound, emoji just pop`() {
         val firstPhrase = GameTheme.reactions.size
         fun sfxFor(phrase: String) = reactionSfx(firstPhrase + GameTheme.phrases.indexOf(phrase))
         assertEquals(Sfx.FAAA, sfxFor(GameTheme.FAAA))
-        assertEquals(Sfx.BOING, sfxFor(GameTheme.BOING))
-        assertEquals(Sfx.TROMBONE, sfxFor(GameTheme.TROMBONE))
-        assertEquals(Sfx.RIMSHOT, sfxFor(GameTheme.RIMSHOT))
-        assertEquals(Sfx.HORN, sfxFor(GameTheme.HORN))
-        assertEquals(Sfx.GULP, sfxFor(GameTheme.GULP))
+        assertEquals(Sfx.SUS, sfxFor(GameTheme.SUS))
+        assertEquals(Sfx.BRUH, sfxFor(GameTheme.BRUH))
+        assertEquals(Sfx.EH_EH_EH, sfxFor(GameTheme.EH_EH_EH))
+        assertEquals(Sfx.QUACK, sfxFor(GameTheme.QUACK))
+        assertEquals(Sfx.PUNCH, sfxFor(GameTheme.PUNCH))
+        assertEquals(Sfx.RIZZ, sfxFor(GameTheme.RIZZ))
+        assertEquals(Sfx.SHOCKED, sfxFor(GameTheme.SHOCKED))
+        assertEquals(Sfx.WOWW, sfxFor(GameTheme.WOWW))
         assertEquals(Sfx.POP, reactionSfx(0))
         assertEquals(Sfx.POP, sfxFor("GG"))
     }
@@ -84,8 +87,11 @@ class CuesTest {
     }
 
     @Test
-    fun `every reaction sound has a gap long enough to stop a stream of them`() {
-        val jokes = listOf(Sfx.FAAA, Sfx.BOING, Sfx.TROMBONE, Sfx.RIMSHOT, Sfx.HORN, Sfx.GULP)
-        assertTrue(jokes.all { it.minGapMillis >= 800 })
+    fun `every clip waits out its own length before it can play again`() {
+        val clips = GameTheme.phrases.indices
+            .map { reactionSfx(GameTheme.reactions.size + it) }
+            .filter { it != Sfx.POP }
+        assertEquals(9, clips.size)
+        assertTrue(clips.all { it.minGapMillis >= 800 })
     }
 }

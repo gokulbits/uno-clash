@@ -36,14 +36,17 @@ fun cueFor(event: EventView, you: Int): Cue? = when (event) {
     is EventView.GameWon -> null
 }
 
-/** Emoji pop; the joke phrases bring their own noise. */
+/** Emoji pop; the meme phrases bring their own noise. */
 fun reactionSfx(reaction: Int): Sfx = when (GameTheme.reaction(reaction)) {
     GameTheme.FAAA -> Sfx.FAAA
-    GameTheme.BOING -> Sfx.BOING
-    GameTheme.TROMBONE -> Sfx.TROMBONE
-    GameTheme.RIMSHOT -> Sfx.RIMSHOT
-    GameTheme.HORN -> Sfx.HORN
-    GameTheme.GULP -> Sfx.GULP
+    GameTheme.SUS -> Sfx.SUS
+    GameTheme.BRUH -> Sfx.BRUH
+    GameTheme.EH_EH_EH -> Sfx.EH_EH_EH
+    GameTheme.QUACK -> Sfx.QUACK
+    GameTheme.PUNCH -> Sfx.PUNCH
+    GameTheme.RIZZ -> Sfx.RIZZ
+    GameTheme.SHOCKED -> Sfx.SHOCKED
+    GameTheme.WOWW -> Sfx.WOWW
     else -> Sfx.POP
 }
 

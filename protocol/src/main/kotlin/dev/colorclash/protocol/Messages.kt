@@ -55,7 +55,7 @@ sealed interface ClientMessage {
 }
 
 /** The host drops reactions outside this range. */
-const val REACTION_COUNT = 26
+const val REACTION_COUNT = 29
 
 /**
  * Reactions make noise, so the host rations them: a few in a row for a burst of banter, then one

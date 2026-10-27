@@ -474,67 +474,6 @@ def music_loop():
     return soft_clip(wet[n:2 * n], 1.1)
 
 
-
-# --- reaction sounds -------------------------------------------------------
-
-def warble(freq, seconds, freq_end, depth=0.3, rate=12.0):
-    """A sine with vibrato on top, for springy cartoon sounds."""
-    n = n_samples(seconds)
-    out, phase = [0.0] * n, 0.0
-    for i in range(n):
-        p = i / max(1, n - 1)
-        f = freq * (freq_end / freq) ** p * (1 + depth * math.sin(TAU * rate * i / RATE))
-        phase += f / RATE
-        out[i] = math.sin(TAU * phase)
-    return out
-
-
-def sfx_boing():
-    # A spring under the table: a twang that wobbles its way down.
-    t = Track(0.5)
-    t.add(env_ad(warble(880, 0.35, 160, depth=0.35, rate=14), 0.004, 9), vol=0.8)
-    t.add(env_ad(warble(1760, 0.2, 320, depth=0.3, rate=14), 0.003, 16), vol=0.2)
-    t.add(snap(0.01, 2600, 1.2), vol=0.25)
-    return reverb(soft_clip(t.buf, 1.2), wet=0.2, tail=0.35)
-
-
-def sfx_trombone():
-    # The sad trombone: four notes sliding down, each one more defeated than the last.
-    t = Track(2.0)
-    for a, b, at, length in ((-9, -11, 0.0, 0.34), (-11, -13, 0.36, 0.34), (-13, -15, 0.72, 0.34), (-15, -20, 1.08, 0.7)):
-        f0, f1 = note_freq(a), note_freq(b)
-        horn = mix_voices(osc("saw", f0, length, f1), osc("square", f0 * 0.5, length, f1 * 0.5), 0.4)
-        horn = biquad(horn, "lowpass", lambda p: 1600 - 900 * p, 1.5)
-        t.add(env_shape(horn, 0.03, length * 0.5, length * 0.45), at=at, vol=0.75)
-    return reverb(soft_clip(t.buf, 1.25), wet=0.2, tail=0.5)
-
-
-def sfx_rimshot():
-    # Ba-dum-tss, for jokes that earn it and jokes that don't.
-    t = Track(0.9)
-    t.add(env_ad(sine(220, 0.18, 110), 0.001, 26), vol=0.8)
-    t.add(env_ad(sine(180, 0.2, 90), 0.001, 24), at=0.14, vol=0.8)
-    t.add(env_ad(biquad(noise(0.6), "highpass", 5200), 0.002, 7), at=0.3, vol=0.45)
-    return reverb(t.buf, wet=0.22, tail=0.5)
-
-
-def sfx_horn():
-    # Party horn: a buzzy toot unrolling, with the paper rattle on the front.
-    t = Track(0.6)
-    f0 = note_freq(-2)
-    toot = mix_voices(osc("square", f0, 0.33, f0 * 1.5), osc("saw", f0 * 2, 0.33, f0 * 3), 0.3)
-    t.add(env_shape(biquad(toot, "lowpass", lambda p: 1200 + 2200 * p, 1.2), 0.02, 0.2, 0.11), vol=0.7)
-    t.add(env_ad(biquad(noise(0.08), "bandpass", 2500, 1.0), 0.002, 40), vol=0.3)
-    return reverb(soft_clip(t.buf, 1.2), wet=0.18, tail=0.35)
-
-
-def sfx_gulp():
-    # A cartoon swallow: two fat blips going down.
-    t = Track(0.45)
-    t.add(env_ad(biquad(sine(420, 0.12, 150), "lowpass", 900, 1.4), 0.003, 28), vol=0.8)
-    t.add(env_ad(biquad(sine(300, 0.14, 90), "lowpass", 700, 1.4), 0.003, 24), at=0.13, vol=0.7)
-    return reverb(t.buf, wet=0.2, tail=0.3)
-
 if __name__ == "__main__":
     write("sfx_shuffle", sfx_shuffle(), peak=0.8)
     write("sfx_deal", sfx_deal(), peak=0.55)
@@ -553,8 +492,3 @@ if __name__ == "__main__":
     # New sounds go last: they share the seeded generator, so this keeps the files above unchanged.
     write("sfx_pop", sfx_pop(), peak=0.55)
     write("sfx_tick", sfx_tick(), peak=0.5)
-    write("sfx_boing", sfx_boing(), peak=0.7)
-    write("sfx_trombone", sfx_trombone(), peak=0.75)
-    write("sfx_rimshot", sfx_rimshot(), peak=0.7)
-    write("sfx_horn", sfx_horn(), peak=0.7)
-    write("sfx_gulp", sfx_gulp(), peak=0.65)

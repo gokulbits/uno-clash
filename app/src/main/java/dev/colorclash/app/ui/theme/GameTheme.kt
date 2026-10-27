@@ -190,18 +190,19 @@ object GameTheme {
     val reactions = listOf("😂", "😍", "😎", "😮", "😢", "😡", "🤯", "🥳", "👍", "👏", "🔥", "😴")
     /** Quick chat, numbered straight after the emoji. */
     val phrases = listOf(
-        "Nice one!", "Hurry up!", "Noooo!", "Gotcha 😏", "Oops", "GG", "Watch out!", "So close!", FAAA,
-        BOING, TROMBONE, RIMSHOT, HORN, GULP,
+        "Nice one!", "Hurry up!", "Noooo!", "Gotcha 😏", "Oops", "GG", "Watch out!", "So close!",
+        FAAA, SUS, BRUH, EH_EH_EH, QUACK, PUNCH, RIZZ, SHOCKED, WOWW,
     )
-    /** Phrases that play their own sound instead of a pop. */
+    /** Phrases that play a clip instead of a pop; the bubble says what you're about to hear. */
     const val FAAA = "Faaa!"
-
-    /** Quick chat that's really just a sound; the bubble says what you're about to hear. */
-    const val BOING = "Boing!"
-    const val TROMBONE = "Wah wah waah"
-    const val RIMSHOT = "Ba-dum-tss"
-    const val HORN = "Toot toot!"
-    const val GULP = "Gulp"
+    const val SUS = "Sus"
+    const val BRUH = "Bruh"
+    const val EH_EH_EH = "Eh eh ehhh"
+    const val QUACK = "Quack"
+    const val PUNCH = "Pow!"
+    const val RIZZ = "Rizz"
+    const val SHOCKED = "No way!"
+    const val WOWW = "Wowww"
 
     fun isPhrase(index: Int): Boolean = index >= reactions.size
 

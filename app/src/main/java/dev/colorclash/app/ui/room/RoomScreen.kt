@@ -102,7 +102,7 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
     LaunchedEffect(session) {
         session.client.reactions.collect {
             fx.react(it.seat, it.reaction)
-            app.feedback.sfx(reactionSfx(it.reaction), 0.7f)
+            app.feedback.sfx(reactionSfx(it.reaction))
         }
     }
     LaunchedEffect(game == null) { if (game == null) fx.reset() }

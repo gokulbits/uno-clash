@@ -29,8 +29,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -862,6 +865,9 @@ private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
             .clip(RoundedCornerShape(20.dp))
             .background(GameTheme.wild.copy(alpha = 0.92f))
             .border(1.5.dp, GameTheme.panelStrong, RoundedCornerShape(20.dp))
+            // There are a lot of phrases now; scroll rather than run off the top of the screen.
+            .heightIn(max = REACTION_TRAY_MAX_HEIGHT)
+            .verticalScroll(rememberScrollState())
             .padding(8.dp),
     ) {
         GameTheme.reactions.indices.chunked(REACTIONS_PER_ROW).forEach { row ->
@@ -916,9 +922,10 @@ private fun PhaseKind.isLive() = this != PhaseKind.ROUND_OVER && this != PhaseKi
 private const val HAND_PIVOT = 1.2f
 private const val REACTIONS_PER_ROW = 6
 private val BUZZER_SIZE = 88.dp
-private const val PHRASES_PER_ROW = 3
+private const val PHRASES_PER_ROW = 4
 private const val FINAL_SECONDS = 5
 private val REACTION_BUTTON_SIZE = 44.dp
+private val REACTION_TRAY_MAX_HEIGHT = 320.dp
 private val ACTION_BAR_HEIGHT = 60.dp
 private val HAND_HEIGHT = HAND_CARD_WIDTH * CARD_ASPECT + 48.dp
 private val PILE_SHAPE = RoundedCornerShape(TABLE_CARD_WIDTH * 0.11f)
