@@ -25,7 +25,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.net.InetSocketAddress
@@ -50,6 +53,13 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
     private val wifi = WifiBinder(app)
     val discovery = RoomDiscovery(app)
 
+    /**
+     * One room at a time. Opening and joining both suspend partway through (binding Wi-Fi, probing
+     * addresses, waiting for an answer), and interleaving two of them left a server listening with
+     * no session, or the foreground service running with no room.
+     */
+    private val transitions = Mutex()
+
     private val _session = MutableStateFlow<Session?>(null)
     val session: StateFlow<Session?> = _session.asStateFlow()
 
@@ -59,8 +69,10 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
     }
 
     /** Opens a room on this phone. Returns an error message, or null on success. */
-    suspend fun host(bots: Int = 0): String? {
-        leave()
+    suspend fun host(bots: Int = 0): String? = transitions.withLock { hostLocked(bots) }
+
+    private suspend fun hostLocked(bots: Int): String? {
+        leaveLocked()
         // Rounds roll on by themselves after a short look at the scores, so nobody waits on the host.
         val host = GameHost(scope, HostConfig(autoNextRound = NEXT_ROUND_AFTER))
         host.updateSettings(prefs.lobbySettings)
@@ -79,20 +91,20 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
     }
 
     suspend fun join(link: JoinLink, token: String? = null): String? =
-        join(link.hosts, link.port, link.roomCode, token)
+        transitions.withLock { joinLocked(link.hosts, link.port, link.roomCode, token) }
 
     /**
      * Finds the room with this code. Rooms don't advertise their code, so every room nearby (and the
      * Wi-Fi gateway, in case we're on the host's hotspot) is asked in turn until one accepts it.
      */
-    suspend fun joinByCode(code: String): String? {
+    suspend fun joinByCode(code: String): String? = transitions.withLock {
         val roomCode = code.trim().uppercase()
-        leave()
+        leaveLocked()
         wifi.bind()
         var nearby = emptyList<FoundRoom>()
         withTimeoutOrNull(DISCOVERY_WAIT) { discovery.rooms().collect { nearby = it } }
         val candidates = nearby.map { it.address to it.port } + listOfNotNull(LocalNetwork.wifiGateway(app)?.let { it to DEFAULT_PORT })
-        return when (val attempt = joinChecked(candidates.distinct(), roomCode)) {
+        when (val attempt = joinChecked(candidates.distinct(), roomCode)) {
             Attempt.Joined -> null
             is Attempt.Refused -> attempt.message
             Attempt.NoMatch -> "No room with code $roomCode here. Check the code on the host's phone, or scan its QR."
@@ -101,15 +113,17 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
     }
 
     /** A room from the nearby list, with the code the player typed for it. */
-    suspend fun joinRoom(room: FoundRoom, code: String): String? =
-        joinAt(room.address, room.port, code, "That's not ${room.hostName}'s room code. Check it on their phone.")
+    suspend fun joinRoom(room: FoundRoom, code: String): String? = transitions.withLock {
+        joinAtLocked(room.address, room.port, code, "That's not ${room.hostName}'s room code. Check it on their phone.")
+    }
 
     /** A host's address typed in by hand. */
-    suspend fun joinAddress(address: String, port: Int, code: String): String? =
-        joinAt(address, port, code, "No room with that code at $address. Check the code on the host's phone.")
+    suspend fun joinAddress(address: String, port: Int, code: String): String? = transitions.withLock {
+        joinAtLocked(address, port, code, "No room with that code at $address. Check the code on the host's phone.")
+    }
 
-    private suspend fun joinAt(address: String, port: Int, code: String, noMatch: String): String? {
-        leave()
+    private suspend fun joinAtLocked(address: String, port: Int, code: String, noMatch: String): String? {
+        leaveLocked()
         wifi.bind()
         return when (val attempt = joinChecked(listOf(address to port), code.trim().uppercase())) {
             Attempt.Joined -> null
@@ -153,10 +167,12 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
         return if (reachedAny) Attempt.NoMatch else Attempt.Unreachable
     }
 
-    suspend fun rejoin(saved: SavedSession): String? = join(listOf(saved.host), saved.port, saved.roomCode, saved.token)
+    suspend fun rejoin(saved: SavedSession): String? = transitions.withLock {
+        joinLocked(listOf(saved.host), saved.port, saved.roomCode, saved.token)
+    }
 
-    suspend fun join(hosts: List<String>, port: Int, roomCode: String, token: String? = null): String? {
-        leave()
+    private suspend fun joinLocked(hosts: List<String>, port: Int, roomCode: String, token: String? = null): String? {
+        leaveLocked()
         wifi.bind()
         val address = hosts.firstOrNull { reachable(it, port) }
         if (address == null) {
@@ -186,10 +202,21 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
         _session.value = session
     }
 
-    /** Leaves the room (and shuts it down if we're hosting). */
+    /**
+     * Leaves the room (and shuts it down if we're hosting). The room goes from the UI at once; the
+     * teardown itself queues behind any host or join still in flight.
+     */
     fun leave() {
-        val session = _session.value ?: return
-        _session.value = null
+        val session = _session.getAndUpdate { null } ?: return
+        scope.launch { transitions.withLock { tearDown(session) } }
+    }
+
+    private suspend fun leaveLocked() {
+        val session = _session.getAndUpdate { null } ?: return
+        tearDown(session)
+    }
+
+    private suspend fun tearDown(session: Session) {
         session.watcher?.cancel()
         prefs.lastSession = null
         session.client.leave()
@@ -198,8 +225,9 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
             hosting.host.close()
             HostService.stop(app)
         }
+        // Off the transition lock: the goodbye messages need a moment to go out.
         scope.launch {
-            delay(500) // let the goodbye messages go out first
+            delay(500)
             session.client.close()
             session.hosting?.server?.stop()
         }

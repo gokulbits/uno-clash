@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The game only ever talks ws:// to other phones on the same Wi-Fi or hotspot. Network security
-  config can't match IP ranges (domain-config needs exact hosts, and LAN/hotspot IPs change), so
-  cleartext is allowed at the base level. The app makes no internet connections at all.
+  The game talks ws:// to other phones on the same Wi-Fi or hotspot. Network security config can't
+  match IP ranges (domain-config needs exact hosts, and LAN/hotspot IPs change), so cleartext is
+  allowed at the base level. The only internet traffic is the update check, which is HTTPS and is
+  also pinned to GitHub in code; see Updater.allowed.
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true" />
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">github.com</domain>
+        <domain includeSubdomains="true">githubusercontent.com</domain>
+    </domain-config>
 </network-security-config>

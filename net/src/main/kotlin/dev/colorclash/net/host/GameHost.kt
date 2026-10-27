@@ -12,6 +12,7 @@ import dev.colorclash.protocol.ServerMessage
 import dev.colorclash.protocol.toAction
 import dev.colorclash.protocol.toView
 import dev.colorclash.protocol.viewFor
+import dev.colorclash.net.Rejoin
 import dev.colorclash.rules.Action
 import dev.colorclash.rules.EngineResult
 import dev.colorclash.rules.GameEngine
@@ -60,6 +61,8 @@ class GameHost(
     private var nextRoundAt: TimeMark? = null
     /** Reaction limiters count from here, so they work in plain milliseconds. */
     private val started = TimeSource.Monotonic.markNow()
+    /** A four-character code is a small space and a wrong guess costs nothing, so they are rationed. */
+    private val wrongCodes = ReactionLimiter(WRONG_CODE_BURST, WRONG_CODE_WINDOW_MILLIS, gapMillis = 0)
 
     private val _status = MutableStateFlow(HostStatus(HostStage.LOBBY, emptyList()))
     val status: StateFlow<HostStatus> = _status.asStateFlow()
@@ -189,10 +192,17 @@ class GameHost(
             )
         }
         if (!hello.roomCode.equals(roomCode, ignoreCase = true)) {
+            if (!wrongCodes.allow(started.elapsedNow().inWholeMilliseconds)) {
+                return reject(connection, JoinError.BAD_REQUEST, "Too many wrong codes just now. Wait a moment and try again.")
+            }
             return reject(connection, JoinError.WRONG_ROOM, "That room code doesn't match this host.")
         }
-        val returning = hello.sessionToken?.let { token -> seats.firstOrNull { !it.isBot && it.token == token } }
-        if (returning != null) return attach(returning, connection)
+        val returning = reclaimed(hello)
+        if (returning != null) {
+            // Whoever had the seat is told why it went, rather than the link just dropping.
+            returning.connection?.send(ServerMessage.Closed("Your seat was taken over from another phone"))
+            return attach(returning, connection)
+        }
         if (game != null) return reject(connection, JoinError.GAME_IN_PROGRESS, "A game is already running in this room.")
         if (seats.size >= GameEngine.MAX_PLAYERS) return reject(connection, JoinError.ROOM_FULL, "The room is full.")
 
@@ -200,6 +210,22 @@ class GameHost(
         val seat = Seat(RoomCode.newSessionToken(), cleanName(hello.name), look, isBot = false, isHost = false, reactions = newLimiter())
         seats += seat
         attach(seat, connection)
+    }
+
+    /**
+     * The seat this hello proves it owns, if any. The nonce is spent on the way out, so the same
+     * proof can't be used twice; only the last [MAX_NONCES] per seat are remembered, which is far
+     * more than a reconnect storm gets through.
+     */
+    private fun reclaimed(hello: ClientMessage.Hello): Seat? {
+        val nonce = hello.rejoinNonce?.takeIf { it.length == Rejoin.NONCE_CHARS } ?: return null
+        val proof = hello.rejoinProof ?: return null
+        val seat = seats.firstOrNull {
+            !it.isBot && nonce !in it.usedNonces && Rejoin.matches(proof, Rejoin.proof(it.token, nonce, roomCode))
+        } ?: return null
+        seat.usedNonces += nonce
+        while (seat.usedNonces.size > MAX_NONCES) seat.usedNonces.remove(seat.usedNonces.first())
+        return seat
     }
 
     private fun attach(seat: Seat, connection: Connection) {
@@ -493,6 +519,8 @@ class GameHost(
         var ready = false
         var botControlled = false
         var graceJob: Job? = null
+        /** Nonces this seat has already been reclaimed with, oldest first. */
+        val usedNonces = LinkedHashSet<String>()
         /** Turns in a row this player has let the timer run out. */
         var timeouts = 0
         /** Timed out too often, so a bot is playing for them until they're back. */
@@ -528,6 +556,9 @@ class GameHost(
     private companion object {
         const val MAX_NAME_LENGTH = 16
         const val AWAY_AFTER = 3
+        const val WRONG_CODE_BURST = 10
+        const val WRONG_CODE_WINDOW_MILLIS = 30_000L
+        const val MAX_NONCES = 64
         val BOT_NAMES = listOf("Robo", "Chip", "Pixel", "Bolt", "Sprocket", "Widget")
     }
 }

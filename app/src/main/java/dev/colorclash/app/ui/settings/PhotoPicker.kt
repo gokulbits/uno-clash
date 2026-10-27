@@ -113,6 +113,8 @@ private fun PhotoCropper(bitmap: Bitmap, onDone: (String?) -> Unit, onCancel: ()
     val image = remember(bitmap) { bitmap.asImageBitmap() }
     var view by remember(bitmap) { mutableStateOf(CropView()) }
     var viewport by remember { mutableFloatStateOf(1f) }
+    val scope = rememberCoroutineScope()
+    var saving by remember(bitmap) { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
@@ -159,7 +161,22 @@ private fun PhotoCropper(bitmap: Bitmap, onDone: (String?) -> Unit, onCancel: ()
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 BigButton("Cancel", GameTheme.panelStrong, onCancel, Modifier.weight(1f))
-                BigButton("Use photo", GameTheme.green, { onDone(encodePhoto(bitmap, cropBox(bitmap.width, bitmap.height, viewport, view))) }, Modifier.weight(1f))
+                BigButton(
+                    if (saving) "Saving…" else "Use photo",
+                    GameTheme.green,
+                    {
+                        if (saving) return@BigButton
+                        saving = true
+                        // A bitmap redraw and up to three JPEG passes: never on the main thread.
+                        val box = cropBox(bitmap.width, bitmap.height, viewport, view)
+                        scope.launch {
+                            val data = withContext(Dispatchers.Default) { encodePhoto(bitmap, box) }
+                            saving = false
+                            onDone(data)
+                        }
+                    },
+                    Modifier.weight(1f),
+                )
             }
         }
     }
@@ -198,15 +215,19 @@ private fun exifRotation(exif: ExifInterface): Int = when (exif.getAttributeInt(
 /** Cuts [box] out of the picture and packs it as the small JPEG other phones get, in base64. */
 private fun encodePhoto(bitmap: Bitmap, box: CropBox): String? = runCatching {
     val out = Bitmap.createBitmap(PHOTO_PIXELS, PHOTO_PIXELS, Bitmap.Config.ARGB_8888)
-    Canvas(out).apply {
-        // JPEG has no transparency; see-through bits of a PNG come out white rather than black.
-        drawColor(android.graphics.Color.WHITE)
-        val source = Rect(box.left, box.top, box.left + box.size, box.top + box.size)
-        drawBitmap(bitmap, source, Rect(0, 0, PHOTO_PIXELS, PHOTO_PIXELS), Paint(Paint.FILTER_BITMAP_FLAG))
-    }
-    listOf(85, 70, 55).firstNotNullOfOrNull { quality ->
-        val bytes = ByteArrayOutputStream().also { out.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()
-        Base64.getEncoder().encodeToString(bytes).takeIf { it.length <= MAX_PHOTO_CHARS }
+    try {
+        Canvas(out).apply {
+            // JPEG has no transparency; see-through bits of a PNG come out white rather than black.
+            drawColor(android.graphics.Color.WHITE)
+            val source = Rect(box.left, box.top, box.left + box.size, box.top + box.size)
+            drawBitmap(bitmap, source, Rect(0, 0, PHOTO_PIXELS, PHOTO_PIXELS), Paint(Paint.FILTER_BITMAP_FLAG))
+        }
+        listOf(85, 70, 55).firstNotNullOfOrNull { quality ->
+            val bytes = ByteArrayOutputStream().also { out.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()
+            Base64.getEncoder().encodeToString(bytes).takeIf { it.length <= MAX_PHOTO_CHARS }
+        }
+    } finally {
+        out.recycle()
     }
 }.getOrNull()
 

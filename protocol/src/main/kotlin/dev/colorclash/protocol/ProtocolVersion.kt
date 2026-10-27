@@ -1,7 +1,7 @@
 package dev.colorclash.protocol
 
 /** Bump whenever a message shape changes so mismatched APKs refuse to connect. */
-const val PROTOCOL_VERSION = 4
+const val PROTOCOL_VERSION = 5
 
 /** Avatar color meaning "whatever color goes with this avatar". */
 const val AUTO_AVATAR_COLOR = -1

@@ -19,8 +19,13 @@ sealed interface ClientMessage {
         val roomCode: String,
         val name: String,
         val avatar: Int = 0,
-        /** Set when rejoining a seat. */
-        val sessionToken: String? = null,
+        /**
+         * Set when rejoining a seat: a nonce this phone made up, and an HMAC of it under the seat's
+         * token. The token itself never goes over the wire, so watching a rejoin on an open network
+         * doesn't hand over a credential. The host honours each nonce once.
+         */
+        val rejoinNonce: String? = null,
+        val rejoinProof: String? = null,
         val avatarColor: Int = AUTO_AVATAR_COLOR,
         val avatarFrame: Int = 0,
         /** Small base64 JPEG shown instead of the avatar, at most [MAX_PHOTO_CHARS]. */

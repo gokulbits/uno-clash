@@ -38,7 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
@@ -93,55 +93,80 @@ fun ScanScreen(onBack: () -> Unit, onScanned: (JoinLink) -> Unit) {
 @Composable
 private fun QrCamera(onText: (String) -> Unit) {
     val context = LocalContext.current
-    val lifecycleOwner = context as LifecycleOwner
+    // The hosting Context is not contractually a LifecycleOwner: under a Dialog, an AndroidView
+    // subcomposition or a preview it isn't, and the cast this replaces was an outright crash.
+    val lifecycleOwner = LocalLifecycleOwner.current
     val latestOnText by rememberUpdatedState(onText)
     val executor = remember { Executors.newSingleThreadExecutor() }
     val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(lifecycleOwner) {
         val providerFuture = ProcessCameraProvider.getInstance(context)
         val mainExecutor = ContextCompat.getMainExecutor(context)
-        var lastText: String? = null
+        val scanner = QrScanner()
+        // getInstance() resolves asynchronously. Leaving the screen inside that window used to skip
+        // the unbind and then bind the camera for a screen that no longer existed.
+        var disposed = false
+        var bound: ProcessCameraProvider? = null
+        var analysis: ImageAnalysis? = null
         providerFuture.addListener({
+            if (disposed) return@addListener
             val provider = providerFuture.get()
             val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
-            val analysis = ImageAnalysis.Builder()
+            val frames = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
-            val reader = MultiFormatReader().apply {
-                setHints(mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE)))
-            }
-            analysis.setAnalyzer(executor) { image ->
-                val text = decode(reader, image)
+            frames.setAnalyzer(executor) { image ->
+                val text = scanner.scan(image)
                 image.close()
-                if (text != null && text != lastText) {
-                    lastText = text
-                    mainExecutor.execute { latestOnText(text) }
-                }
+                if (text != null) mainExecutor.execute { latestOnText(text) }
             }
             provider.unbindAll()
-            provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, frames)
+            bound = provider
+            analysis = frames
         }, mainExecutor)
         onDispose {
-            if (providerFuture.isDone) providerFuture.get().unbindAll()
+            disposed = true
+            analysis?.clearAnalyzer()
+            bound?.unbindAll()
             executor.shutdown()
         }
     }
     AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 }
 
-/** QR codes read fine at any rotation, so the raw luminance plane is enough. */
-private fun decode(reader: MultiFormatReader, image: ImageProxy): String? {
-    val plane = image.planes[0]
-    val buffer = plane.buffer
-    val bytes = ByteArray(buffer.remaining()).also { buffer.get(it) }
-    val source = PlanarYUVLuminanceSource(bytes, plane.rowStride, image.height, 0, 0, image.width, image.height, false)
-    return try {
-        reader.decodeWithState(BinaryBitmap(HybridBinarizer(source))).text
-    } catch (e: ReaderException) {
-        null // no code in this frame, or a blurry one
+/**
+ * One scanner per camera session, holding the reader and one luminance buffer. A fresh array per
+ * frame was megabytes a second of large short-lived garbage, and the GC pauses showed in the preview.
+ * Only ever touched from the analyzer's single thread.
+ */
+private class QrScanner {
+    private val reader = MultiFormatReader().apply {
+        setHints(mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE)))
+    }
+    private var luminance = ByteArray(0)
+    private var lastText: String? = null
 
-    } finally {
-        reader.reset()
+    /** QR codes read fine at any rotation, so the raw luminance plane is enough. */
+    fun scan(image: ImageProxy): String? {
+        val plane = image.planes[0]
+        val buffer = plane.buffer
+        val size = buffer.remaining()
+        if (luminance.size < size) luminance = ByteArray(size)
+        buffer.get(luminance, 0, size)
+        val source = PlanarYUVLuminanceSource(
+            luminance, plane.rowStride, image.height, 0, 0, image.width, image.height, false,
+        )
+        val text = try {
+            reader.decodeWithState(BinaryBitmap(HybridBinarizer(source))).text
+        } catch (e: ReaderException) {
+            null // no code in this frame, or a blurry one
+        } finally {
+            reader.reset()
+        }
+        if (text == null || text == lastText) return null
+        lastText = text
+        return text
     }
 }

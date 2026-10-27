@@ -5,9 +5,14 @@ import java.io.File
 import dev.colorclash.protocol.AUTO_AVATAR_COLOR
 import dev.colorclash.protocol.Codec
 import dev.colorclash.protocol.GameSettings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.launch
 
 /** A guest seat we can get back into after the app was killed in the background. */
 data class SavedSession(val host: String, val port: Int, val roomCode: String, val token: String, val savedAtMillis: Long)
@@ -42,7 +47,12 @@ data class PlaySettings(
 
 data class Stats(val gamesPlayed: Int = 0, val gamesWon: Int = 0, val roundsWon: Int = 0, val bestRound: Int = 0)
 
-class Prefs(context: Context) {
+/**
+ * Everything this phone remembers. The small values are read eagerly; the avatar photo is up to
+ * 24 KB of base64, so it is read on [io] and folded in when it arrives rather than sitting on the
+ * cold-start path. Writes to the photo file go the same way.
+ */
+class Prefs(context: Context, private val io: CoroutineScope) {
     private val sp = context.getSharedPreferences("color_clash", Context.MODE_PRIVATE)
     // The photo lives in its own file rather than bloating the preferences.
     private val photoFile = File(context.filesDir, PHOTO_FILE)
@@ -53,10 +63,16 @@ class Prefs(context: Context) {
             sp.getInt(KEY_AVATAR, 0),
             sp.getInt(KEY_AVATAR_COLOR, AUTO_AVATAR_COLOR),
             sp.getInt(KEY_AVATAR_FRAME, 0),
-            runCatching { photoFile.takeIf { it.exists() }?.readText() }.getOrNull(),
+            photo = null,
         ),
     )
     val profile: StateFlow<Profile> = _profile.asStateFlow()
+
+    /** Cancelled by [updateProfile], so a slow read can't bring back a photo that was just changed. */
+    private val photoLoad: Job = io.launch {
+        val stored = runCatching { photoFile.takeIf { it.exists() }?.readText() }.getOrNull() ?: return@launch
+        _profile.update { if (it.photo == null) it.copy(photo = stored) else it }
+    }
 
     private val _looks = MutableStateFlow(LookSettings(sp.getInt(KEY_TABLE, 0), sp.getInt(KEY_CARD_BACK, 0)))
     val looks: StateFlow<LookSettings> = _looks.asStateFlow()
@@ -91,8 +107,7 @@ class Prefs(context: Context) {
     }
 
     fun updateStats(change: (Stats) -> Stats) {
-        val stats = change(_stats.value)
-        _stats.value = stats
+        val stats = _stats.updateAndGet(change)
         sp.edit()
             .putInt(KEY_GAMES, stats.gamesPlayed)
             .putInt(KEY_WINS, stats.gamesWon)
@@ -102,10 +117,15 @@ class Prefs(context: Context) {
     }
 
     fun updateProfile(profile: Profile) {
-        if (profile.photo != _profile.value.photo) {
-            runCatching { if (profile.photo == null) photoFile.delete() else photoFile.writeText(profile.photo) }
-        }
+        val previous = _profile.value.photo
         _profile.value = profile
+        if (profile.photo != previous) {
+            photoLoad.cancel()
+            // Up to 24 KB written to disk: not on whichever thread the settings screen ran on.
+            io.launch {
+                runCatching { if (profile.photo == null) photoFile.delete() else photoFile.writeText(profile.photo) }
+            }
+        }
         sp.edit()
             .putString(KEY_NAME, profile.name)
             .putInt(KEY_AVATAR, profile.avatar)
@@ -138,20 +158,27 @@ class Prefs(context: Context) {
             sp.edit().putString(KEY_LOBBY_SETTINGS, Codec.json.encodeToString(GameSettings.serializer(), value)).apply()
         }
 
+    /**
+     * The seat token is the only credential here, so it goes through [SecretStore] rather than
+     * sitting in the preferences in the clear. A token that won't decrypt (a restored backup, a
+     * cleared keystore, or one written before this changed) just means no rejoin offer.
+     */
     var lastSession: SavedSession?
         get() {
             val host = sp.getString(KEY_HOST, null) ?: return null
             val code = sp.getString(KEY_CODE, null) ?: return null
-            val token = sp.getString(KEY_TOKEN, null) ?: return null
+            val token = sp.getString(KEY_TOKEN, null)?.let(SecretStore::decrypt) ?: return null
             return SavedSession(host, sp.getInt(KEY_PORT, 0), code, token, sp.getLong(KEY_SAVED_AT, 0))
         }
         set(value) {
             val edit = sp.edit()
-            if (value == null) {
+            val sealed = value?.let { SecretStore.encrypt(it.token) }
+            if (value == null || sealed == null) {
+                // Better no rejoin than a token we couldn't protect.
                 edit.remove(KEY_HOST).remove(KEY_PORT).remove(KEY_CODE).remove(KEY_TOKEN).remove(KEY_SAVED_AT)
             } else {
                 edit.putString(KEY_HOST, value.host).putInt(KEY_PORT, value.port).putString(KEY_CODE, value.roomCode)
-                    .putString(KEY_TOKEN, value.token).putLong(KEY_SAVED_AT, value.savedAtMillis)
+                    .putString(KEY_TOKEN, sealed).putLong(KEY_SAVED_AT, value.savedAtMillis)
             }
             edit.apply()
         }

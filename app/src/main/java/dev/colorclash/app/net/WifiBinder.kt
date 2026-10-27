@@ -8,6 +8,8 @@ import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Build
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -21,9 +23,13 @@ class WifiBinder(context: Context) {
     private val wifi = context.applicationContext.getSystemService(WifiManager::class.java)
     private var callback: ConnectivityManager.NetworkCallback? = null
     private var lock: WifiManager.WifiLock? = null
+    /** Two callers racing the guard below each registered a callback, and only one was ever unregistered. */
+    private val binding = Mutex()
 
     /** Waits briefly for a Wi-Fi network so the first connection attempt already goes the right way. */
-    suspend fun bind(): Boolean {
+    suspend fun bind(): Boolean = binding.withLock { bindLocked() }
+
+    private suspend fun bindLocked(): Boolean {
         if (callback != null) return cm.boundNetworkForProcess != null
         acquireLock()
         val ready = CompletableDeferred<Unit>()
@@ -52,7 +58,7 @@ class WifiBinder(context: Context) {
         return withTimeoutOrNull(1_500.milliseconds) { ready.await() } != null
     }
 
-    fun unbind() {
+    suspend fun unbind() = binding.withLock {
         callback?.let { runCatching { cm.unregisterNetworkCallback(it) } }
         callback = null
         cm.bindProcessToNetwork(null)

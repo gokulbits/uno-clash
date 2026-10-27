@@ -21,6 +21,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -65,11 +66,12 @@ private val POP = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
 @Composable
 fun FxLayer(fx: TableFx, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize().then(fx.layer())) {
-        if (fx.penaltyGlow.value > 0f) {
-            Canvas(Modifier.fillMaxSize()) {
-                val a = fx.penaltyGlow.value * 0.7f
-                drawRect(Brush.radialGradient(listOf(Color.Transparent, GameTheme.red.copy(alpha = a)), radius = size.maxDimension * 0.75f))
-            }
+        // Always emitted: testing penaltyGlow.value here recomposed the whole layer, and every
+        // effect in it, on every frame of the glow. Read in the draw lambda it only redraws.
+        Canvas(Modifier.fillMaxSize()) {
+            val a = fx.penaltyGlow.value * 0.7f
+            if (a <= 0f) return@Canvas
+            drawRect(Brush.radialGradient(listOf(Color.Transparent, GameTheme.red.copy(alpha = a)), radius = size.maxDimension * 0.75f))
         }
         fx.bursts.forEach { BurstView(it) }
         fx.flights.forEach { FlightView(it) }
@@ -405,25 +407,34 @@ private fun BurstView(burst: Burst) {
     }
 }
 
-/** Confetti. Positions come from elapsed time alone, so frames redraw without recomposing. */
+/**
+ * Confetti. Positions come from elapsed time alone, so frames redraw without recomposing — which
+ * needs [elapsed] read only inside the draw lambda. Reading it in composition, as the end test used
+ * to, recomposed this for all 3.2 seconds of the celebration.
+ */
 @Composable
 private fun Confetti(trigger: Int, big: Boolean) {
     if (trigger == 0) return
     val density = LocalDensity.current
     val particles = remember(trigger) { List(if (big) MAX_CONFETTI else MAX_CONFETTI / 2) { Particle.random(Random(trigger * 1000 + it)) } }
-    var elapsed by remember(trigger) { mutableLongStateOf(0L) }
+    val elapsed = remember(trigger) { mutableLongStateOf(0L) }
+    // Flips once, at the end, instead of once a frame.
+    var finished by remember(trigger) { mutableStateOf(false) }
     LaunchedEffect(trigger) {
         val start = withFrameNanos { it }
-        while (elapsed < CONFETTI_NANOS) {
-            elapsed = withFrameNanos { it } - start
+        var now = 0L
+        while (now < CONFETTI_NANOS) {
+            now = withFrameNanos { it } - start
+            elapsed.longValue = now
         }
+        finished = true
     }
-    if (elapsed >= CONFETTI_NANOS) return
+    if (finished) return
     val gravity = with(density) { 900.dp.toPx() }
     val speed = with(density) { 1.dp.toPx() }
     val piece = with(density) { 9.dp.toPx() }
     Canvas(Modifier.fillMaxSize()) {
-        val t = elapsed / 1_000_000_000f
+        val t = elapsed.longValue / 1_000_000_000f
         particles.forEach { p ->
             val x = p.x0 * size.width + p.vx * speed * t
             val y = -piece + p.vy * speed * t + 0.5f * gravity * p.weight * t * t

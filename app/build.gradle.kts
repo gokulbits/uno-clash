@@ -32,8 +32,18 @@ android {
 
     buildTypes {
         release {
-            // Without a real key, fall back to the debug key so a local release build still installs.
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            val key = signingConfigs.findByName("release")
+            if (key != null) {
+                signingConfig = key
+            } else {
+                // The debug key is public, and it's also what gates in-app updates: an APK signed
+                // with it can be replaced by anyone. Fine for a local install, never for release.
+                logger.warn("CC_KEYSTORE_PATH is unset: this release build is debug-signed. Don't distribute it.")
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -62,6 +72,15 @@ android {
     }
 }
 
+// A debug-signed "release" must never leave CI, where it would be mistaken for a shippable build.
+tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
+    doFirst {
+        if (releaseKeystore == null && providers.environmentVariable("CI").isPresent) {
+            error("Release build without CC_KEYSTORE_PATH; refusing to produce a debug-signed artifact.")
+        }
+    }
+}
+
 dependencies {
     implementation(project(":net"))
     implementation(libs.kotlinx.coroutines.android)
@@ -73,6 +92,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
 
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)

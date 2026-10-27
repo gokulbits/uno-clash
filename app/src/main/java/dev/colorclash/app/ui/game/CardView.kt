@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.CacheDrawScope
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -63,12 +64,8 @@ fun CardFace(card: Card, width: Dp, modifier: Modifier = Modifier, dimmed: Boole
             .size(width, width * CARD_ASPECT)
             .shadow(elevation, RoundedCornerShape(width * CORNER))
             .drawWithCache {
-                val w = size.width
-                val number = card.face.number?.toString()
-                val big = number?.let { measurer.label(it, 0.66f * w, this) }
-                val cornerText = number ?: card.face.cornerText()
-                val corner = cornerText?.let { measurer.label(it, if (it.length > 1) 0.18f * w else 0.24f * w, this) }
-                onDrawBehind { drawFace(card, Tint(dimmed), big, corner, shapes) }
+                val face = faceCache(card, dimmed, measurer)
+                onDrawBehind { drawFace(card, face, shapes) }
             },
     )
 }
@@ -81,10 +78,129 @@ fun CardBack(width: Dp, modifier: Modifier = Modifier, elevation: Dp = 2.dp, sty
             .size(width, width * CARD_ASPECT)
             .shadow(elevation, RoundedCornerShape(width * CORNER))
             .drawWithCache {
-                val words = BACK_WORDS.map { measurer.label(it, 0.17f * size.width, this) }
-                onDrawBehind { drawBack(words, style) }
+                val back = backCache(style, measurer)
+                onDrawBehind { drawBack(back, style) }
             },
     )
+}
+
+/**
+ * Everything a face needs that depends only on the card and its size. Built in the cache block,
+ * because applying a Brush builds a Shader: these were rebuilt on every single draw.
+ */
+private class FaceCache(
+    val tint: Tint,
+    val paper: Brush,
+    val body: Brush,
+    /** The oval's gloss. Null for a wild, which gets four quadrants instead. */
+    val shine: Brush?,
+    val big: TextLayoutResult?,
+    val corner: TextLayoutResult?,
+    val ink: Color,
+    val shade: Color,
+    val cornerShade: Color,
+    val white: Color,
+    /** The two opposite corner marks, near first. */
+    val corners: List<Offset>,
+    val quadrants: List<Color>,
+    /** The little cards in the middle of a +2 or +4. */
+    val fills: List<Color>,
+)
+
+private fun CacheDrawScope.faceCache(card: Card, dimmed: Boolean, measurer: TextMeasurer): FaceCache {
+    val w = size.width
+    val tint = Tint(dimmed)
+    val number = card.face.number?.toString()
+    val big = number?.let { measurer.label(it, 0.66f * w, this) }
+    val cornerText = number ?: card.face.cornerText()
+    val corner = cornerText?.let { measurer.label(it, if (it.length > 1) 0.18f * w else 0.24f * w, this) }
+
+    val base = GameTheme.cardColor(card.color)
+    val inset = w * INSET
+    val body = Brush.radialGradient(
+        0f to tint(lighter(base, if (card.isWild) 0.12f else 0.22f)),
+        0.55f to tint(base),
+        1f to tint(darker(base, 0.28f)),
+        center = Offset(inset + (w - inset * 2) * 0.3f, inset + (size.height - inset * 2) * 0.22f),
+        radius = w * 1.25f,
+    )
+    val oval = ovalBounds()
+    val shine = if (card.isWild) {
+        null
+    } else {
+        Brush.radialGradient(
+            listOf(tint(Color.White), tint(GameTheme.cardOvalEdge)),
+            center = oval.topLeft + Offset(oval.width * 0.42f, oval.height * 0.36f),
+            radius = w * 0.62f,
+        )
+    }
+    // Wide marks (+2, +4) move in from the edge so their outline stays on the color.
+    val outline = w * 0.045f
+    val nearX = max(w * 0.18f, w * (INSET + 0.03f) + (corner?.size?.width ?: 0) / 2f + outline / 2)
+    val near = Offset(nearX, w * 0.21f)
+    return FaceCache(
+        tint = tint,
+        paper = Brush.verticalGradient(listOf(tint(GameTheme.cardPaper), tint(GameTheme.cardPaperEdge))),
+        body = body,
+        shine = shine,
+        big = big,
+        corner = corner,
+        ink = tint(base),
+        shade = tint(darker(base, 0.55f)),
+        cornerShade = tint(darker(base, 0.65f)),
+        white = tint(Color.White),
+        corners = listOf(near, Offset(w - near.x, size.height - near.y)),
+        quadrants = QUADRANTS.map { tint(it) },
+        fills = when (card.face) {
+            Face.DRAW_TWO -> listOf(tint(base), tint(base))
+            Face.WILD_DRAW_FOUR -> DRAW_FOUR_FANS.map { tint(it) }
+            else -> emptyList()
+        },
+    )
+}
+
+/** Everything a card back needs that depends only on its style and size. */
+private class BackCache(
+    val words: List<TextLayoutResult>,
+    val paper: Brush,
+    val body: Brush,
+    val glow: Brush,
+    /** The rounded body, so a pattern stays inside the card's edge. Null when there's no pattern. */
+    val clip: Path?,
+    /** Refilled per tile instead of a Path per diamond or wave. */
+    val scratch: Path,
+)
+
+private fun CacheDrawScope.backCache(style: CardBackStyle, measurer: TextMeasurer): BackCache {
+    val w = size.width
+    val inset = w * INSET
+    val oval = ovalBounds()
+    return BackCache(
+        words = BACK_WORDS.map { measurer.label(it, 0.17f * w, this) },
+        paper = Brush.verticalGradient(listOf(GameTheme.cardPaper, GameTheme.cardPaperEdge)),
+        body = Brush.radialGradient(
+            listOf(style.glow, style.deep),
+            center = Offset(w / 2, inset + (size.height - inset * 2) * 0.45f),
+            radius = size.height * 0.62f,
+        ),
+        glow = Brush.radialGradient(
+            listOf(style.oval, style.ovalDeep),
+            center = oval.topLeft + Offset(oval.width * 0.4f, oval.height * 0.35f),
+            radius = w * 0.65f,
+        ),
+        clip = if (style.pattern == BackPattern.PLAIN) {
+            null
+        } else {
+            Path().apply { addRoundRect(RoundRect(Rect(inset, inset, w - inset, size.height - inset), CornerRadius(w * 0.075f))) }
+        },
+        scratch = Path(),
+    )
+}
+
+/** The tilted oval, in the card's own coordinates. Same maths in the cache block and in the draw. */
+private fun CacheDrawScope.ovalBounds(): Rect {
+    val ovalSize = Size(size.width * OVAL_RX * 2, size.width * OVAL_RY * 2)
+    return Rect(Offset((size.width - ovalSize.width) / 2, (size.height - ovalSize.height) / 2), ovalSize)
 }
 
 /** An opponent's hand as fanned card backs, so the count reads at a glance. One canvas for the whole hand. */
@@ -157,12 +273,9 @@ private fun TextMeasurer.label(text: String, px: Float, density: Density): TextL
     maxLines = 1,
 )
 
-private fun DrawScope.drawPaperAndBody(body: Brush, tint: Tint) {
+private fun DrawScope.drawPaperAndBody(paper: Brush, body: Brush) {
     val w = size.width
-    drawRoundRect(
-        Brush.verticalGradient(listOf(tint(GameTheme.cardPaper), tint(GameTheme.cardPaperEdge))),
-        cornerRadius = CornerRadius(w * CORNER),
-    )
+    drawRoundRect(paper, cornerRadius = CornerRadius(w * CORNER))
     val inset = w * INSET
     drawRoundRect(
         body,
@@ -192,82 +305,68 @@ private fun DrawScope.drawOvalShadow(topLeft: Offset, ovalSize: Size, alpha: Flo
     drawOval(Color.Black.copy(alpha = alpha), topLeft = topLeft + Offset(size.width * 0.014f, size.width * 0.026f), size = ovalSize)
 }
 
-private fun DrawScope.drawQuadrants(topLeft: Offset, ovalSize: Size, tint: Tint) {
-    QUADRANTS.forEachIndexed { i, color ->
-        drawArc(tint(color), startAngle = i * 90f - 90f, sweepAngle = 90f, useCenter = true, topLeft = topLeft, size = ovalSize)
+private fun DrawScope.drawQuadrants(topLeft: Offset, ovalSize: Size, colors: List<Color>) {
+    colors.forEachIndexed { i, color ->
+        drawArc(color, startAngle = i * 90f - 90f, sweepAngle = 90f, useCenter = true, topLeft = topLeft, size = ovalSize)
     }
 }
 
-private fun DrawScope.drawFace(card: Card, tint: Tint, bigLabel: TextLayoutResult?, corner: TextLayoutResult?, shapes: Boolean) {
+private fun DrawScope.drawFace(card: Card, face: FaceCache, shapes: Boolean) {
     val w = size.width
-    val base = GameTheme.cardColor(card.color)
-    val inset = w * INSET
-    val bodyBrush = Brush.radialGradient(
-        0f to tint(lighter(base, if (card.isWild) 0.12f else 0.22f)),
-        0.55f to tint(base),
-        1f to tint(darker(base, 0.28f)),
-        center = Offset(inset + (w - inset * 2) * 0.3f, inset + (size.height - inset * 2) * 0.22f),
-        radius = w * 1.25f,
-    )
-    drawPaperAndBody(bodyBrush, tint)
+    drawPaperAndBody(face.paper, face.body)
 
+    val shine = face.shine
     inOval { topLeft, ovalSize ->
         drawOvalShadow(topLeft, ovalSize, 0.22f)
-        if (card.isWild) {
-            drawQuadrants(topLeft, ovalSize, tint)
-            drawOval(tint(Color.White), topLeft, ovalSize, style = Stroke(w * 0.03f))
+        if (shine == null) {
+            drawQuadrants(topLeft, ovalSize, face.quadrants)
+            drawOval(face.white, topLeft, ovalSize, style = Stroke(w * 0.03f))
         } else {
-            val shine = Brush.radialGradient(
-                listOf(tint(Color.White), tint(GameTheme.cardOvalEdge)),
-                center = topLeft + Offset(ovalSize.width * 0.42f, ovalSize.height * 0.36f),
-                radius = w * 0.62f,
-            )
             drawOval(shine, topLeft, ovalSize)
         }
     }
 
-    val ink = tint(base)
-    val shade = tint(darker(base, 0.55f))
     val mid = center
     when (card.face) {
-        Face.SKIP -> outlined(w, shade, ink, mid, w * 0.009f) { c, color, grow -> skipIcon(c, w * 0.25f, color, grow) }
-        Face.REVERSE -> outlined(w, shade, ink, mid, w * 0.009f) { c, color, grow -> reverseIcon(c, w * 0.25f, color, grow) }
-        Face.DRAW_TWO -> miniCards(listOf(ink, ink), shade, tint)
-        Face.WILD_DRAW_FOUR -> miniCards(DRAW_FOUR_FANS.map { tint(it) }, tint(GameTheme.wild), tint)
+        Face.SKIP -> outlined(w, face.shade, face.ink, mid, w * 0.009f) { c, color, grow -> skipIcon(c, w * 0.25f, color, grow) }
+        Face.REVERSE -> outlined(w, face.shade, face.ink, mid, w * 0.009f) { c, color, grow -> reverseIcon(c, w * 0.25f, color, grow) }
+        Face.DRAW_TWO -> miniCards(face.fills, face.shade, face.white)
+        Face.WILD_DRAW_FOUR -> miniCards(face.fills, face.tint(GameTheme.wild), face.white)
         Face.WILD -> Unit // the oval says it all
-        else -> if (bigLabel != null) {
-            drawLabel(bigLabel, mid, ink, shade, w, outline = shade)
+        else -> if (face.big != null) {
+            drawLabel(face.big, mid, face.ink, face.shade, w, outline = face.shade)
             if (card.face == Face.SIX || card.face == Face.NINE) {
                 // Under the digit and a bit narrower, like a printed card.
-                underline(mid.x, mid.y + w * 0.27f, Size(bigLabel.size.width * 0.75f, w * 0.04f), ink, shade, w * 0.011f)
+                underline(mid.x, mid.y + w * 0.27f, Size(face.big.size.width * 0.75f, w * 0.04f), face.ink, face.shade, w * 0.011f)
             }
         }
     }
 
-    val cornerShade = tint(darker(base, 0.65f))
-    val white = tint(Color.White)
-    // The oval leans away from these two corners, so the marks never run into it. Wide marks (+2, +4)
-    // move in from the edge so their outline stays on the color, off the white border.
+    // The oval leans away from these two corners, so the marks never run into it.
+    val corner = face.corner
     val outline = w * 0.045f
-    val nearX = max(w * 0.18f, w * (INSET + 0.03f) + (corner?.size?.width ?: 0) / 2f + outline / 2)
-    val near = Offset(nearX, w * 0.21f)
-    val far = Offset(w - near.x, size.height - near.y)
-    for (at in listOf(near, far)) {
-        rotate(if (at == near) 0f else 180f, pivot = at) {
+    face.corners.forEachIndexed { i, at ->
+        rotate(if (i == 0) 0f else 180f, pivot = at) {
             when {
                 corner != null -> {
-                    drawLabel(corner, at, white, cornerShade, w * 0.9f, outline = cornerShade, outlineWidth = outline)
+                    drawLabel(corner, at, face.white, face.cornerShade, w * 0.9f, outline = face.cornerShade, outlineWidth = outline)
                     if (card.face == Face.SIX || card.face == Face.NINE) {
-                        underline(at.x, at.y + w * 0.108f, Size(w * 0.13f, w * 0.024f), white, cornerShade, w * 0.01f)
+                        underline(at.x, at.y + w * 0.108f, Size(w * 0.13f, w * 0.024f), face.white, face.cornerShade, w * 0.01f)
                     }
                 }
-                card.face == Face.SKIP -> outlined(w * 0.9f, cornerShade, white, at, w * 0.022f) { c, color, grow -> skipIcon(c, w * 0.09f, color, grow) }
-                card.face == Face.REVERSE -> outlined(w * 0.9f, cornerShade, white, at, w * 0.022f) { c, color, grow -> reverseIcon(c, w * 0.09f, color, grow) }
-                else -> wildPip(at, w * 0.08f, tint, cornerShade)
+                card.face == Face.SKIP ->
+                    outlined(w * 0.9f, face.cornerShade, face.white, at, w * 0.022f) { c, color, grow -> skipIcon(c, w * 0.09f, color, grow) }
+                card.face == Face.REVERSE ->
+                    outlined(w * 0.9f, face.cornerShade, face.white, at, w * 0.022f) { c, color, grow -> reverseIcon(c, w * 0.09f, color, grow) }
+                else -> wildPip(at, w * 0.08f, face.quadrants, face.white, face.cornerShade)
             }
             // Under the corner mark, where it still shows in a tight fan. Drawn relative to the mark, so
             // the bottom corner's half-turn carries it along.
-            if (shapes) card.color?.let { colorShape(it, at + Offset(w * 0.18f - near.x, w * 0.22f), w * 0.065f, white, cornerShade, w * 0.015f) }
+            if (shapes) {
+                card.color?.let {
+                    colorShape(it, at + Offset(w * 0.18f - face.corners[0].x, w * 0.22f), w * 0.065f, face.white, face.cornerShade, w * 0.015f)
+                }
+            }
         }
     }
 }
@@ -296,41 +395,27 @@ fun DrawScope.colorShape(color: CardColor, at: Offset, r: Float, fill: Color, ed
     drawPath(path, fill)
 }
 
-private fun DrawScope.drawBack(words: List<TextLayoutResult>, style: CardBackStyle) {
+private fun DrawScope.drawBack(back: BackCache, style: CardBackStyle) {
     val w = size.width
-    val tint = Tint(false)
-    val inset = w * INSET
-    val body = Brush.radialGradient(
-        listOf(style.glow, style.deep),
-        center = Offset(size.width / 2, inset + (size.height - inset * 2) * 0.45f),
-        radius = size.height * 0.62f,
-    )
-    drawPaperAndBody(body, tint)
-    drawPattern(style.pattern)
+    drawPaperAndBody(back.paper, back.body)
+    back.clip?.let { drawPattern(style.pattern, it, back.scratch) }
     inOval { topLeft, ovalSize ->
         drawOvalShadow(topLeft, ovalSize, 0.3f)
-        val glow = Brush.radialGradient(
-            listOf(style.oval, style.ovalDeep),
-            center = topLeft + Offset(ovalSize.width * 0.4f, ovalSize.height * 0.35f),
-            radius = w * 0.65f,
-        )
-        drawOval(glow, topLeft, ovalSize)
+        drawOval(back.glow, topLeft, ovalSize)
         drawOval(Color.White, topLeft, ovalSize, style = Stroke(w * 0.025f))
     }
     rotate(-18f, pivot = center) {
-        drawLabel(words[0], center - Offset(0f, w * 0.1f), Color.White, style.ink, w * 0.6f)
-        drawLabel(words[1], center + Offset(0f, w * 0.1f), style.accent, style.ink, w * 0.6f)
+        drawLabel(back.words[0], center - Offset(0f, w * 0.1f), Color.White, style.ink, w * 0.6f)
+        drawLabel(back.words[1], center + Offset(0f, w * 0.1f), style.accent, style.ink, w * 0.6f)
     }
 }
 
 /** A faint repeating pattern over a card back's body, kept inside its rounded edge. */
-private fun DrawScope.drawPattern(pattern: BackPattern) {
-    if (pattern == BackPattern.PLAIN) return
+private fun DrawScope.drawPattern(pattern: BackPattern, clip: Path, scratch: Path) {
     val w = size.width
     val inset = w * INSET
     val body = Rect(inset, inset, w - inset, size.height - inset)
     val ink = Color.White.copy(alpha = 0.09f)
-    val clip = Path().apply { addRoundRect(RoundRect(body, CornerRadius(w * 0.075f))) }
     clipPath(clip) {
         val step = w * 0.16f
         when (pattern) {
@@ -341,14 +426,14 @@ private fun DrawScope.drawPattern(pattern: BackPattern) {
                 while (y < body.bottom + step) {
                     var x = body.left + if (row % 2 == 0) 0f else step / 2
                     while (x < body.right + step) {
-                        val d = Path().apply {
-                            moveTo(x, y - r)
-                            lineTo(x + r, y)
-                            lineTo(x, y + r)
-                            lineTo(x - r, y)
-                            close()
-                        }
-                        drawPath(d, ink)
+                        // One path, refilled: this used to allocate a Path per diamond.
+                        scratch.rewind()
+                        scratch.moveTo(x, y - r)
+                        scratch.lineTo(x + r, y)
+                        scratch.lineTo(x, y + r)
+                        scratch.lineTo(x - r, y)
+                        scratch.close()
+                        drawPath(scratch, ink)
                         x += step
                     }
                     y += step / 2
@@ -378,16 +463,15 @@ private fun DrawScope.drawPattern(pattern: BackPattern) {
             BackPattern.WAVES -> {
                 var y = body.top
                 while (y < body.bottom + step) {
-                    val wave = Path().apply {
-                        moveTo(body.left, y)
-                        var x = body.left
-                        while (x < body.right) {
-                            quadraticTo(x + step / 4, y - step * 0.22f, x + step / 2, y)
-                            quadraticTo(x + step * 0.75f, y + step * 0.22f, x + step, y)
-                            x += step
-                        }
+                    scratch.rewind()
+                    scratch.moveTo(body.left, y)
+                    var x = body.left
+                    while (x < body.right) {
+                        scratch.quadraticTo(x + step / 4, y - step * 0.22f, x + step / 2, y)
+                        scratch.quadraticTo(x + step * 0.75f, y + step * 0.22f, x + step, y)
+                        x += step
                     }
-                    drawPath(wave, ink, style = Stroke(step * 0.14f, cap = StrokeCap.Round))
+                    drawPath(scratch, ink, style = Stroke(step * 0.14f, cap = StrokeCap.Round))
                     y += step * 0.6f
                 }
             }
@@ -487,7 +571,7 @@ private fun DrawScope.reverseArrow(c: Offset, r: Float, ink: Color, flip: Boolea
 }
 
 /** Little cards in the middle of a draw card: two stacked for +2, four fanned for +4. */
-private fun DrawScope.miniCards(fills: List<Color>, shade: Color, tint: Tint) {
+private fun DrawScope.miniCards(fills: List<Color>, shade: Color, white: Color) {
     val w = size.width
     val mw = w * 0.2f
     val mh = mw * CARD_ASPECT
@@ -507,17 +591,17 @@ private fun DrawScope.miniCards(fills: List<Color>, shade: Color, tint: Tint) {
             // A dark rim outside the white border, so the cards stand out from the white oval.
             drawRoundRect(shade, topLeft - Offset(edge, edge), Size(mw + edge * 2, mh + edge * 2), CornerRadius(radius.x + edge))
             drawRoundRect(fill, topLeft, Size(mw, mh), radius)
-            drawRoundRect(tint(Color.White), topLeft, Size(mw, mh), radius, style = Stroke(w * 0.018f))
+            drawRoundRect(white, topLeft, Size(mw, mh), radius, style = Stroke(w * 0.018f))
         }
     }
 }
 
-private fun DrawScope.wildPip(at: Offset, r: Float, tint: Tint, edge: Color) {
+private fun DrawScope.wildPip(at: Offset, r: Float, quadrants: List<Color>, white: Color, edge: Color) {
     val topLeft = at - Offset(r, r)
     val ring = size.width * 0.014f
     drawCircle(edge, r + ring, at, style = Stroke(ring))
-    drawQuadrants(topLeft, Size(r * 2, r * 2), tint)
-    drawCircle(tint(Color.White), r, at, style = Stroke(ring))
+    drawQuadrants(topLeft, Size(r * 2, r * 2), quadrants)
+    drawCircle(white, r, at, style = Stroke(ring))
 }
 
 private val FAN_CARD_WIDTH = 20.dp
@@ -532,5 +616,6 @@ private const val OVAL_TILT = 28f
 private const val CAP_HEIGHT = 0.71f
 private const val SQRT_HALF = 0.70710677f
 private val BACK_WORDS = listOf("COLOR", "CLASH")
-private val QUADRANTS get() = listOf(GameTheme.red, GameTheme.blue, GameTheme.yellow, GameTheme.green)
-private val DRAW_FOUR_FANS get() = listOf(GameTheme.blue, GameTheme.green, GameTheme.red, GameTheme.yellow)
+// Plain vals, not get(): a `get() = listOf(...)` rebuilt these four-element lists on every draw.
+private val QUADRANTS = listOf(GameTheme.red, GameTheme.blue, GameTheme.yellow, GameTheme.green)
+private val DRAW_FOUR_FANS = listOf(GameTheme.blue, GameTheme.green, GameTheme.red, GameTheme.yellow)

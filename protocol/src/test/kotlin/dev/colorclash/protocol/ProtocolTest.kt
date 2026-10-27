@@ -26,8 +26,8 @@ class ProtocolTest {
     @Test
     fun `messages round trip through json`() {
         val client = listOf(
-            ClientMessage.Hello(PROTOCOL_VERSION, "ABCD", "Sam", 2, "tok"),
-            ClientMessage.Hello(PROTOCOL_VERSION, "ABCD", "Sam", 20, null, avatarColor = 4, avatarFrame = 3, photo = "/9j/AA=="),
+            ClientMessage.Hello(PROTOCOL_VERSION, "ABCD", "Sam", 2, rejoinNonce = "a".repeat(32), rejoinProof = "b".repeat(64)),
+            ClientMessage.Hello(PROTOCOL_VERSION, "ABCD", "Sam", 20, avatarColor = 4, avatarFrame = 3, photo = "/9j/AA=="),
             ClientMessage.Intent(PlayerIntent.Play(12)),
             ClientMessage.Intent(PlayerIntent.ChooseColor(CardColor.BLUE)),
             ClientMessage.Intent(PlayerIntent.Draw),

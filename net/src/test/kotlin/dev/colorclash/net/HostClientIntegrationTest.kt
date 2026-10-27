@@ -37,6 +37,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -403,6 +404,46 @@ class HostClientIntegrationTest {
     }
 
     /** Sends one raw frame and returns the first reply. */
+    @Test
+    fun `a rejoin proof takes the seat back, and the same one twice doesn't`(): Unit = runBlocking {
+        Harness().start().use { h ->
+            val token = h.host.reserveHostSeat("Me")
+            h.awaitHost { s -> s.seats.size == 1 }
+            val nonce = Rejoin.newNonce()
+            val hello = ClientMessage.Hello(
+                PROTOCOL_VERSION, ROOM, "Me",
+                rejoinNonce = nonce,
+                rejoinProof = Rejoin.proof(token, nonce, ROOM),
+            )
+
+            val first = assertIs<ServerMessage.Welcome>(rawExchange(h.port, Codec.encode(hello)))
+            assertEquals(0, first.seat)
+            assertEquals(token, first.sessionToken)
+
+            // The host spends each nonce, so replaying a captured pair gets a new seat, not that one.
+            val replay = assertIs<ServerMessage.Welcome>(rawExchange(h.port, Codec.encode(hello)))
+            assertEquals(1, replay.seat)
+            assertNotEquals(token, replay.sessionToken)
+        }
+    }
+
+    @Test
+    fun `a proof made with the wrong token gets no seat back`(): Unit = runBlocking {
+        Harness().start().use { h ->
+            val token = h.host.reserveHostSeat("Me")
+            h.awaitHost { s -> s.seats.size == 1 }
+            val nonce = Rejoin.newNonce()
+            val hello = ClientMessage.Hello(
+                PROTOCOL_VERSION, ROOM, "Imposter",
+                rejoinNonce = nonce,
+                rejoinProof = Rejoin.proof("not the token", nonce, ROOM),
+            )
+            val welcome = assertIs<ServerMessage.Welcome>(rawExchange(h.port, Codec.encode(hello)))
+            assertEquals(1, welcome.seat)
+            assertNotEquals(token, welcome.sessionToken)
+        }
+    }
+
     private suspend fun rawExchange(port: Int, text: String): ServerMessage {
         val http = HttpClient(CIO) { install(WebSockets) }
         return http.use {

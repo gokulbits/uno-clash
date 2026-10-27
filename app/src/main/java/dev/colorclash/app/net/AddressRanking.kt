@@ -23,8 +23,11 @@ object AddressRanking {
         else -> 3
     }
 
+    /** RFC 1918 only. Total on purpose: an address we can't read is simply not a private one. */
     private fun isPrivate(ip: String): Boolean {
-        val (a, b) = ip.split(".").map { it.toInt() }
+        val parts = ip.trim().split(".").mapNotNull { it.toIntOrNull() }
+        if (parts.size != 4 || parts.any { it !in 0..255 }) return false
+        val (a, b) = parts
         return a == 10 || (a == 172 && b in 16..31) || (a == 192 && b == 168)
     }
 }

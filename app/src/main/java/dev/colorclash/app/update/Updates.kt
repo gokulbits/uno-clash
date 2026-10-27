@@ -10,7 +10,14 @@ const val RELEASE_REPO = "gokulbits/uno-clash"
 const val LATEST_RELEASE_URL = "https://api.github.com/repos/$RELEASE_REPO/releases/latest"
 
 /** The newest release on GitHub, boiled down to what the update prompt needs. */
-data class Release(val version: String, val notes: String, val apkUrl: String, val apkBytes: Long)
+data class Release(
+    val version: String,
+    val notes: String,
+    val apkUrl: String,
+    val apkBytes: Long,
+    /** Hex SHA-256 of the APK when the release publishes one, so the download can be checked. */
+    val sha256: String? = null,
+)
 
 /**
  * Picks the release apart. Null when there's nothing we can install: a draft, a pre-release, or a
@@ -33,6 +40,7 @@ fun parseLatestRelease(json: String): Release? = runCatching {
         notes = releaseNotes(release["body"]?.jsonPrimitive?.content ?: ""),
         apkUrl = url,
         apkBytes = apk["size"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L,
+        sha256 = apk["digest"]?.jsonPrimitive?.content?.removePrefix("sha256:")?.takeIf { it.length == 64 },
     )
 }.getOrNull()
 

@@ -55,13 +55,13 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -339,6 +339,10 @@ private fun OpponentSeat(
     onCatch: () -> Unit,
     modifier: Modifier,
 ) {
+    // Both unconditional: building a transition only while it's wanted would tear it down and make
+    // it again every time the turn moves on.
+    val turnPulse = rememberPulse()
+    val catchPulse = rememberPulse(1.15f)
     // Tap a seat for the exact count; big hands bunch up in the fan.
     var showCount by remember { mutableStateOf(false) }
     LaunchedEffect(showCount) {
@@ -357,7 +361,7 @@ private fun OpponentSeat(
                 seat.info,
                 size = 46.dp,
                 ring = if (isCurrent) GameTheme.yellow else null,
-                modifier = if (isCurrent) Modifier.scale(pulse()) else Modifier,
+                modifier = if (isCurrent) Modifier.pulsing(turnPulse) else Modifier,
             )
             if (showCount) {
                 Text(
@@ -408,7 +412,7 @@ private fun OpponentSeat(
             canCatch -> Text(
                 "CATCH!",
                 Modifier
-                    .scale(pulse(1.15f))
+                    .pulsing(catchPulse)
                     .clip(RoundedCornerShape(10.dp))
                     .background(GameTheme.red)
                     .clickable(onClick = onCatch)
@@ -434,9 +438,15 @@ private fun CenterTable(
     onTick: () -> Unit,
     modifier: Modifier,
 ) {
+    val drawPulse = rememberPulse(1.05f)
+    val headlinePulse = rememberPulse(1.04f)
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            Box(Modifier.then(fx.anchor(Anchor.DrawPile)).scale(if (controls.canDraw) pulse(1.05f) else 1f)) {
+            Box(
+                Modifier
+                    .then(fx.anchor(Anchor.DrawPile))
+                    .then(if (controls.canDraw) Modifier.pulsing(drawPulse) else Modifier),
+            ) {
                 // A couple of cards peeking out underneath, so it reads as a deck.
                 if (view.drawPileCount > 2) CardBack(TABLE_CARD_WIDTH, Modifier.offset(3.dp, 5.dp), elevation = 1.dp)
                 if (view.drawPileCount > 1) CardBack(TABLE_CARD_WIDTH, Modifier.offset(1.5.dp, 2.5.dp), elevation = 1.dp)
@@ -501,7 +511,7 @@ private fun CenterTable(
             }
             Text(
                 controls.headline,
-                Modifier.scale(if (view.isYourTurn && view.phase.isLive()) pulse(1.04f) else 1f),
+                if (view.isYourTurn && view.phase.isLive()) Modifier.pulsing(headlinePulse) else Modifier,
                 style = MaterialTheme.typography.titleLarge,
                 color = if (view.isYourTurn) GameTheme.yellow else GameTheme.text,
                 textAlign = TextAlign.Center,
@@ -728,6 +738,7 @@ private fun HandCard(
 fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boolean = false, onFinalSeconds: (() -> Unit)? = null) {
     if (millisLeft == null || totalSeconds == null) return
     val total = totalSeconds * 1000f
+    val urgentPulse = rememberPulse(1.15f)
     val progress = remember { Animatable(1f) }
     LaunchedEffect(millisLeft) {
         progress.snapTo((millisLeft / total).coerceIn(0f, 1f))
@@ -751,7 +762,7 @@ fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boole
         if (showSeconds) {
             Text(
                 seconds.toString(),
-                Modifier.scale(if (urgent) pulse(1.15f) else 1f),
+                if (urgent) Modifier.pulsing(urgentPulse) else Modifier,
                 color = if (urgent) GameTheme.red else GameTheme.text,
                 fontSize = (size.value * 0.42f).sp,
                 fontWeight = FontWeight.Black,
@@ -904,16 +915,26 @@ private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
     }
 }
 
+/**
+ * A heartbeat for whatever wants attention. Returns the State, not the Float: read as a Float it
+ * landed in the caller's composition scope, so every seat (and the card fan under it) recomposed
+ * on every animation frame.
+ */
 @Composable
-private fun pulse(to: Float = 1.08f): Float {
+private fun rememberPulse(to: Float = 1.08f): State<Float> {
     val transition = rememberInfiniteTransition(label = "pulse")
-    val scale by transition.animateFloat(
+    return transition.animateFloat(
         initialValue = 1f,
         targetValue = to,
         animationSpec = infiniteRepeatable(tween(520), RepeatMode.Reverse),
         label = "pulseScale",
     )
-    return scale
+}
+
+/** Scales by [pulse] in the draw phase, so nothing recomposes while it beats. */
+private fun Modifier.pulsing(pulse: State<Float>): Modifier = graphicsLayer {
+    scaleX = pulse.value
+    scaleY = pulse.value
 }
 
 private fun PhaseKind.isLive() = this != PhaseKind.ROUND_OVER && this != PhaseKind.GAME_OVER

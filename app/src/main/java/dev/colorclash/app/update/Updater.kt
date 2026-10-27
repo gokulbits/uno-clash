@@ -15,6 +15,8 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.isActive
 
@@ -41,12 +43,11 @@ class Updater(private val context: Context) {
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val state: StateFlow<UpdateState> = _state.asStateFlow()
 
-    private var checked = false
+    private val checked = AtomicBoolean(false)
     private var work: Job? = null
 
     fun checkOnce() {
-        if (checked) return
-        checked = true
+        if (!checked.compareAndSet(false, true)) return
         scope.launch {
             val body = runCatching { fetch(LATEST_RELEASE_URL) }.getOrNull() ?: return@launch
             val release = parseLatestRelease(body) ?: return@launch
@@ -92,11 +93,18 @@ class Updater(private val context: Context) {
                 val connection = open(release.apkUrl)
                 try {
                     val total = if (release.apkBytes > 0) release.apkBytes else connection.contentLengthLong
+                    // Checked whenever the release publishes one. The platform's signature check is
+                    // the real gate; this catches a truncated or swapped download before it's staged.
+                    val digest = release.sha256?.let { MessageDigest.getInstance("SHA-256") }
                     session.openWrite(SESSION_NAME, 0, total).use { out ->
-                        connection.inputStream.use { copy(it, out, total) { percent ->
+                        connection.inputStream.use { copy(it, out, total, digest) { percent ->
                             _state.value = UpdateState.Downloading(release, percent)
                         } }
                         session.fsync(out)
+                    }
+                    val actual = digest?.digest()?.joinToString("") { "%02x".format(it) }
+                    if (actual != null && !actual.equals(release.sha256, ignoreCase = true)) {
+                        error("the download didn't match the checksum GitHub published")
                     }
                 } finally {
                     connection.disconnect()
@@ -118,23 +126,47 @@ class Updater(private val context: Context) {
         }
     }
 
-    private fun open(url: String, accept: String? = null): HttpURLConnection {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = TIMEOUT_MILLIS
-            readTimeout = TIMEOUT_MILLIS
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "color-clash")
-            accept?.let { setRequestProperty("Accept", it) }
-        }
-        if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-            val code = connection.responseCode
-            connection.disconnect()
-            error("GitHub answered $code")
-        }
-        return connection
+    /**
+     * The APK url arrives inside a JSON body, so it is untrusted input: only GitHub over TLS gets
+     * fetched. Cleartext is permitted app-wide for LAN play, so an http:// url would otherwise be
+     * downloaded in the open and staged for install.
+     */
+    private fun allowed(url: URL): Boolean {
+        if (!url.protocol.equals("https", ignoreCase = true)) return false
+        val host = url.host.lowercase()
+        return host == "api.github.com" || host == "github.com" || host.endsWith(".githubusercontent.com")
     }
 
-    private suspend inline fun copy(input: InputStream, out: OutputStream, total: Long, onProgress: (Int) -> Unit) {
+    private fun trusted(raw: String): URL? = runCatching { URL(raw) }.getOrNull()?.takeIf(::allowed)
+
+    private fun open(raw: String, accept: String? = null): HttpURLConnection {
+        var target = trusted(raw) ?: error("that release link isn't GitHub over HTTPS")
+        var redirects = 0
+        while (true) {
+            val connection = (target.openConnection() as HttpURLConnection).apply {
+                connectTimeout = TIMEOUT_MILLIS
+                readTimeout = TIMEOUT_MILLIS
+                // Followed by hand, so every hop is checked against the allowlist and not just the first.
+                instanceFollowRedirects = false
+                setRequestProperty("User-Agent", "color-clash")
+                accept?.let { setRequestProperty("Accept", it) }
+            }
+            val code = connection.responseCode
+            if (code == HttpURLConnection.HTTP_OK) return connection
+            val location = connection.getHeaderField("Location")
+            connection.disconnect()
+            if (code !in REDIRECTS || location == null || redirects++ >= MAX_REDIRECTS) error("GitHub answered $code")
+            target = trusted(URL(target, location).toString()) ?: error("that release link redirects away from GitHub")
+        }
+    }
+
+    private suspend inline fun copy(
+        input: InputStream,
+        out: OutputStream,
+        total: Long,
+        digest: MessageDigest?,
+        onProgress: (Int) -> Unit,
+    ) {
         val buffer = ByteArray(64 * 1024)
         var done = 0L
         var reported = -1
@@ -144,6 +176,7 @@ class Updater(private val context: Context) {
             val read = input.read(buffer)
             if (read < 0) break
             out.write(buffer, 0, read)
+            digest?.update(buffer, 0, read)
             done += read
             val percent = percentOf(done, total)
             if (percent != reported) {
@@ -156,5 +189,7 @@ class Updater(private val context: Context) {
     private companion object {
         const val SESSION_NAME = "color-clash.apk"
         const val TIMEOUT_MILLIS = 15_000
+        const val MAX_REDIRECTS = 5
+        val REDIRECTS = setOf(301, 302, 303, 307, 308)
     }
 }

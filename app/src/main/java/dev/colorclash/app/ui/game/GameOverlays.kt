@@ -49,6 +49,9 @@ import dev.colorclash.protocol.PlayerView
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.CardColor
 import kotlin.math.ceil
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 
 private const val MAX_HISTORY_ROWS = 5
@@ -276,10 +279,12 @@ fun NextRoundCountdown(millisLeft: Long?, round: Int) {
     if (millisLeft == null) return
     var seconds by remember(round, millisLeft) { mutableIntStateOf(ceil(millisLeft / 1000.0).toInt()) }
     LaunchedEffect(round, millisLeft) {
-        val end = System.currentTimeMillis() + millisLeft
+        // Monotonic, like the host's own clocks: a wall-clock correction mid-countdown made this jump.
+        val deadline = TimeSource.Monotonic.markNow() + millisLeft.milliseconds
         while (seconds > 0) {
             delay(200)
-            seconds = ceil((end - System.currentTimeMillis()).coerceAtLeast(0) / 1000.0).toInt()
+            val left = (-deadline.elapsedNow()).coerceAtLeast(Duration.ZERO)
+            seconds = ceil(left.inWholeMilliseconds / 1000.0).toInt()
         }
     }
     Text("Next round in $seconds…", color = GameTheme.yellow, fontWeight = FontWeight.Bold)

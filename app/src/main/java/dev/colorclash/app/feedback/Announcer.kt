@@ -58,6 +58,13 @@ class Announcer(
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, LOUD, UTTERANCE_ID)
     }
 
+    /** Lets go of the bound engine process. There is no app-level teardown hook, so this is for tests. */
+    fun shutdown() {
+        ready = false
+        tts?.let { runCatching { it.shutdown() } }
+        tts = null
+    }
+
     private companion object {
         const val UTTERANCE_ID = "announce"
         val LOUD = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1f) }

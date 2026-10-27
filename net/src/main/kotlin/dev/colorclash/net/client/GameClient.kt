@@ -10,6 +10,7 @@ import dev.colorclash.protocol.PlayerIntent
 import dev.colorclash.protocol.PlayerView
 import dev.colorclash.protocol.ServerMessage
 import dev.colorclash.protocol.WS_PATH
+import dev.colorclash.net.Rejoin
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -21,6 +22,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -73,9 +75,16 @@ sealed interface ClientStatus {
  * gets a full resync from the host each time.
  */
 class GameClient(
-    private val scope: CoroutineScope,
+    parent: CoroutineScope,
     private val config: ClientConfig = ClientConfig(),
 ) {
+    /**
+     * A child of the caller's scope, so [close] reaps every attempt this client ever started and
+     * not just the latest. A dead link is deliberately never waited on, so without this a long
+     * outage left a pile of half-torn-down sessions in a process-lifetime scope.
+     */
+    private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
+
     private val http = HttpClient(CIO) {
         install(WebSockets)
         engine {
@@ -153,8 +162,7 @@ class GameClient(
     }
 
     fun close() {
-        loop?.cancel()
-        sessionJob?.cancel()
+        scope.cancel()
         http.close()
         if (_status.value !is ClientStatus.Failed) _status.value = ClientStatus.Closed("Closed")
     }
@@ -240,7 +248,22 @@ class GameClient(
             session = this
             opened.complete(Unit)
             val out = Channel<ClientMessage>(Channel.UNLIMITED)
-            out.trySend(ClientMessage.Hello(PROTOCOL_VERSION, target.roomCode, target.name, target.avatar, sessionToken, target.avatarColor, target.avatarFrame, target.photo))
+            // A fresh nonce per attempt: the host spends each one, so a reused proof is refused.
+            val token = sessionToken
+            val nonce = token?.let { Rejoin.newNonce() }
+            out.trySend(
+                ClientMessage.Hello(
+                    protocolVersion = PROTOCOL_VERSION,
+                    roomCode = target.roomCode,
+                    name = target.name,
+                    avatar = target.avatar,
+                    rejoinNonce = nonce,
+                    rejoinProof = if (token != null && nonce != null) Rejoin.proof(token, nonce, target.roomCode) else null,
+                    avatarColor = target.avatarColor,
+                    avatarFrame = target.avatarFrame,
+                    photo = target.photo,
+                ),
+            )
             val writer = launch { for (message in out) send(Frame.Text(Codec.encode(message))) }
             val pinger = launch {
                 var nonce = 0L
@@ -300,7 +323,15 @@ class GameClient(
             }
             is ServerMessage.ActionRejected -> _notices.tryEmit(message.reason)
             is ServerMessage.Reaction -> _reactions.tryEmit(message)
-            is ServerMessage.Photo -> _photos.update { it + (message.id to message.data) }
+            is ServerMessage.Photo -> _photos.update { current ->
+                // Ids are content hashes, so a table that swaps avatars would grow this forever.
+                if (message.id in current) {
+                    current
+                } else {
+                    val next = current + (message.id to message.data)
+                    if (next.size <= MAX_PHOTOS) next else next.entries.drop(next.size - MAX_PHOTOS).associate { it.key to it.value }
+                }
+            }
             is ServerMessage.Pong -> Unit
             is ServerMessage.Closed -> return Outcome.Ended(message.reason)
         }
@@ -325,5 +356,10 @@ class GameClient(
         data object Dropped : Outcome
         data class Rejected(val message: String, val error: JoinError?) : Outcome
         data class Ended(val reason: String) : Outcome
+    }
+
+    private companion object {
+        /** Four times a full table, so nobody loses a photo that's still on screen. */
+        const val MAX_PHOTOS = 24
     }
 }

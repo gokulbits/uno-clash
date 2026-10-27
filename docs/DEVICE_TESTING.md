@@ -136,6 +136,37 @@ Host on one phone; join from the others using each method once.
 - [ ] Set the phone's font size to the largest. **Expect:** the table still fits without overlapping text.
 - [ ] Take a phone call mid-game on a guest. **Expect:** back in the game after hanging up.
 
+## 9. After the hardening pass
+
+These cover the changes from the memory, concurrency and security pass. Nothing here can be checked
+on the JVM.
+
+- [ ] Install the **release** build (`./gradlew :app:assembleRelease`), which is now minified and
+  resource-shrunk by R8, on every phone and play a full game. **Expect:** phones find each other,
+  the lobby and table look the same as debug, and the game plays to the end. A missing ProGuard keep
+  shows up here as a crash on connect (serialization) or a blank scan screen (ZXing).
+- [ ] Release build › Settings › scan a QR to join. **Expect:** the camera opens and a code is read.
+- [ ] Mid-game, back out of the scan screen the instant it opens, repeatedly. **Expect:** no crash,
+  and the camera light goes out each time.
+- [ ] Guest, mid-game: turn Wi-Fi off, wait for "reconnecting", turn it back on. **Expect:** the same
+  seat and hand come back. The rejoin now proves the token instead of sending it, so a failure here
+  looks like being given a *new* seat, or the room being full.
+- [ ] Two phones, same seat: let one guest drop, then rejoin from the app on that same phone.
+  **Expect:** the seat comes back. The phone that lost it (if still open) says the seat was taken
+  over from another phone rather than just going quiet.
+- [ ] Kill a guest from Recents mid-game and reopen within two hours. **Expect:** the rejoin offer
+  still appears on Home. (The saved token is now keystore-encrypted; a token written by an older
+  build won't decrypt, so the first launch after updating offers no rejoin. That's expected once.)
+- [ ] Play with music on, background the app for a minute, come back. **Expect:** the music restarts
+  from the top rather than resuming — it's released while the app is away — and card sounds still play.
+- [ ] Fire several long reaction clips (Sus, Eh eh eh, Woww) in a row during dealing. **Expect:** no
+  stutter as each one starts, and the music dips under each.
+- [ ] Profile HWUI rendering › On screen as bars, then watch an opponent's turn with the avatar
+  pulsing, and a win with confetti. **Expect:** bars under the green line; this pass removed the
+  per-frame recompositions that drove both.
+- [ ] Host, then tap Host/Practice/Join quickly in succession. **Expect:** one room, and no leftover
+  hosting notification after leaving.
+
 ## Results
 
 | Phone | Android | Sections passed | Notes |

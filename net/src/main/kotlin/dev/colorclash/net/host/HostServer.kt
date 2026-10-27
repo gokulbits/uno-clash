@@ -23,10 +23,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.time.Duration.Companion.seconds
 
 /** Embedded Ktor WebSocket server that feeds connections into a [GameHost]. */
 class HostServer(private val host: GameHost, private val port: Int = DEFAULT_PORT) {
     private var server: EmbeddedServer<*, *>? = null
+    private val open = AtomicInteger(0)
 
     /** Listens on every interface and returns the bound port (handy when [port] is 0). */
     suspend fun start(): Int {
@@ -48,14 +51,34 @@ class HostServer(private val host: GameHost, private val port: Int = DEFAULT_POR
         server = null
     }
 
+    /**
+     * A phone hosts one room of at most six players, and every connection costs an outbox and two
+     * coroutines, so anything past a small multiple of that is a peer misbehaving.
+     */
     private suspend fun serve(session: DefaultWebSocketServerSession) {
+        if (open.incrementAndGet() > MAX_CONNECTIONS) {
+            open.decrementAndGet()
+            session.close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Too many connections"))
+            return
+        }
+        try {
+            read(session)
+        } finally {
+            open.decrementAndGet()
+        }
+    }
+
+    private suspend fun read(session: DefaultWebSocketServerSession) {
         val connection = SocketConnection(session)
         val writer = session.launch { connection.pump() }
         var greeted = false
         try {
             while (true) {
                 // Clients ping every couple of seconds, so silence this long means the link is dead.
-                val frame = withTimeoutOrNull(host.config.heartbeatTimeout) {
+                // Before the hello a much shorter leash: a socket that never greets is holding host
+                // memory for nothing.
+                val wait = if (greeted) host.config.heartbeatTimeout else HANDSHAKE_TIMEOUT
+                val frame = withTimeoutOrNull(wait) {
                     session.incoming.receiveCatching().getOrNull()
                 } ?: break
                 if (frame !is Frame.Text) continue
@@ -111,5 +134,7 @@ class HostServer(private val host: GameHost, private val port: Int = DEFAULT_POR
     private companion object {
         const val MAX_FRAME_BYTES = 256L * 1024
         const val OUTBOX_SIZE = 512
+        const val MAX_CONNECTIONS = 24
+        val HANDSHAKE_TIMEOUT = 5.seconds
     }
 }
