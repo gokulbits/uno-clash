@@ -34,6 +34,7 @@ import dev.colorclash.app.data.Profile
 import dev.colorclash.app.ui.components.Panel
 import dev.colorclash.app.ui.components.SectionTitle
 import dev.colorclash.app.ui.theme.GAME_TITLE
+import dev.colorclash.app.update.installedVersion
 import dev.colorclash.app.ui.theme.GameTheme
 
 @Composable
@@ -87,7 +88,7 @@ fun SettingsScreen(
         Panel {
             SectionTitle("About")
             Text(GAME_TITLE, fontWeight = FontWeight.Bold)
-            Text("Version ${appVersion()}", color = GameTheme.mutedText)
+            Text("Version ${installedVersion(LocalContext.current) ?: "?"}", color = GameTheme.mutedText)
             val links = LocalUriHandler.current
             Text(
                 buildAnnotatedString {
@@ -160,12 +161,6 @@ private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit)
         Text(label, Modifier.weight(1f), fontWeight = FontWeight.Bold)
         Switch(checked = checked, onCheckedChange = onChange, colors = SwitchDefaults.colors(checkedTrackColor = GameTheme.green))
     }
-}
-
-@Composable
-private fun appVersion(): String {
-    val context = LocalContext.current
-    return runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
 }
 
 private const val AUTHOR_URL = "https://github.com/gokulbits"

@@ -33,6 +33,7 @@ import dev.colorclash.app.ui.theme.GAME_TITLE
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.app.ui.theme.LocalCardBack
 import dev.colorclash.app.ui.theme.LocalTableStyle
+import dev.colorclash.app.ui.update.UpdateDialog
 import dev.colorclash.protocol.JoinLink
 import kotlinx.coroutines.launch
 
@@ -50,6 +51,7 @@ fun AppRoot(app: ColorClashApp, incomingLink: JoinLink?, onLinkHandled: () -> Un
     val play by app.prefs.play.collectAsState()
     val stats by app.prefs.stats.collectAsState()
     val looks by app.prefs.looks.collectAsState()
+    val update by app.updater.state.collectAsState()
     val table = GameTheme.table(looks.table)
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var busy by remember { mutableStateOf(false) }
@@ -86,6 +88,9 @@ fun AppRoot(app: ColorClashApp, incomingLink: JoinLink?, onLinkHandled: () -> Un
         }
     }
 
+    // A newer build on GitHub is offered once per launch, never in the middle of a game.
+    LaunchedEffect(Unit) { app.updater.checkOnce() }
+
     LaunchedEffect(incomingLink) {
         val link = incomingLink ?: return@LaunchedEffect
         onLinkHandled()
@@ -110,6 +115,7 @@ fun AppRoot(app: ColorClashApp, incomingLink: JoinLink?, onLinkHandled: () -> Un
                 })
                 return@Box
             }
+            UpdateDialog(update, onUpdate = app.updater::download, onDismiss = app.updater::dismiss)
             when (screen) {
                 Screen.HOME -> HomeScreen(
                     profile = profile,

@@ -8,6 +8,7 @@ import dev.colorclash.app.feedback.Feedback
 import dev.colorclash.app.feedback.Haptics
 import dev.colorclash.app.feedback.SoundEngine
 import dev.colorclash.app.session.SessionManager
+import dev.colorclash.app.update.Updater
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 
@@ -20,6 +21,8 @@ class ColorClashApp : Application() {
         private set
     lateinit var feedback: Feedback
         private set
+    lateinit var updater: Updater
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -27,6 +30,7 @@ class ColorClashApp : Application() {
         sessions = SessionManager(this, prefs)
         sound = SoundEngine(this, prefs.feedback)
         feedback = Feedback(sound, Haptics(this, prefs.feedback), Announcer(this, prefs.feedback, sound::duckMusic))
+        updater = Updater(this)
         // Music follows the setting as soon as it's flipped.
         MainScope().launch { prefs.feedback.collect { sound.refreshMusic() } }
     }

@@ -139,6 +139,12 @@ GitHub Release with the APK attached:
 git tag v1.0.1 && git push origin v1.0.1
 ```
 
+Once a release is up, phones offer it themselves: the game checks
+[the latest release](https://api.github.com/repos/gokulbits/uno-clash/releases/latest) when it starts
+and, if the tag is newer than the installed version, asks whether to update or keep playing. Updating
+streams the release APK straight into a package installer session, so Android shows its usual install
+prompt. A failed check is silent — the game needs no internet otherwise.
+
 Android only installs an update over an existing copy signed with the same key, so CI signs with a
 permanent key kept in four repository secrets (already set up). To set it up again:
 

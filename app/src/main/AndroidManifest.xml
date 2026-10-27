@@ -16,6 +16,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- In-app updates: the game installs the APK it downloads from its GitHub releases. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.wifi" android:required="true" />
@@ -56,6 +58,10 @@
                 <data android:scheme="colorclash" android:host="join" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".update.InstallReceiver"
+            android:exported="false" />
 
         <service
             android:name=".session.HostService"
