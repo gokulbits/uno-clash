@@ -14,8 +14,10 @@ import dev.colorclash.app.data.FeedbackSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.EnumMap
@@ -79,7 +81,7 @@ class SoundEngine(private val context: Context, private val settings: StateFlow<
     private var ids: Map<Sfx, Int> = emptyMap()
     private var music: MediaPlayer? = null
     private var musicJob: Job? = null
-    private var musicWanted = false
+    private var visible = false
     private val lastPlayed = EnumMap<Sfx, Long>(Sfx::class.java)
     private var duckedUntil = 0L
     /** Streamed clips in flight; main thread only. */
@@ -90,7 +92,8 @@ class SoundEngine(private val context: Context, private val settings: StateFlow<
     }
 
     fun play(sfx: Sfx, volume: Float = 1f) {
-        if (!settings.value.sound) return
+        // Friends' reactions keep arriving while the app is in a pocket, and shouldn't shout from it.
+        if (!visible || !settings.value.sound) return
         val now = SystemClock.uptimeMillis()
         if (!canPlayAgain(lastPlayed[sfx], now, sfx.minGapMillis)) return
         lastPlayed[sfx] = now
@@ -152,14 +155,14 @@ class SoundEngine(private val context: Context, private val settings: StateFlow<
         main.postDelayed({ if (SystemClock.uptimeMillis() >= duckedUntil) duckMusic(false) }, millis + 50)
     }
 
-    /** Call when a screen that wants music comes and goes, and when the app goes to the background. */
-    fun setMusicWanted(wanted: Boolean) {
-        musicWanted = wanted
+    /** Call when the app comes to the front and leaves it. Nothing plays while it's out of sight. */
+    fun setVisible(visible: Boolean) {
+        this.visible = visible
         refreshMusic()
     }
 
     fun refreshMusic() {
-        if (musicWanted && settings.value.music) startMusic() else releaseMusic()
+        if (visible && settings.value.music) startMusic() else releaseMusic()
     }
 
     private fun startMusic() {
@@ -169,15 +172,21 @@ class SoundEngine(private val context: Context, private val settings: StateFlow<
         }
         if (musicJob?.isActive == true) return
         musicJob = io.launch {
+            val job = coroutineContext.job
             val player = runCatching {
                 prepared(R.raw.music_loop) {
                     isLooping = true
                     setVolume(MUSIC_VOLUME, MUSIC_VOLUME)
                 }
             }.getOrNull() ?: return@launch
-            withContext(Dispatchers.Main) {
-                // The app may have gone to the background while this was preparing.
-                if (!musicWanted || !settings.value.music) return@withContext runCatching { player.release() }.let { }
+            // NonCancellable, or leaving the app mid-prepare would skip this and leak a whole player.
+            withContext(NonCancellable + Dispatchers.Main) {
+                if (!job.isActive || !visible || !settings.value.music) return@withContext runCatching { player.release() }.let { }
+                player.setOnErrorListener { failed, _, _ ->
+                    if (music === failed) music = null
+                    runCatching { failed.release() }
+                    true
+                }
                 music?.let { runCatching { it.release() } }
                 music = player
                 player.start()

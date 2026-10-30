@@ -1,7 +1,6 @@
 package dev.colorclash.app.ui.join
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,15 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,15 +22,26 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.colorclash.app.net.FoundRoom
 import dev.colorclash.app.ui.components.BigButton
+import dev.colorclash.app.ui.components.BusyRow
+import dev.colorclash.app.ui.components.ButtonTone
+import dev.colorclash.app.ui.components.GameDialog
+import dev.colorclash.app.ui.components.GameTextField
+import dev.colorclash.app.ui.components.HintText
+import dev.colorclash.app.ui.components.ListRow
+import dev.colorclash.app.ui.components.NoticeBar
 import dev.colorclash.app.ui.components.Panel
+import dev.colorclash.app.ui.components.RoomCodeField
+import dev.colorclash.app.ui.components.ScreenHeader
 import dev.colorclash.app.ui.components.SectionTitle
+import dev.colorclash.app.ui.components.TextLink
+import dev.colorclash.app.ui.components.cameraIcon
+import dev.colorclash.app.ui.components.chevronIcon
 import dev.colorclash.app.ui.room.clashName
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.DEFAULT_PORT
@@ -63,91 +68,66 @@ fun JoinScreen(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(horizontal = GameTheme.screenPadding, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(GameTheme.sectionGap),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹ Back", color = GameTheme.text) }
-            Text("Join a game", style = MaterialTheme.typography.headlineMedium)
-        }
+        ScreenHeader("Join a game", onBack)
 
-        if (busy) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                CircularProgressIndicator(Modifier.size(24.dp), color = GameTheme.yellow, strokeWidth = 3.dp)
-                Text("Connecting…")
-            }
-        }
-        message?.let { Text(it, color = GameTheme.yellow) }
+        if (busy) BusyRow("Connecting…")
+        message?.let { NoticeBar(it) }
 
         Panel {
             SectionTitle("Rooms nearby")
             if (rooms.isEmpty()) {
-                Text("Looking for games on this Wi-Fi…", color = GameTheme.mutedText)
+                BusyRow("Looking for games on this Wi-Fi…")
             }
-            rooms.forEachIndexed { i, room ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(GameTheme.cardColors[i % 4].copy(alpha = 0.85f))
-                        .clickable(enabled = !busy) { codeFor = room }
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(clashName(room.hostName), fontWeight = FontWeight.Bold)
-                    }
-                    Text("Enter code ›", fontWeight = FontWeight.Bold)
+            rooms.forEach { room ->
+                ListRow(onClick = { codeFor = room }, enabled = !busy) {
+                    Text(clashName(room.hostName), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    HintText("Enter code")
+                    Canvas(Modifier.size(14.dp)) { chevronIcon(GameTheme.mutedText) }
                 }
             }
         }
 
-        BigButton("📷  Scan the host's QR", GameTheme.green, onScan, enabled = !busy)
+        BigButton("Scan the host's QR", ButtonTone.ACTION, onScan, enabled = !busy, icon = { cameraIcon(it) })
 
         Panel {
-            SectionTitle("Room code")
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it.uppercase().filter(Char::isLetterOrDigit).take(6) },
-                    label = { Text("e.g. K7MQ") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
-                )
-                Spacer12()
-                BigButton("Join", GameTheme.blue, { onJoinCode(code) }, Modifier.width(96.dp), enabled = !busy && JoinLink.isRoomCode(code))
+            SectionTitle("Got a code?")
+            // Lined up with the field's box, not its floating label.
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                RoomCodeField(code, { code = it }, Modifier.weight(1f))
+                BigButton("Join", ButtonTone.PRIMARY, { onJoinCode(code) }, Modifier.width(96.dp), enabled = !busy && JoinLink.isRoomCode(code))
             }
-            Text("On the host's hotspot? The code is all you need.", color = GameTheme.mutedText, style = MaterialTheme.typography.bodyMedium)
+            HintText("On the host's hotspot? The code is all you need.")
         }
 
-        TextButton(onClick = { showManual = !showManual }) {
-            Text(if (showManual) "Hide manual connection" else "Type the host's IP instead", color = GameTheme.yellow)
-        }
+        TextLink(if (showManual) "Hide manual connection" else "Type the host's IP instead", { showManual = !showManual })
         if (showManual) {
             Panel {
                 SectionTitle("Manual connection")
-                OutlinedTextField(
-                    value = ip, onValueChange = { ip = it.trim() }, label = { Text("Host IP, e.g. 192.168.1.20") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth(),
+                GameTextField(
+                    value = ip,
+                    onValueChange = { ip = it.trim() },
+                    label = "Host IP",
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = "192.168.1.20",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 )
-                Row {
-                    OutlinedTextField(
-                        value = port, onValueChange = { port = it.filter(Char::isDigit).take(5) }, label = { Text("Port") },
-                        singleLine = true, modifier = Modifier.weight(1f),
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    GameTextField(
+                        value = port,
+                        onValueChange = { port = it.filter(Char::isDigit).take(5) },
+                        label = "Port",
+                        modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
-                    Spacer12()
-                    OutlinedTextField(
-                        value = code, onValueChange = { code = it.uppercase().filter(Char::isLetterOrDigit).take(6) },
-                        label = { Text("Room code") }, singleLine = true, modifier = Modifier.weight(1f),
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
-                    )
+                    RoomCodeField(code, { code = it }, Modifier.weight(1f))
                 }
                 val portNumber = port.toIntOrNull()
                 BigButton(
-                    "Connect", GameTheme.blue,
+                    "Connect",
+                    ButtonTone.PRIMARY,
                     { onJoinAddress(ip, portNumber ?: DEFAULT_PORT, code) },
                     enabled = !busy && JoinLink.isIpv4(ip) && JoinLink.isRoomCode(code) && portNumber in 1..65535,
                 )
@@ -171,25 +151,15 @@ fun JoinScreen(
 @Composable
 private fun RoomCodeDialog(room: FoundRoom, onJoin: (String) -> Unit, onDismiss: () -> Unit) {
     var typed by rememberSaveable { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(clashName(room.hostName)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Enter the room code shown on ${room.hostName}'s phone.", color = GameTheme.mutedText)
-                OutlinedTextField(
-                    value = typed,
-                    onValueChange = { typed = it.uppercase().filter(Char::isLetterOrDigit).take(6) },
-                    label = { Text("Room code") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
-                )
-            }
+    GameDialog(
+        title = clashName(room.hostName),
+        onDismiss = onDismiss,
+        actions = {
+            BigButton("Cancel", ButtonTone.QUIET, onDismiss, Modifier.weight(1f))
+            BigButton("Join", ButtonTone.PRIMARY, { onJoin(typed) }, Modifier.weight(1f), enabled = JoinLink.isRoomCode(typed))
         },
-        confirmButton = { TextButton(onClick = { onJoin(typed) }, enabled = JoinLink.isRoomCode(typed)) { Text("Join") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    ) {
+        HintText("Enter the room code shown on ${room.hostName}'s phone.", textAlign = TextAlign.Center)
+        RoomCodeField(typed, { typed = it }, Modifier.fillMaxWidth())
+    }
 }
-
-@Composable
-private fun Spacer12() = androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))

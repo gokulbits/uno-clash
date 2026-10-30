@@ -41,8 +41,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,9 +56,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -69,11 +67,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -85,11 +85,27 @@ import androidx.compose.ui.unit.sp
 import dev.colorclash.app.data.FeedbackSettings
 import dev.colorclash.app.data.PlaySettings
 import dev.colorclash.app.ui.components.AvatarBadge
+import dev.colorclash.app.ui.components.BigButton
+import dev.colorclash.app.ui.components.ButtonLabel
+import dev.colorclash.app.ui.components.ButtonTone
+import dev.colorclash.app.ui.components.RoundButton
+import dev.colorclash.app.ui.components.RoundIconButton
+import dev.colorclash.app.ui.components.HintText
+import dev.colorclash.app.ui.components.SheetSurface
+import dev.colorclash.app.ui.components.SmallButton
+import dev.colorclash.app.ui.components.Tag
+import dev.colorclash.app.ui.components.Toast
+import dev.colorclash.app.ui.components.colorDotsIcon
+import dev.colorclash.app.ui.components.directionIcon
+import dev.colorclash.app.ui.components.offlineIcon
+import dev.colorclash.app.ui.components.robotIcon
+import dev.colorclash.app.ui.components.smileIcon
 import dev.colorclash.app.ui.game.fx.Anchor
 import dev.colorclash.app.ui.game.fx.FxLayer
 import dev.colorclash.app.ui.game.fx.TableFx
 import dev.colorclash.app.ui.settings.QuickSettingsDialog
 import dev.colorclash.app.ui.theme.GameTheme
+import dev.colorclash.app.ui.theme.LocalTableStyle
 import dev.colorclash.protocol.PhaseKind
 import dev.colorclash.protocol.REACTION_GAP_MILLIS
 import dev.colorclash.protocol.PlayerIntent
@@ -124,7 +140,10 @@ fun GameScreen(
     onLeave: () -> Unit,
     onTick: () -> Unit,
 ) {
-    CompositionLocalProvider(LocalColorShapes provides play.colorShapes) {
+    // One heartbeat for the whole table. Each seat used to run its own two, a dozen animations ticking
+    // every frame, nearly all of them for nothing.
+    val pulse = rememberPulse()
+    CompositionLocalProvider(LocalColorShapes provides play.colorShapes, LocalPulse provides pulse) {
         GameTable(
             view, fx, log, history, notice, isHost, feedback, onFeedbackChange, play, onPlayChange, recentPlays,
             onIntent, onReact, onNextRound, onRematch, onResume, onBackToLobby, onLeave, onTick,
@@ -204,7 +223,7 @@ private fun GameTable(
                     Text(
                         line,
                         color = GameTheme.text.copy(alpha = 0.45f + 0.55f * (i + 1) / log.size),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -275,17 +294,7 @@ private fun GameTable(
             ScoreBoard(view, controls.headline, history, isHost, onNextRound, onRematch, onBackToLobby, onLeave, onClose = { scoresClosed = true })
         }
 
-        notice?.let {
-            Text(
-                it,
-                Modifier
-                    .align(Alignment.Center)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.Black.copy(alpha = 0.75f))
-                    .padding(horizontal = 18.dp, vertical = 10.dp),
-                color = Color.White,
-            )
-        }
+        notice?.let { Toast(it, Modifier.align(Alignment.Center)) }
     }
 
     if (showSettings) QuickSettingsDialog(feedback, onFeedbackChange, play, onPlayChange, onDismiss = { showSettings = false })
@@ -339,10 +348,7 @@ private fun OpponentSeat(
     onCatch: () -> Unit,
     modifier: Modifier,
 ) {
-    // Both unconditional: building a transition only while it's wanted would tear it down and make
-    // it again every time the turn moves on.
-    val turnPulse = rememberPulse()
-    val catchPulse = rememberPulse(1.15f)
+    val pulse = LocalPulse.current
     // Tap a seat for the exact count; big hands bunch up in the fan.
     var showCount by remember { mutableStateOf(false) }
     LaunchedEffect(showCount) {
@@ -360,71 +366,63 @@ private fun OpponentSeat(
             AvatarBadge(
                 seat.info,
                 size = 46.dp,
-                ring = if (isCurrent) GameTheme.yellow else null,
-                modifier = if (isCurrent) Modifier.pulsing(turnPulse) else Modifier,
+                ring = if (isCurrent) GameTheme.highlight else null,
+                modifier = if (isCurrent) Modifier.pulsing(pulse) else Modifier,
             )
             if (showCount) {
-                Text(
+                Tag(
                     "${seat.cardCount}",
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 10.dp, y = (-4).dp)
-                        .clip(CircleShape)
-                        .background(GameTheme.yellow)
-                        .padding(horizontal = 8.dp, vertical = 2.dp),
-                    color = Color.Black, fontWeight = FontWeight.Black, fontSize = 15.sp,
+                    GameTheme.highlight,
+                    Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-4).dp),
+                    style = MaterialTheme.typography.titleSmall,
                 )
             }
             if (isNext) {
-                Text(
-                    "NEXT",
-                    Modifier
-                        .align(Alignment.TopStart)
-                        .offset(x = (-12).dp, y = (-4).dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(GameTheme.blue)
-                        .border(1.5.dp, Color.White, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 5.dp, vertical = 1.dp),
-                    color = Color.White, fontWeight = FontWeight.Black, fontSize = 10.sp,
-                )
+                Tag("NEXT", GameTheme.blue, Modifier.align(Alignment.TopStart).offset(x = (-12).dp, y = (-4).dp))
+            }
+            // Beside the avatar rather than after the name, where a long name would ellipsize it away.
+            when {
+                seat.info.botControlled -> SeatMark(Modifier.align(Alignment.BottomEnd)) { robotIcon(it) }
+                !seat.info.connected -> SeatMark(Modifier.align(Alignment.BottomEnd)) { offlineIcon(it) }
             }
         }
         HandFan(seat.cardCount, Modifier.offset(y = (-8).dp))
-        Text(
-            seat.info.name + when {
-                seat.info.botControlled -> " 🤖"
-                !seat.info.connected -> " 📶"
-                else -> ""
-            },
-            // Dark pill so it reads over anything; yellow on their turn.
-            Modifier
-                .offset(y = (-6).dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(GameTheme.wild.copy(alpha = 0.8f))
-                .padding(horizontal = 8.dp, vertical = 2.dp),
-            color = if (isCurrent) GameTheme.yellow else GameTheme.text,
-            fontWeight = if (isCurrent) FontWeight.Black else FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            fontSize = 14.sp,
+        // Dark so it reads over anything; yellow on their turn.
+        Tag(
+            seat.info.name,
+            GameTheme.wild.copy(alpha = 0.8f),
+            Modifier.offset(y = (-6).dp),
+            color = if (isCurrent) GameTheme.highlight else GameTheme.text,
+            style = MaterialTheme.typography.labelMedium,
         )
         when {
-            canCatch -> Text(
+            canCatch -> Tag(
                 "CATCH!",
+                GameTheme.danger,
                 Modifier
-                    .pulsing(catchPulse)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(GameTheme.red)
-                    .clickable(onClick = onCatch)
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                color = Color.White, fontWeight = FontWeight.Black, fontSize = 13.sp,
+                    .pulsing(pulse, 1.15f)
+                    .clip(GameTheme.tagShape)
+                    .clickable(role = Role.Button, onClick = onCatch),
+                style = MaterialTheme.typography.labelMedium,
             )
-            seat.cardCount == 1 && seat.calledLastCard -> Text(
-                "UNO",
-                Modifier.clip(RoundedCornerShape(8.dp)).background(GameTheme.yellow).padding(horizontal = 6.dp, vertical = 2.dp),
-                color = Color.Black, fontWeight = FontWeight.Black, fontSize = 11.sp,
-            )
+            seat.cardCount == 1 && seat.calledLastCard -> Tag("UNO", GameTheme.highlight)
         }
+    }
+}
+
+/** A small badge on a seat's avatar saying something's up with that player. */
+@Composable
+private fun SeatMark(modifier: Modifier, icon: DrawScope.(Color) -> Unit) {
+    Box(
+        modifier
+            .offset(x = 6.dp, y = 2.dp)
+            .size(20.dp)
+            .clip(CircleShape)
+            .background(GameTheme.ink)
+            .border(1.dp, GameTheme.glassEdge, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(13.dp)) { icon(GameTheme.text) }
     }
 }
 
@@ -438,14 +436,13 @@ private fun CenterTable(
     onTick: () -> Unit,
     modifier: Modifier,
 ) {
-    val drawPulse = rememberPulse(1.05f)
-    val headlinePulse = rememberPulse(1.04f)
+    val pulse = LocalPulse.current
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Box(
                 Modifier
                     .then(fx.anchor(Anchor.DrawPile))
-                    .then(if (controls.canDraw) Modifier.pulsing(drawPulse) else Modifier),
+                    .then(if (controls.canDraw) Modifier.pulsing(pulse, 1.05f) else Modifier),
             ) {
                 // A couple of cards peeking out underneath, so it reads as a deck.
                 if (view.drawPileCount > 2) CardBack(TABLE_CARD_WIDTH, Modifier.offset(3.dp, 5.dp), elevation = 1.dp)
@@ -453,25 +450,16 @@ private fun CenterTable(
                 Box(
                     Modifier
                         .clip(PILE_SHAPE)
-                        .then(if (controls.canDraw) Modifier.border(3.dp, GameTheme.yellow, PILE_SHAPE) else Modifier)
+                        .then(if (controls.canDraw) Modifier.border(3.dp, GameTheme.highlight, PILE_SHAPE) else Modifier)
                         .clickable(enabled = controls.canDraw, onClick = onDraw),
                 ) {
                     CardBack(TABLE_CARD_WIDTH, elevation = 3.dp)
-                    Text(
-                        view.drawPileCount.toString(),
-                        Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
-                        color = GameTheme.mutedText, fontSize = 12.sp,
-                    )
+                    Tag(view.drawPileCount.toString(), GameTheme.scrim, Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp))
                 }
             }
 
-            Text(
-                if (view.direction == Direction.CLOCKWISE) "↻" else "↺",
-                Modifier.graphicsLayer { rotationZ = fx.arrowSpin.value },
-                fontSize = 40.sp,
-                color = GameTheme.text,
-                fontWeight = FontWeight.Black,
-            )
+            val clockwise = view.direction == Direction.CLOCKWISE
+            Canvas(Modifier.size(40.dp).graphicsLayer { rotationZ = fx.arrowSpin.value }) { directionIcon(GameTheme.text, clockwise) }
 
             Box(
                 contentAlignment = Alignment.Center,
@@ -481,7 +469,7 @@ private fun CenterTable(
                 Box(
                     Modifier
                         .size(TABLE_CARD_WIDTH + 22.dp, TABLE_CARD_WIDTH * CARD_ASPECT + 22.dp)
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(GameTheme.panelShape)
                         .background(GameTheme.cardColor(view.activeColor).copy(alpha = if (view.activeColor == null) 0f else 0.55f)),
                 )
                 fx.pileUnder.forEach { card ->
@@ -511,17 +499,17 @@ private fun CenterTable(
             }
             Text(
                 controls.headline,
-                if (view.isYourTurn && view.phase.isLive()) Modifier.pulsing(headlinePulse) else Modifier,
+                if (view.isYourTurn && view.phase.isLive()) Modifier.pulsing(pulse, 1.04f) else Modifier,
                 style = MaterialTheme.typography.titleLarge,
-                color = if (view.isYourTurn) GameTheme.yellow else GameTheme.text,
+                color = if (view.isYourTurn) GameTheme.highlight else GameTheme.text,
                 textAlign = TextAlign.Center,
             )
         }
         if (view.pendingDraw > 0) {
-            Text("+${view.pendingDraw} waiting", color = GameTheme.red, fontWeight = FontWeight.Black)
+            Tag("+${view.pendingDraw} waiting", GameTheme.danger, Modifier.padding(top = 4.dp), style = MaterialTheme.typography.labelMedium)
         }
         if (nextSeat(view) == view.you && !view.isYourTurn) {
-            Text("You're up next", color = GameTheme.mutedText, fontWeight = FontWeight.Bold)
+            HintText("You're up next")
         }
     }
 }
@@ -533,30 +521,21 @@ private fun ActionBar(view: PlayerView, controls: TableControls, onIntent: (Play
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (controls.canChallenge) ActionButton("Challenge!", GameTheme.red) { onIntent(PlayerIntent.Challenge) }
-        if (controls.canDraw && view.pendingDraw > 0) ActionButton(controls.drawLabel, GameTheme.blue) { onIntent(PlayerIntent.Draw) }
-        if (controls.canKeep) ActionButton("Keep it", GameTheme.blue) { onIntent(PlayerIntent.Pass) }
+        if (controls.canChallenge) SmallButton("Challenge!", ButtonTone.DANGER, { onIntent(PlayerIntent.Challenge) })
+        if (controls.canDraw && view.pendingDraw > 0) SmallButton(controls.drawLabel, ButtonTone.ACTION, { onIntent(PlayerIntent.Draw) })
+        if (controls.canKeep) SmallButton("Keep it", ButtonTone.ACTION, { onIntent(PlayerIntent.Pass) })
         controls.catchTarget?.let { target ->
-            ActionButton("Catch ${view.nameOf(target)}!", GameTheme.red) { onIntent(PlayerIntent.Catch(target)) }
+            SmallButton("Catch ${view.nameOf(target)}!", ButtonTone.DANGER, { onIntent(PlayerIntent.Catch(target)) })
         }
     }
 }
 
 @Composable
 private fun AwayBanner(onResume: () -> Unit, modifier: Modifier) {
-    Column(
-        modifier
-            .padding(24.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(GameTheme.wild.copy(alpha = 0.94f))
-            .border(2.dp, GameTheme.yellow, RoundedCornerShape(20.dp))
-            .padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Text("🤖", fontSize = 40.sp)
-        Text("You ran out of time a few turns in a row, so a bot is playing for you.", textAlign = TextAlign.Center)
-        ActionButton("I'm back!", GameTheme.green, onClick = onResume)
+    SheetSurface(modifier) {
+        Canvas(Modifier.size(44.dp)) { robotIcon(GameTheme.text) }
+        Text("You ran out of time a few turns in a row, so a bot is playing for you.", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+        BigButton("I'm back!", ButtonTone.PRIMARY, onResume)
     }
 }
 
@@ -575,26 +554,14 @@ private fun RoundOverBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ActionButton("Scores", GameTheme.blue, onClick = onScores)
+        SmallButton("Scores", ButtonTone.QUIET, onScores)
         if (isHost) {
             if (gameOver) {
-                ActionButton("Play again", GameTheme.green, onClick = onRematch)
+                SmallButton("Play again", ButtonTone.PRIMARY, onRematch)
             } else {
-                ActionButton("Next round", GameTheme.green, onClick = onNextRound)
+                SmallButton("Next round", ButtonTone.PRIMARY, onNextRound)
             }
         }
-    }
-}
-
-@Composable
-private fun ActionButton(text: String, color: Color, modifier: Modifier = Modifier, textColor: Color = Color.White, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = textColor),
-    ) {
-        Text(text, fontWeight = FontWeight.Black)
     }
 }
 
@@ -689,7 +656,8 @@ private fun HandCard(
     )
     Box(
         modifier
-            .offset(y = sink + lift)
+            // The lambda form reads these springs in layout, so the card doesn't recompose on every frame.
+            .offset { IntOffset(0, (sink + lift).roundToPx()) }
             .then(anchor)
             .graphicsLayer {
                 rotationZ = tilt
@@ -726,7 +694,7 @@ private fun HandCard(
         CardFace(
             card,
             HAND_CARD_WIDTH,
-            Modifier.then(if (selected) Modifier.border(3.dp, GameTheme.yellow, RoundedCornerShape(HAND_CARD_WIDTH * 0.11f)) else Modifier),
+            Modifier.then(if (selected) Modifier.border(3.dp, GameTheme.highlight, RoundedCornerShape(HAND_CARD_WIDTH * 0.11f)) else Modifier),
             dimmed = !playable,
             elevation = if (selected) 10.dp else 3.dp,
         )
@@ -738,7 +706,7 @@ private fun HandCard(
 fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boolean = false, onFinalSeconds: (() -> Unit)? = null) {
     if (millisLeft == null || totalSeconds == null) return
     val total = totalSeconds * 1000f
-    val urgentPulse = rememberPulse(1.15f)
+    val pulse = LocalPulse.current
     val progress = remember { Animatable(1f) }
     LaunchedEffect(millisLeft) {
         progress.snapTo((millisLeft / total).coerceIn(0f, 1f))
@@ -752,7 +720,7 @@ fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boole
         Canvas(Modifier.fillMaxSize()) {
             val stroke = 4.dp.toPx()
             drawArc(
-                if (progress.value < 0.25f) GameTheme.red else GameTheme.yellow,
+                if (progress.value < 0.25f) GameTheme.danger else GameTheme.highlight,
                 startAngle = -90f, sweepAngle = 360f * progress.value, useCenter = false,
                 topLeft = Offset(stroke / 2, stroke / 2),
                 size = Size(this.size.width - stroke, this.size.height - stroke),
@@ -762,8 +730,8 @@ fun TurnRing(millisLeft: Long?, totalSeconds: Int?, size: Dp, showSeconds: Boole
         if (showSeconds) {
             Text(
                 seconds.toString(),
-                if (urgent) Modifier.pulsing(urgentPulse) else Modifier,
-                color = if (urgent) GameTheme.red else GameTheme.text,
+                if (urgent) Modifier.pulsing(pulse, 1.15f) else Modifier,
+                color = if (urgent) GameTheme.danger else GameTheme.text,
                 fontSize = (size.value * 0.42f).sp,
                 fontWeight = FontWeight.Black,
             )
@@ -795,9 +763,9 @@ private fun UnoBuzzer(onPress: () -> Unit, modifier: Modifier) {
             val dome = d * 0.4f
             val lift = d * 0.07f
             val top = center + Offset(0f, -lift + d * 0.05f * sink)
-            drawOval(Color.Black.copy(alpha = 0.35f), center - Offset(rim, rim * 0.97f - d * 0.06f), Size(rim * 2, rim * 1.94f))
+            drawOval(GameTheme.shadow.copy(alpha = 0.35f), center - Offset(rim, rim * 0.97f - d * 0.06f), Size(rim * 2, rim * 1.94f))
             drawCircle(Brush.radialGradient(listOf(GameTheme.buzzerRim, GameTheme.buzzerRimDeep), center - Offset(0f, rim * 0.3f), rim * 1.4f), rim)
-            drawCircle(Color.White.copy(alpha = 0.18f), rim * 0.98f, style = Stroke(d * 0.015f))
+            drawCircle(GameTheme.text.copy(alpha = 0.18f), rim * 0.98f, style = Stroke(d * 0.015f))
             // The side of the dome shows while it's up; pressing sinks the cap down over it.
             drawCircle(GameTheme.buzzerSide, dome, center + Offset(0f, lift * 0.35f))
             drawCircle(
@@ -813,7 +781,7 @@ private fun UnoBuzzer(onPress: () -> Unit, modifier: Modifier) {
             )
             rotate(-20f, pivot = top - Offset(dome * 0.25f, dome * 0.45f)) {
                 drawOval(
-                    Color.White.copy(alpha = if (pressed) 0.18f else 0.35f),
+                    GameTheme.text.copy(alpha = if (pressed) 0.18f else 0.35f),
                     top - Offset(dome * 0.7f, dome * 0.65f),
                     Size(dome * 0.9f, dome * 0.4f),
                 )
@@ -822,42 +790,29 @@ private fun UnoBuzzer(onPress: () -> Unit, modifier: Modifier) {
         Text(
             "UNO!",
             Modifier.graphicsLayer { translationY = BUZZER_SIZE.toPx() * (-0.07f + 0.05f * sink) },
-            color = Color.White,
+            color = GameTheme.text,
             fontSize = (BUZZER_SIZE.value * 0.22f).sp,
             fontWeight = FontWeight.Black,
             fontFamily = GameTheme.displayFont,
-            style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.4f), Offset(2f, 3f), blurRadius = 3f)),
+            style = TextStyle(shadow = Shadow(GameTheme.shadow.copy(alpha = 0.4f), Offset(2f, 3f), blurRadius = 3f)),
         )
     }
 }
 
 @Composable
 private fun SortSwitch(byNumber: Boolean, onToggle: () -> Unit, modifier: Modifier) {
-    Box(
-        modifier
-            .size(REACTION_BUTTON_SIZE)
-            .clip(CircleShape)
-            .background(GameTheme.panelStrong)
-            .clickable(onClick = onToggle),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(if (byNumber) "1-9" else "🎨", fontSize = if (byNumber) 14.sp else 20.sp, fontWeight = FontWeight.Black)
+    RoundButton(if (byNumber) "Sort by color" else "Sort by number", onToggle, modifier) { tint ->
+        if (byNumber) {
+            ButtonLabel("1-9", style = MaterialTheme.typography.labelMedium, fill = tint)
+        } else {
+            Canvas(Modifier.size(20.dp)) { colorDotsIcon() }
+        }
     }
 }
 
 @Composable
 private fun ReactionButton(open: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
-    Box(
-        modifier
-            .size(REACTION_BUTTON_SIZE)
-            .clip(CircleShape)
-            .background(if (open) GameTheme.yellow else GameTheme.panelStrong)
-            .alpha(if (enabled) 1f else 0.4f)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("😊", fontSize = 24.sp)
-    }
+    RoundIconButton("Reactions", onClick, modifier, enabled = enabled, selected = open) { smileIcon(it) }
 }
 
 /** Emoji and quick chat you can send. */
@@ -873,9 +828,9 @@ private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
                 alpha = appear.value.coerceIn(0f, 1f)
                 transformOrigin = TransformOrigin(1f, 1f)
             }
-            .clip(RoundedCornerShape(20.dp))
-            .background(GameTheme.wild.copy(alpha = 0.92f))
-            .border(1.5.dp, GameTheme.panelStrong, RoundedCornerShape(20.dp))
+            .clip(GameTheme.panelShape)
+            .background(LocalTableStyle.current.top)
+            .border(1.dp, GameTheme.glassEdge, GameTheme.panelShape)
             // There are a lot of phrases now; scroll rather than run off the top of the screen.
             .heightIn(max = REACTION_TRAY_MAX_HEIGHT)
             .verticalScroll(rememberScrollState())
@@ -887,7 +842,7 @@ private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
                     Text(
                         GameTheme.reaction(i),
                         Modifier
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(GameTheme.tagShape)
                             .clickable { onPick(i) }
                             .padding(6.dp),
                         fontSize = 28.sp,
@@ -902,12 +857,11 @@ private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
                     Text(
                         GameTheme.reaction(firstPhrase + p),
                         Modifier
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(GameTheme.tagShape)
                             .background(GameTheme.panel)
                             .clickable { onPick(firstPhrase + p) }
                             .padding(horizontal = 10.dp, vertical = 6.dp),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.labelMedium,
                     )
                 }
             }
@@ -916,25 +870,28 @@ private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
 }
 
 /**
- * A heartbeat for whatever wants attention. Returns the State, not the Float: read as a Float it
- * landed in the caller's composition scope, so every seat (and the card fan under it) recomposed
- * on every animation frame.
+ * A heartbeat for whatever wants attention, from 0 to 1 and back. It's the State, not the Float, that
+ * gets passed around: read as a Float it landed in the caller's composition scope, so every seat
+ * (and the card fan under it) recomposed on every animation frame.
  */
 @Composable
-private fun rememberPulse(to: Float = 1.08f): State<Float> {
+private fun rememberPulse(): State<Float> {
     val transition = rememberInfiniteTransition(label = "pulse")
     return transition.animateFloat(
-        initialValue = 1f,
-        targetValue = to,
+        initialValue = 0f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(520), RepeatMode.Reverse),
-        label = "pulseScale",
+        label = "pulsePhase",
     )
 }
 
-/** Scales by [pulse] in the draw phase, so nothing recomposes while it beats. */
-private fun Modifier.pulsing(pulse: State<Float>): Modifier = graphicsLayer {
-    scaleX = pulse.value
-    scaleY = pulse.value
+private val LocalPulse = staticCompositionLocalOf<State<Float>> { mutableFloatStateOf(0f) }
+
+/** Scales up to [peak] on [pulse]'s beat, in the draw phase, so nothing recomposes while it beats. */
+private fun Modifier.pulsing(pulse: State<Float>, peak: Float = 1.08f): Modifier = graphicsLayer {
+    val scale = 1f + (peak - 1f) * pulse.value
+    scaleX = scale
+    scaleY = scale
 }
 
 private fun PhaseKind.isLive() = this != PhaseKind.ROUND_OVER && this != PhaseKind.GAME_OVER
@@ -945,7 +902,7 @@ private const val REACTIONS_PER_ROW = 6
 private val BUZZER_SIZE = 88.dp
 private const val PHRASES_PER_ROW = 4
 private const val FINAL_SECONDS = 5
-private val REACTION_BUTTON_SIZE = 44.dp
+private val REACTION_BUTTON_SIZE = 46.dp
 private val REACTION_TRAY_MAX_HEIGHT = 320.dp
 private val ACTION_BAR_HEIGHT = 60.dp
 private val HAND_HEIGHT = HAND_CARD_WIDTH * CARD_ASPECT + 48.dp

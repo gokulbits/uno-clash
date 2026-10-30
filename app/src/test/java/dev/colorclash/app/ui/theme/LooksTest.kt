@@ -40,6 +40,13 @@ class LooksTest {
     }
 
     @Test
+    fun `text on any game color is readable`() {
+        (GameTheme.cardColors + GameTheme.danger + GameTheme.highlight + GameTheme.wild).forEach { fill ->
+            assertTrue(GameTheme.contrast(GameTheme.contentOn(fill), fill) >= 3f, "$fill")
+        }
+    }
+
+    @Test
     fun `the first table and card back are the classic look`() {
         assertEquals(GameTheme.tableTop, GameTheme.tables.first().top)
         assertEquals(GameTheme.cardBackOval, GameTheme.cardBacks.first().oval)

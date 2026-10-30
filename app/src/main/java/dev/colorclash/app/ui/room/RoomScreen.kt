@@ -1,23 +1,15 @@
 package dev.colorclash.app.ui.room
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,14 +20,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import dev.colorclash.app.session.Session
-import dev.colorclash.app.ui.components.BigButton
-import dev.colorclash.app.ui.components.LocalSeatPhotos
-import dev.colorclash.app.ui.components.rememberSeatPhotos
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.colorclash.app.colorClash
-import dev.colorclash.app.ui.game.GameScreen
 import dev.colorclash.app.feedback.Buzz
 import dev.colorclash.app.feedback.Sfx
+import dev.colorclash.app.session.Session
+import dev.colorclash.app.ui.components.BigButton
+import dev.colorclash.app.ui.components.BusyRow
+import dev.colorclash.app.ui.components.ButtonTone
+import dev.colorclash.app.ui.components.GameDialog
+import dev.colorclash.app.ui.components.HintText
+import dev.colorclash.app.ui.components.LocalSeatPhotos
+import dev.colorclash.app.ui.components.Panel
+import dev.colorclash.app.ui.components.SheetTitle
+import dev.colorclash.app.ui.components.Toast
+import dev.colorclash.app.ui.components.rememberSeatPhotos
+import dev.colorclash.app.ui.game.GameScreen
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.net.client.ClientStatus
 
@@ -46,18 +46,28 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
     // Owns the log, history, stats and the FX queue, and outlives this composition.
     val presenter = remember(session) { app.presenterFor(session) }
     val fx = presenter.fx
+    val hostControls = remember(session) {
+        session.hosting?.let { hosting ->
+            LobbyHostControls(
+                port = hosting.port,
+                start = { hosting.host.startGame() },
+                addBot = { hosting.host.addBot() },
+                removeBot = { hosting.host.removeBot(it) },
+            )
+        }
+    }
 
-    val status by session.client.status.collectAsState()
-    val lobby by session.client.lobby.collectAsState()
-    val game by session.client.game.collectAsState()
-    val photoData by session.client.photos.collectAsState()
+    val status by session.client.status.collectAsStateWithLifecycle()
+    val lobby by session.client.lobby.collectAsStateWithLifecycle()
+    val game by session.client.game.collectAsStateWithLifecycle()
+    val photoData by session.client.photos.collectAsStateWithLifecycle()
     val photos = rememberSeatPhotos(photoData)
-    val log by presenter.log.collectAsState()
-    val history by presenter.history.collectAsState()
-    val recentPlays by presenter.recentPlays.collectAsState()
-    val notice by presenter.notice.collectAsState()
-    val feedbackSettings by app.prefs.feedback.collectAsState()
-    val playSettings by app.prefs.play.collectAsState()
+    val log by presenter.log.collectAsStateWithLifecycle()
+    val history by presenter.history.collectAsStateWithLifecycle()
+    val recentPlays by presenter.recentPlays.collectAsStateWithLifecycle()
+    val notice by presenter.notice.collectAsStateWithLifecycle()
+    val feedbackSettings by app.prefs.feedback.collectAsStateWithLifecycle()
+    val playSettings by app.prefs.play.collectAsStateWithLifecycle()
     var confirmLeave by remember { mutableStateOf(false) }
     var startError by remember { mutableStateOf<String?>(null) }
 
@@ -109,7 +119,7 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
                         )
                         waiting != null -> LobbyScreen(
                             lobby = waiting,
-                            hosting = session.hosting,
+                            hosting = hostControls,
                             startError = startError,
                             onStartError = { startError = it },
                             onReady = { session.client.setReady(it) },
@@ -119,53 +129,51 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
                             },
                             onLeave = { confirmLeave = true },
                         )
-                        else -> Connecting()
+                        else -> BusyRow("Connecting to the room…", Modifier.align(Alignment.Center))
                     }
                 }
             }
 
             if (status is ClientStatus.Reconnecting) {
-                Text(
-                    "Connection lost, reconnecting…",
-                    Modifier
-                        .fillMaxWidth()
-                        .background(GameTheme.danger)
-                        .padding(10.dp)
-                        .align(Alignment.TopCenter),
-                    textAlign = TextAlign.Center,
-                )
+                Toast("Connection lost, reconnecting…", Modifier.align(Alignment.TopCenter).padding(top = 60.dp), fill = GameTheme.danger, busy = true)
             }
         }
     }
 
     if (confirmLeave) {
-        AlertDialog(
-            onDismissRequest = { confirmLeave = false },
-            title = { Text(if (session.isHost) "Close the room?" else "Leave the room?") },
-            text = { Text(if (session.isHost) "This ends the game for everyone." else "A bot will take your seat if a game is running.") },
-            confirmButton = { TextButton(onClick = { confirmLeave = false; onLeave() }) { Text("Leave", color = GameTheme.danger) } },
-            dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Stay") } },
-        )
-    }
-}
-
-@Composable
-private fun Connecting() {
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        CircularProgressIndicator(color = GameTheme.yellow)
-        Text("Connecting to the room…", Modifier.padding(16.dp))
+        GameDialog(
+            title = if (session.isHost) "Close the room?" else "Leave the room?",
+            onDismiss = { confirmLeave = false },
+            actions = {
+                BigButton("Stay", ButtonTone.QUIET, { confirmLeave = false }, Modifier.weight(1f))
+                BigButton(
+                    if (session.isHost) "Close it" else "Leave",
+                    ButtonTone.DANGER,
+                    {
+                        confirmLeave = false
+                        onLeave()
+                    },
+                    Modifier.weight(1f),
+                )
+            },
+        ) {
+            HintText(if (session.isHost) "This ends the game for everyone." else "A bot will take your seat if a game is running.", textAlign = TextAlign.Center)
+        }
     }
 }
 
 @Composable
 private fun EndCard(title: String, message: String, onBack: () -> Unit) {
     Column(
-        Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        Modifier.fillMaxSize().padding(GameTheme.screenPadding),
+        verticalArrangement = Arrangement.Center,
     ) {
-        Text(title, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
-        Text(message, color = GameTheme.mutedText, textAlign = TextAlign.Center)
-        BigButton("Back to menu", GameTheme.blue, onBack)
+        Panel {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                SheetTitle(title)
+                HintText(message, textAlign = TextAlign.Center)
+                BigButton("Back to menu", ButtonTone.PRIMARY, onBack)
+            }
+        }
     }
 }

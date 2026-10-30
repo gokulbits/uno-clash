@@ -12,6 +12,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import dev.colorclash.app.MainActivity
 import dev.colorclash.app.R
 
@@ -28,10 +29,17 @@ class HostService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val roomCode = intent?.getStringExtra(EXTRA_ROOM).orEmpty()
         val notification = buildNotification(roomCode)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: RuntimeException) {
+            // The system can refuse the foreground slot; the room carries on without the screen-off cover.
+            Log.w(TAG, "Couldn't go foreground", e)
+            stopSelf()
+            return START_NOT_STICKY
         }
         acquireLocks()
         return START_NOT_STICKY
@@ -92,6 +100,7 @@ class HostService : Service() {
     }
 
     companion object {
+        private const val TAG = "HostService"
         private const val CHANNEL_ID = "hosting"
         private const val NOTIFICATION_ID = 1
         private const val EXTRA_ROOM = "room"

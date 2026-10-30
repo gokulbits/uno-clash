@@ -21,8 +21,9 @@ sealed interface ClientMessage {
         val avatar: Int = 0,
         /**
          * Set when rejoining a seat: a nonce this phone made up, and an HMAC of it under the seat's
-         * token. The token itself never goes over the wire, so watching a rejoin on an open network
-         * doesn't hand over a credential. The host honours each nonce once.
+         * token. The client never sends the token, and the host honours each nonce once, so replaying
+         * a captured rejoin gets nowhere. The host does hand the token out in [ServerMessage.Welcome]
+         * over plain ws://, so this is no defence against someone sniffing the Wi-Fi from the start.
          */
         val rejoinNonce: String? = null,
         val rejoinProof: String? = null,

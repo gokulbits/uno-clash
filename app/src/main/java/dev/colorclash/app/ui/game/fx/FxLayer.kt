@@ -154,7 +154,7 @@ private fun FlashView(flash: Flash) {
         fontSize = 34.sp,
         fontWeight = FontWeight.Black,
         fontFamily = GameTheme.displayFont,
-        style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.6f), Offset(0f, 4f), blurRadius = 10f)),
+        style = TextStyle(shadow = Shadow(GameTheme.shadow.copy(alpha = 0.6f), Offset(0f, 4f), blurRadius = 10f)),
     )
 }
 
@@ -198,8 +198,8 @@ private fun StampView(fx: StampFx) {
         Canvas(Modifier.fillMaxSize()) {
             val r = size.minDimension / 2
             val line = r * 0.2f
-            drawCircle(Color.Black.copy(alpha = 0.35f), r, center + Offset(0f, 4.dp.toPx()))
-            drawCircle(Color.White, r)
+            drawCircle(GameTheme.shadow.copy(alpha = 0.35f), r, center + Offset(0f, 4.dp.toPx()))
+            drawCircle(GameTheme.text, r)
             when (stamp.mark) {
                 StampMark.SKIP -> {
                     val inner = r - line / 2 - r * 0.06f
@@ -215,24 +215,24 @@ private fun StampView(fx: StampFx) {
                         lineTo(center.x - r * 0.12f, center.y + r * 0.32f)
                         lineTo(center.x + r * 0.44f, center.y - r * 0.3f)
                     }
-                    drawPath(tick, Color.White, style = Stroke(line, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    drawPath(tick, GameTheme.text, style = Stroke(line, cap = StrokeCap.Round, join = StrokeJoin.Round))
                 }
                 StampMark.CROSS -> {
                     drawCircle(tone, r * 0.86f)
                     val d = r * 0.34f
-                    drawLine(Color.White, center + Offset(-d, -d), center + Offset(d, d), line, StrokeCap.Round)
-                    drawLine(Color.White, center + Offset(-d, d), center + Offset(d, -d), line, StrokeCap.Round)
+                    drawLine(GameTheme.text, center + Offset(-d, -d), center + Offset(d, d), line, StrokeCap.Round)
+                    drawLine(GameTheme.text, center + Offset(-d, d), center + Offset(d, -d), line, StrokeCap.Round)
                 }
             }
         }
         if (stamp.mark == StampMark.DRAW) {
             Text(
                 "+${stamp.count}",
-                color = Color.White,
+                color = GameTheme.text,
                 fontSize = (disc.value * 0.4f).sp,
                 fontWeight = FontWeight.Black,
                 fontFamily = GameTheme.displayFont,
-                style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.4f), Offset(0f, 3f), blurRadius = 4f)),
+                style = TextStyle(shadow = Shadow(GameTheme.shadow.copy(alpha = 0.4f), Offset(0f, 3f), blurRadius = 4f)),
             )
         }
     }
@@ -248,11 +248,11 @@ private fun StampView(fx: StampFx) {
                 scaleY = pop
                 alpha = if (p < 0.82f) 1f else (1 - p) / 0.18f
             }
-            .clip(RoundedCornerShape(12.dp))
+            .clip(GameTheme.tileShape)
             .background(tone)
-            .border(2.dp, Color.White, RoundedCornerShape(12.dp))
+            .border(2.dp, GameTheme.text, GameTheme.tileShape)
             .padding(horizontal = 12.dp, vertical = 4.dp),
-        color = Color.White,
+        color = GameTheme.text,
         fontSize = if (fx.forYou) 26.sp else 16.sp,
         fontWeight = FontWeight.Black,
         fontFamily = GameTheme.displayFont,
@@ -266,7 +266,7 @@ private fun StampView(fx: StampFx) {
 private fun BannerView(banner: Banner) {
     val a = banner.announcement
     val fill = a.color?.let { SolidColor(GameTheme.cardColor(it)) } ?: Brush.linearGradient(GameTheme.cardColors)
-    val shape = RoundedCornerShape(26.dp)
+    val shape = GameTheme.sheetShape
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             Modifier
@@ -285,24 +285,24 @@ private fun BannerView(banner: Banner) {
                     clip = true
                 }
                 .background(fill)
-                .border(3.dp, Color.White.copy(alpha = 0.8f), shape)
+                .border(3.dp, GameTheme.text.copy(alpha = 0.8f), shape)
                 .padding(horizontal = 30.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
                 a.title,
-                color = Color.White,
+                color = GameTheme.text,
                 fontSize = 50.sp,
                 fontWeight = FontWeight.Black,
                 fontFamily = GameTheme.displayFont,
-                style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 5f), blurRadius = 8f)),
+                style = TextStyle(shadow = Shadow(GameTheme.shadow.copy(alpha = 0.55f), Offset(0f, 5f), blurRadius = 8f)),
             )
             Text(
                 a.detail,
-                color = Color.White,
+                color = GameTheme.text,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.5f), Offset(0f, 2f), blurRadius = 4f)),
+                style = TextStyle(shadow = Shadow(GameTheme.shadow.copy(alpha = 0.5f), Offset(0f, 2f), blurRadius = 4f)),
             )
         }
     }
@@ -356,7 +356,7 @@ private fun ReactionView(reaction: ReactionFx, onDone: () -> Unit) {
                 alpha = if (p < 0.75f) 1f else (1 - p) / 0.25f
             },
         fontSize = 48.sp,
-        style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.35f), Offset(0f, 4f), blurRadius = 8f)),
+        style = TextStyle(shadow = Shadow(GameTheme.shadow.copy(alpha = 0.35f), Offset(0f, 4f), blurRadius = 8f)),
     )
 }
 
@@ -376,10 +376,10 @@ private fun SpeechBubble(reaction: ReactionFx, text: String, progress: () -> Flo
                 translationY = -rise * (0.4f + 0.6f * p)
                 alpha = if (p < 0.8f) 1f else (1 - p) / 0.2f
                 shadowElevation = 8.dp.toPx()
-                shape = RoundedCornerShape(16.dp)
+                shape = GameTheme.tileShape
                 clip = true
             }
-            .background(Color.White)
+            .background(GameTheme.text)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         color = GameTheme.wild,
         fontWeight = FontWeight.Black,

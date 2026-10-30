@@ -2,8 +2,19 @@ package dev.colorclash.app.ui.settings
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class PhotoCropTest {
+
+    @Test
+    fun `a photo claiming to be enormous isn't decoded`() {
+        assertTrue(photoFits(160, 160))
+        assertFalse(photoFits(30_000, 30_000))
+        assertFalse(photoFits(160, 513))
+        assertFalse(photoFits(0, 160))
+        assertFalse(photoFits(-1, -1))
+    }
     @Test
     fun `a fresh photo is cropped to its centre square`() {
         assertEquals(CropBox(100, 0, 200), cropBox(400, 200, 300f, CropView()))

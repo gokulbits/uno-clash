@@ -4,6 +4,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.util.Locale
 
 /** Releases are tagged vX.Y.Z and carry one color-clash-<version>.apk built by CI. */
 const val RELEASE_REPO = "gokulbits/uno-clash"
@@ -76,7 +77,7 @@ fun releaseNotes(body: String, maxLines: Int = 6): String = body.lineSequence()
 fun sizeLabel(bytes: Long): String = when {
     bytes <= 0 -> ""
     bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-    else -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+    else -> String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0))
 }
 
 fun percentOf(read: Long, total: Long): Int =

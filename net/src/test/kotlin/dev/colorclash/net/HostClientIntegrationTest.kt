@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Base64
 import java.util.Collections
 import kotlin.test.Test
@@ -345,6 +346,56 @@ class HostClientIntegrationTest {
             val status = client.awaitStatus { it is ClientStatus.Failed }
             assertEquals(JoinError.WRONG_ROOM, (status as ClientStatus.Failed).error)
             assertEquals(listOf("Host"), h.host.status.value.seats.map { it.name })
+        }
+    }
+
+    @Test
+    fun `once the guesses run out even the right code stays out, but a seated player gets back`(): Unit = runBlocking {
+        Harness().start().use { h ->
+            val token = h.host.reserveHostSeat("Me")
+            h.awaitHost { s -> s.seats.size == 1 }
+            repeat(10) {
+                val wrong = assertIs<ServerMessage.JoinRejected>(rawExchange(h.port, Codec.encode(ClientMessage.Hello(PROTOCOL_VERSION, "NOPE", "Guess"))))
+                assertEquals(JoinError.WRONG_ROOM, wrong.error)
+            }
+
+            val right = assertIs<ServerMessage.JoinRejected>(rawExchange(h.port, Codec.encode(ClientMessage.Hello(PROTOCOL_VERSION, ROOM, "Guess"))))
+            assertEquals(JoinError.BAD_REQUEST, right.error)
+            assertEquals(listOf("Me"), h.host.status.value.seats.map { it.name })
+
+            val nonce = Rejoin.newNonce()
+            val rejoin = ClientMessage.Hello(PROTOCOL_VERSION, ROOM, "Me", rejoinNonce = nonce, rejoinProof = Rejoin.proof(token, nonce, ROOM))
+            assertEquals(0, assertIs<ServerMessage.Welcome>(rawExchange(h.port, Codec.encode(rejoin))).seat)
+        }
+    }
+
+    @Test
+    fun `a socket that pings but never says hello doesn't keep its slot`(): Unit = runBlocking {
+        Harness().start().use { h ->
+            val http = HttpClient(CIO) { install(WebSockets) }
+            http.use {
+                it.webSocket(host = "127.0.0.1", port = h.port, path = WS_PATH) {
+                    val pinger = launch {
+                        var nonce = 0L
+                        try {
+                            while (true) {
+                                send(Frame.Text(Codec.encode(ClientMessage.Ping(nonce++))))
+                                delay(500)
+                            }
+                        } catch (e: Exception) {
+                            // The host hung up, which is the point.
+                        }
+                    }
+                    val hungUp = withTimeoutOrNull(9.seconds) {
+                        while (incoming.receiveCatching().isSuccess) {
+                            // Waiting for the host to hang up.
+                        }
+                        true
+                    }
+                    pinger.cancel()
+                    assertEquals(true, hungUp)
+                }
+            }
         }
     }
 

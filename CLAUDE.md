@@ -21,8 +21,15 @@ project, never published. See README.md for the player-facing overview.
   screen renders `fx.displayed`, not the latest view. Logic worth testing goes in pure functions
   (`TableLogic.kt`, `Feedback.kt`, `AddressRanking.kt`) with JVM unit tests.
 
-Every color, the title (`GAME_TITLE`) and fonts come from `GameTheme`; don't hardcode colors elsewhere.
-Portrait only. Cards are drawn in code, not bitmaps.
+Every color, shape, the title (`GAME_TITLE`) and fonts come from `GameTheme`; don't hardcode colors elsewhere.
+Portrait only. Cards are drawn in code, not bitmaps, and so are icons (`ui/components/Icons.kt`), not emoji or
+text arrows. Reactions and avatars are the only emoji.
+
+UI chrome goes through `ui/components/Components.kt` rather than Material directly: `BigButton`/`SmallButton` with
+a `ButtonTone` for what the button means, `RoundIconButton`, `ScreenHeader`, `Panel`, `SheetSurface`/`GameDialog`
+(which take the table's color, so no `AlertDialog`), `GameTextField`, `NoticeBar`, `Tag`, `SegmentedPicker`. Text
+takes its size from `MaterialTheme.typography`; `GameTheme.highlight` is the one color for selected or switched on;
+`GameTheme.contentOn(fill)` picks readable text for a colored fill.
 
 ## Commands
 

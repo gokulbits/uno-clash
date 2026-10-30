@@ -2,6 +2,7 @@ package dev.colorclash.app.ui.join
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -14,15 +15,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -31,10 +27,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -47,6 +43,10 @@ import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.ReaderException
 import com.google.zxing.common.HybridBinarizer
 import dev.colorclash.app.ui.components.BigButton
+import dev.colorclash.app.ui.components.ButtonTone
+import dev.colorclash.app.ui.components.HintText
+import dev.colorclash.app.ui.components.NoticeBar
+import dev.colorclash.app.ui.components.ScreenHeader
 import dev.colorclash.app.ui.theme.GAME_TITLE
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.JoinLink
@@ -59,40 +59,47 @@ fun ScanScreen(onBack: () -> Unit, onScanned: (JoinLink) -> Unit) {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
     var hint by remember { mutableStateOf("Point at the QR code on the host's screen") }
+    var cameraFailed by remember { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
     LaunchedEffect(Unit) { if (!granted) launcher.launch(Manifest.permission.CAMERA) }
 
-    Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹ Back", color = GameTheme.text) }
-            Text("Scan to join", style = MaterialTheme.typography.headlineMedium)
-        }
-        if (granted) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(3f / 4f)
-                    .clip(RoundedCornerShape(24.dp))
-                    .border(4.dp, GameTheme.yellow, RoundedCornerShape(24.dp)),
-            ) {
-                QrCamera(
-                    onText = { text ->
-                        val link = JoinLink.parse(text)
-                        if (link != null) onScanned(link) else hint = "That's not a $GAME_TITLE code. Try the one in the host's lobby."
-                    },
-                )
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = GameTheme.screenPadding, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(GameTheme.sectionGap),
+    ) {
+        ScreenHeader("Scan to join", onBack)
+        when {
+            !granted -> {
+                HintText("The camera is needed to scan the host's QR code.")
+                BigButton("Allow camera", ButtonTone.PRIMARY, { launcher.launch(Manifest.permission.CAMERA) })
             }
-            Text(hint, color = GameTheme.mutedText)
-        } else {
-            Text("The camera is needed to scan the host's QR code.", color = GameTheme.mutedText)
-            BigButton("Allow camera", GameTheme.green, { launcher.launch(Manifest.permission.CAMERA) })
+            cameraFailed -> NoticeBar("Couldn't open the camera on this phone. Go back and type the room code instead.")
+            else -> {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(3f / 4f)
+                        .clip(GameTheme.sheetShape)
+                        .border(4.dp, GameTheme.highlight, GameTheme.sheetShape),
+                ) {
+                    QrCamera(
+                        onText = { text ->
+                            val link = JoinLink.parse(text)
+                            if (link != null) onScanned(link) else hint = "That's not a $GAME_TITLE code. Try the one in the host's lobby."
+                        },
+                        onFailed = { cameraFailed = true },
+                    )
+                }
+                HintText(hint, Modifier.fillMaxWidth(), TextAlign.Center)
+            }
         }
     }
 }
 
 @Composable
-private fun QrCamera(onText: (String) -> Unit) {
+private fun QrCamera(onText: (String) -> Unit, onFailed: () -> Unit) {
     val context = LocalContext.current
+    val latestOnFailed by rememberUpdatedState(onFailed)
     // The hosting Context is not contractually a LifecycleOwner: under a Dialog, an AndroidView
     // subcomposition or a preview it isn't, and the cast this replaces was an outright crash.
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -111,20 +118,30 @@ private fun QrCamera(onText: (String) -> Unit) {
         var analysis: ImageAnalysis? = null
         providerFuture.addListener({
             if (disposed) return@addListener
-            val provider = providerFuture.get()
-            val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
-            val frames = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-            frames.setAnalyzer(executor) { image ->
-                val text = scanner.scan(image)
-                image.close()
-                if (text != null) mainExecutor.execute { latestOnText(text) }
+            // The camera isn't required to install this, and both of these throw without a usable one.
+            try {
+                val provider = providerFuture.get()
+                val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+                val frames = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                frames.setAnalyzer(executor) { image ->
+                    // Closed whatever happens: the camera stops sending frames until it is.
+                    val text = try {
+                        scanner.scan(image)
+                    } finally {
+                        image.close()
+                    }
+                    if (text != null) mainExecutor.execute { latestOnText(text) }
+                }
+                provider.unbindAll()
+                provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, frames)
+                bound = provider
+                analysis = frames
+            } catch (e: Exception) {
+                Log.w(TAG, "Camera unavailable", e)
+                latestOnFailed()
             }
-            provider.unbindAll()
-            provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, frames)
-            bound = provider
-            analysis = frames
         }, mainExecutor)
         onDispose {
             disposed = true
@@ -135,6 +152,8 @@ private fun QrCamera(onText: (String) -> Unit) {
     }
     AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 }
+
+private const val TAG = "ScanScreen"
 
 /**
  * One scanner per camera session, holding the reader and one luminance buffer. A fresh array per

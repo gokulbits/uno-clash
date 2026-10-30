@@ -14,7 +14,6 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,10 +22,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -39,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.asImageBitmap
@@ -54,8 +48,12 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.colorclash.app.data.Profile
 import dev.colorclash.app.ui.components.BigButton
+import dev.colorclash.app.ui.components.ButtonTone
+import dev.colorclash.app.ui.components.HintText
+import dev.colorclash.app.ui.components.NoticeBar
+import dev.colorclash.app.ui.components.SheetSurface
+import dev.colorclash.app.ui.components.SheetTitle
 import dev.colorclash.app.ui.theme.GameTheme
-import dev.colorclash.app.ui.theme.LocalTableStyle
 import dev.colorclash.protocol.MAX_PHOTO_CHARS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -82,18 +80,16 @@ fun PhotoTab(profile: Profile, onChange: (Profile) -> Unit) {
     val choose = { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
 
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
+        HintText(
             if (profile.photo == null) "Use any picture from your phone: your favourite character, yourself, anything."
             else "Everyone at the table sees this photo instead of an avatar.",
-            color = GameTheme.mutedText,
-            style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
         )
-        BigButton(if (profile.photo == null) "Choose a photo" else "Choose another photo", GameTheme.blue, choose)
+        problem?.let { NoticeBar(it) }
+        BigButton(if (profile.photo == null) "Choose a photo" else "Choose another photo", ButtonTone.ACTION, choose)
         if (profile.photo != null) {
-            BigButton("Use an avatar instead", GameTheme.panelStrong, { onChange(profile.copy(photo = null)) })
+            BigButton("Use an avatar instead", ButtonTone.QUIET, { onChange(profile.copy(photo = null)) })
         }
-        problem?.let { Text(it, color = GameTheme.yellow, style = MaterialTheme.typography.bodyMedium) }
     }
 
     picked?.let { bitmap ->
@@ -117,18 +113,9 @@ private fun PhotoCropper(bitmap: Bitmap, onDone: (String?) -> Unit, onCancel: ()
     var saving by remember(bitmap) { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(LocalTableStyle.current.top)
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Text("Drag and pinch to fit the circle", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-            BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(20.dp))) {
+        SheetSurface {
+            SheetTitle("Drag and pinch to fit")
+            BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(1f).clip(GameTheme.panelShape)) {
                 val width = constraints.maxWidth.toFloat()
                 SideEffect { viewport = width }
                 androidx.compose.foundation.Canvas(
@@ -155,15 +142,15 @@ private fun PhotoCropper(bitmap: Bitmap, onDone: (String?) -> Unit, onCancel: ()
                         addRect(whole)
                         addOval(whole)
                     }
-                    drawPath(outside, Color.Black.copy(alpha = 0.55f))
-                    drawCircle(Color.White, size.minDimension / 2 - 1.dp.toPx(), style = Stroke(2.dp.toPx()))
+                    drawPath(outside, GameTheme.scrim)
+                    drawCircle(GameTheme.text, size.minDimension / 2 - 1.dp.toPx(), style = Stroke(2.dp.toPx()))
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                BigButton("Cancel", GameTheme.panelStrong, onCancel, Modifier.weight(1f))
+                BigButton("Cancel", ButtonTone.QUIET, onCancel, Modifier.weight(1f))
                 BigButton(
                     if (saving) "Saving…" else "Use photo",
-                    GameTheme.green,
+                    ButtonTone.PRIMARY,
                     {
                         if (saving) return@BigButton
                         saving = true

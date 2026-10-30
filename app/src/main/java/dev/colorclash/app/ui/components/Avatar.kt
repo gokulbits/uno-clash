@@ -89,14 +89,14 @@ private fun DrawScope.drawFrame(style: Int) {
         NEON -> {
             drawCircle(GameTheme.frameNeon.copy(alpha = 0.22f), s * 0.455f, style = Stroke(s * 0.09f))
             drawCircle(GameTheme.frameNeon, s * 0.44f, style = Stroke(s * 0.04f))
-            drawCircle(Color.White.copy(alpha = 0.85f), s * 0.44f, style = Stroke(s * 0.012f))
+            drawCircle(GameTheme.text.copy(alpha = 0.85f), s * 0.44f, style = Stroke(s * 0.012f))
         }
         SPARKLE -> {
-            drawCircle(Color.White, s * 0.44f, style = Stroke(s * 0.035f))
+            drawCircle(GameTheme.text, s * 0.44f, style = Stroke(s * 0.035f))
             for (k in 0 until 4) {
                 val a = PI / 4 + k * PI / 2
                 val at = center + Offset((s * 0.44f * cos(a)).toFloat(), (s * 0.44f * sin(a)).toFloat())
-                twinkle(at, s * 0.085f, Color.White)
+                twinkle(at, s * 0.085f, GameTheme.text)
                 drawCircle(GameTheme.frameGold, s * 0.018f, at)
             }
         }

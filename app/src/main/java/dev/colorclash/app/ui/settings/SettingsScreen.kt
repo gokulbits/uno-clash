@@ -1,6 +1,5 @@
 package dev.colorclash.app.ui.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,33 +8,31 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import dev.colorclash.app.data.FeedbackSettings
 import dev.colorclash.app.data.LookSettings
 import dev.colorclash.app.data.PlaySettings
-import dev.colorclash.app.data.Stats
 import dev.colorclash.app.data.Profile
+import dev.colorclash.app.data.Stats
+import dev.colorclash.app.ui.components.BigButton
+import dev.colorclash.app.ui.components.ButtonTone
+import dev.colorclash.app.ui.components.GameDialog
+import dev.colorclash.app.ui.components.HintText
 import dev.colorclash.app.ui.components.Panel
+import dev.colorclash.app.ui.components.ScreenHeader
 import dev.colorclash.app.ui.components.SectionTitle
+import dev.colorclash.app.ui.components.SwitchRow
+import dev.colorclash.app.ui.components.TextLink
 import dev.colorclash.app.ui.theme.GAME_TITLE
-import dev.colorclash.app.update.installedVersion
 import dev.colorclash.app.ui.theme.GameTheme
+import dev.colorclash.app.update.installedVersion
 
 @Composable
 fun SettingsScreen(
@@ -51,18 +48,18 @@ fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = GameTheme.screenPadding, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(GameTheme.sectionGap),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹ Back", color = GameTheme.text) }
-            Text("Settings", style = MaterialTheme.typography.headlineMedium)
-        }
+        ScreenHeader("Settings", onBack)
 
         Panel {
             SectionTitle("You")
             ProfileEditor(profile, onProfileChange)
-            Text("Name and avatar changes apply the next time you join a room.", color = GameTheme.mutedText, style = MaterialTheme.typography.bodyMedium)
+            HintText("Name and avatar changes apply the next time you join a room.")
         }
 
         Panel {
@@ -87,34 +84,28 @@ fun SettingsScreen(
 
         Panel {
             SectionTitle("About")
-            Text(GAME_TITLE, fontWeight = FontWeight.Bold)
-            Text("Version ${installedVersion(LocalContext.current) ?: "?"}", color = GameTheme.mutedText)
+            val context = LocalContext.current
+            val version = remember { installedVersion(context) ?: "?" }
+            Text("$GAME_TITLE $version", style = MaterialTheme.typography.titleSmall)
             val links = LocalUriHandler.current
-            Text(
-                buildAnnotatedString {
-                    append("Made by ")
-                    withStyle(SpanStyle(color = GameTheme.yellow, fontWeight = FontWeight.Bold)) { append("gokulbits") }
-                },
-                Modifier.clickable(onClickLabel = "Open on GitHub", role = Role.Button) { runCatching { links.openUri(AUTHOR_URL) } },
-                color = GameTheme.mutedText,
-            )
-            Text("Sounds and music are made for this game and free to reuse (CC0). See ASSETS.md.", color = GameTheme.mutedText)
+            TextLink("Made by gokulbits", { runCatching { links.openUri(AUTHOR_URL) } })
+            HintText("Sounds and music are made for this game and free to reuse (CC0). See ASSETS.md.")
         }
     }
 }
 
 @Composable
 fun FeedbackToggles(feedback: FeedbackSettings, onChange: (FeedbackSettings) -> Unit) {
-    Toggle("Sound effects", feedback.sound) { onChange(feedback.copy(sound = it)) }
-    Toggle("Music", feedback.music) { onChange(feedback.copy(music = it)) }
-    Toggle("Vibration", feedback.haptics) { onChange(feedback.copy(haptics = it)) }
-    Toggle("Announce cards out loud", feedback.voice) { onChange(feedback.copy(voice = it)) }
+    SwitchRow("Sound effects", feedback.sound) { onChange(feedback.copy(sound = it)) }
+    SwitchRow("Music", feedback.music) { onChange(feedback.copy(music = it)) }
+    SwitchRow("Vibration", feedback.haptics) { onChange(feedback.copy(haptics = it)) }
+    SwitchRow("Announce cards out loud", feedback.voice) { onChange(feedback.copy(voice = it)) }
 }
 
 @Composable
 fun PlayToggles(play: PlaySettings, onChange: (PlaySettings) -> Unit) {
-    Toggle("Tap a card twice to play it", play.tapToSelect) { onChange(play.copy(tapToSelect = it)) }
-    Toggle("Shapes for each color (colorblind)", play.colorShapes) { onChange(play.copy(colorShapes = it)) }
+    SwitchRow("Tap a card twice to play it", play.tapToSelect) { onChange(play.copy(tapToSelect = it)) }
+    SwitchRow("Shapes for each color (colorblind)", play.colorShapes) { onChange(play.copy(colorShapes = it)) }
 }
 
 @Composable
@@ -127,8 +118,8 @@ private fun StatsSummary(stats: Stats) {
         "Best round" to "${stats.bestRound} pts",
     ).forEach { (label, value) ->
         Row(Modifier.fillMaxWidth()) {
-            Text(label, Modifier.weight(1f), color = GameTheme.mutedText)
-            Text(value, fontWeight = FontWeight.Bold)
+            Text(label, Modifier.weight(1f), color = GameTheme.mutedText, style = MaterialTheme.typography.bodyMedium)
+            Text(value, style = MaterialTheme.typography.titleSmall)
         }
     }
 }
@@ -142,24 +133,15 @@ fun QuickSettingsDialog(
     onPlayChange: (PlaySettings) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Settings") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FeedbackToggles(feedback, onChange)
-                PlayToggles(play, onPlayChange)
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-    )
-}
-
-@Composable
-private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f), fontWeight = FontWeight.Bold)
-        Switch(checked = checked, onCheckedChange = onChange, colors = SwitchDefaults.colors(checkedTrackColor = GameTheme.green))
+    GameDialog(
+        title = "Settings",
+        onDismiss = onDismiss,
+        actions = { BigButton("Done", ButtonTone.PRIMARY, onDismiss) },
+    ) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            FeedbackToggles(feedback, onChange)
+            PlayToggles(play, onPlayChange)
+        }
     }
 }
 

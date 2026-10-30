@@ -40,6 +40,7 @@ import dev.colorclash.rules.Direction
 import dev.colorclash.rules.Face
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -156,8 +157,12 @@ class TableFx {
     // Written during layout, read by the effects coroutine and flights, all on the main thread, so no snapshot state needed.
     private val anchors = HashMap<Anchor, Spot>()
     private var layerOrigin = Offset.Zero
-    private val queue = Channel<ServerMessage.Game>(Channel.UNLIMITED)
     private val pending = AtomicInteger(0)
+    /**
+     * Frames stop while the app is out of sight but updates don't, and a host with its screen off can
+     * play for hours. Every view is complete, so when the queue is full the oldest can simply go.
+     */
+    private val queue = Channel<ServerMessage.Game>(MAX_QUEUED, BufferOverflow.DROP_OLDEST) { pending.decrementAndGet() }
     /** For effects that shouldn't hold up the next event, like the pile settling. */
     private var sideEffects: CoroutineScope? = null
     private var bannerJob: Job? = null
@@ -195,15 +200,21 @@ class TableFx {
         sideEffects = this
         for (update in queue) {
             val backlog = pending.decrementAndGet()
-            if (backlog < MAX_BACKLOG && update.events.isNotEmpty()) {
-                play(update, feedback)
+            try {
+                if (backlog < MAX_BACKLOG && update.events.isNotEmpty()) {
+                    play(update, feedback)
+                }
+            } finally {
+                // Even when cancelled partway (the activity was recreated), or the table stays on
+                // whatever the animation had got to, like the empty one from before a deal.
+                commit(update.view, feedback)
             }
-            commit(update.view, feedback)
         }
     }
 
     /** Back in the lobby: forget the last table so the next game doesn't flash the old one. */
     fun reset() {
+        while (queue.tryReceive().isSuccess) pending.decrementAndGet()
         displayed = null
         hiddenCards.clear()
         incomingCards.clear()
@@ -535,6 +546,7 @@ class TableFx {
 
     companion object {
         private const val MAX_BACKLOG = 3
+        private const val MAX_QUEUED = 32
         private const val MAX_DRAW_FLIGHTS = 5
         private const val DEAL_FLIGHTS_PER_PLAYER = 3
         private const val DEAL_GAP_MILLIS = 55L

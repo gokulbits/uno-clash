@@ -16,10 +16,12 @@ import dev.colorclash.net.host.HostServer
 import dev.colorclash.protocol.DEFAULT_PORT
 import dev.colorclash.protocol.JoinError
 import dev.colorclash.protocol.JoinLink
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -63,13 +65,20 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
     private val _session = MutableStateFlow<Session?>(null)
     val session: StateFlow<Session?> = _session.asStateFlow()
 
-    /** A guest seat worth offering to rejoin, if the app was closed mid-game recently. */
-    fun rejoinable(): SavedSession? = prefs.lastSession?.takeIf {
-        System.currentTimeMillis() - it.savedAtMillis < REJOIN_WINDOW.inWholeMilliseconds
+    /** A guest seat worth offering to rejoin, if the app was closed mid-game recently. Off the main thread: it goes through the keystore. */
+    suspend fun rejoinable(): SavedSession? = withContext(Dispatchers.IO) {
+        prefs.lastSession?.takeIf { System.currentTimeMillis() - it.savedAtMillis < REJOIN_WINDOW.inWholeMilliseconds }
     }
 
+    /**
+     * Runs a host or join to the end on this scope, whatever happens to the caller. Started from the
+     * UI, these ran on the main thread (building Ktor's server and client takes long enough to drop
+     * frames), and the activity going away partway would leave a client or server with no session.
+     */
+    private suspend fun <T> transition(block: suspend () -> T): T = scope.async { transitions.withLock { block() } }.await()
+
     /** Opens a room on this phone. Returns an error message, or null on success. */
-    suspend fun host(bots: Int = 0): String? = transitions.withLock { hostLocked(bots) }
+    suspend fun host(bots: Int = 0): String? = transition { hostLocked(bots) }
 
     private suspend fun hostLocked(bots: Int): String? {
         leaveLocked()
@@ -80,7 +89,9 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
         val profile = prefs.profile.value
         val token = host.reserveHostSeat(profile.name, profile.avatar, profile.avatarColor, profile.avatarFrame, profile.photo)
         repeat(bots) { host.addBot() }
-        HostService.start(app, host.roomCode)
+        // Refused if the app went to the background a moment ago. The room still works, it just
+        // won't survive the screen going off, which beats crashing over it.
+        runCatching { HostService.start(app, host.roomCode) }.onFailure { Log.w(TAG, "Couldn't start the host service", it) }
         val advert = discovery.advertise(port, profile.name)
 
         // The host plays through the same client code as everyone else, over loopback.
@@ -91,13 +102,13 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
     }
 
     suspend fun join(link: JoinLink, token: String? = null): String? =
-        transitions.withLock { joinLocked(link.hosts, link.port, link.roomCode, token) }
+        transition { joinLocked(link.hosts, link.port, link.roomCode, token) }
 
     /**
      * Finds the room with this code. Rooms don't advertise their code, so every room nearby (and the
      * Wi-Fi gateway, in case we're on the host's hotspot) is asked in turn until one accepts it.
      */
-    suspend fun joinByCode(code: String): String? = transitions.withLock {
+    suspend fun joinByCode(code: String): String? = transition {
         val roomCode = code.trim().uppercase()
         leaveLocked()
         wifi.bind()
@@ -113,12 +124,12 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
     }
 
     /** A room from the nearby list, with the code the player typed for it. */
-    suspend fun joinRoom(room: FoundRoom, code: String): String? = transitions.withLock {
+    suspend fun joinRoom(room: FoundRoom, code: String): String? = transition {
         joinAtLocked(room.address, room.port, code, "That's not ${room.hostName}'s room code. Check it on their phone.")
     }
 
     /** A host's address typed in by hand. */
-    suspend fun joinAddress(address: String, port: Int, code: String): String? = transitions.withLock {
+    suspend fun joinAddress(address: String, port: Int, code: String): String? = transition {
         joinAtLocked(address, port, code, "No room with that code at $address. Check the code on the host's phone.")
     }
 
@@ -167,7 +178,7 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
         return if (reachedAny) Attempt.NoMatch else Attempt.Unreachable
     }
 
-    suspend fun rejoin(saved: SavedSession): String? = transitions.withLock {
+    suspend fun rejoin(saved: SavedSession): String? = transition {
         joinLocked(listOf(saved.host), saved.port, saved.roomCode, saved.token)
     }
 
@@ -239,6 +250,9 @@ class SessionManager(private val app: Application, private val prefs: Prefs) {
             val server = HostServer(host, port)
             try {
                 return server to server.start()
+            } catch (e: CancellationException) {
+                server.stop()
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Couldn't listen on port $port", e)
                 server.stop()

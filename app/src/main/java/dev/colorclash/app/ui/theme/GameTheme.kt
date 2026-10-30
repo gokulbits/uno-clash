@@ -1,5 +1,6 @@
 package dev.colorclash.app.ui.theme
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
@@ -7,9 +8,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.colorclash.rules.CardColor
 
@@ -28,12 +31,42 @@ object GameTheme {
     val panel = Color(0x26FFFFFF)
     val panelStrong = Color(0x40FFFFFF)
     val glassEdge = Color(0x33FFFFFF)
-    val accent = Color(0xFFFF8A00)
     val text = Color.White
     val mutedText = Color(0xB3FFFFFF)
     val danger = Color(0xFFFF4D6D)
+    /** What's selected, switched on, or wants attention. One color for all of it. */
+    val highlight = yellow
+    /** Text and icons on bright fills, where white would wash out. */
+    val ink = wild
+    val scrim = Color(0x99000000)
+    val shadow = Color.Black
+    // Always this way round whatever the skin: scanners need dark on light.
+    val qrPaper = Color.White
+    val qrInk = Color.Black
 
     val cardColors = listOf(red, yellow, green, blue)
+
+    // Every rounded thing in the chrome is one of these, smallest to largest.
+    val tagShape = RoundedCornerShape(8.dp)
+    val tileShape = RoundedCornerShape(14.dp)
+    val panelShape = RoundedCornerShape(20.dp)
+    val CORNER_SHEET = 28.dp
+    val sheetShape = RoundedCornerShape(CORNER_SHEET)
+    val pillShape = RoundedCornerShape(50)
+
+    val screenPadding = 20.dp
+    val sectionGap = 16.dp
+
+    /** White unless it would fall under 3:1 on [fill], the floor for bold text at this size. */
+    fun contentOn(fill: Color): Color = if (contrast(text, fill) >= MIN_CONTRAST) text else ink
+
+    fun contrast(a: Color, b: Color): Float {
+        val light = maxOf(a.luminance(), b.luminance())
+        val dark = minOf(a.luminance(), b.luminance())
+        return (light + 0.05f) / (dark + 0.05f)
+    }
+
+    private const val MIN_CONTRAST = 3f
 
     // Card stock: the paper frame, the oval, and the back.
     val cardPaper = Color.White
@@ -220,8 +253,8 @@ object GameTheme {
 @Composable
 fun ColorClashTheme(content: @Composable () -> Unit) {
     val colors = darkColorScheme(
-        primary = GameTheme.accent,
-        onPrimary = Color.White,
+        primary = GameTheme.highlight,
+        onPrimary = GameTheme.ink,
         secondary = GameTheme.blue,
         onSecondary = Color.White,
         tertiary = GameTheme.green,
@@ -234,14 +267,20 @@ fun ColorClashTheme(content: @Composable () -> Unit) {
         error = GameTheme.danger,
     )
     val base = Typography()
+    // The whole type scale. Chrome picks from this rather than setting sizes of its own: screen and
+    // sheet titles are headlineSmall, section titles titleMedium, buttons labelLarge, tags labelSmall.
     val typography = base.copy(
         displayLarge = TextStyle(fontFamily = GameTheme.displayFont, fontWeight = FontWeight.Black, fontSize = 52.sp),
-        headlineMedium = TextStyle(fontFamily = GameTheme.displayFont, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp),
-        titleLarge = base.titleLarge.copy(fontFamily = GameTheme.displayFont, fontWeight = FontWeight.Bold),
+        headlineSmall = base.headlineSmall.copy(fontFamily = GameTheme.displayFont, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp),
+        titleLarge = base.titleLarge.copy(fontFamily = GameTheme.displayFont, fontWeight = FontWeight.Black, fontSize = 20.sp),
         titleMedium = base.titleMedium.copy(fontFamily = GameTheme.bodyFont, fontWeight = FontWeight.Bold),
+        titleSmall = base.titleSmall.copy(fontFamily = GameTheme.bodyFont, fontWeight = FontWeight.Bold),
         bodyLarge = base.bodyLarge.copy(fontFamily = GameTheme.bodyFont),
         bodyMedium = base.bodyMedium.copy(fontFamily = GameTheme.bodyFont),
-        labelLarge = base.labelLarge.copy(fontFamily = GameTheme.bodyFont, fontWeight = FontWeight.Bold, fontSize = 16.sp),
+        bodySmall = base.bodySmall.copy(fontFamily = GameTheme.bodyFont),
+        labelLarge = base.labelLarge.copy(fontFamily = GameTheme.displayFont, fontWeight = FontWeight.Black, fontSize = 18.sp, letterSpacing = 0.2.sp),
+        labelMedium = base.labelMedium.copy(fontFamily = GameTheme.bodyFont, fontWeight = FontWeight.Bold, fontSize = 13.sp),
+        labelSmall = base.labelSmall.copy(fontFamily = GameTheme.bodyFont, fontWeight = FontWeight.Black, fontSize = 11.sp),
     )
     MaterialTheme(colorScheme = colors, typography = typography) {
         // Most screens draw straight onto the table gradient rather than a Surface, so text

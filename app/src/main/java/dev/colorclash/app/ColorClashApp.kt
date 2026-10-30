@@ -39,7 +39,7 @@ class ColorClashApp : Application() {
         prefs = Prefs(this, io)
         sessions = SessionManager(this, prefs)
         sound = SoundEngine(this, prefs.feedback)
-        feedback = Feedback(sound, Haptics(this, prefs.feedback), Announcer(this, prefs.feedback, sound::duckMusic))
+        feedback = Feedback(sound, Haptics(this, prefs.feedback), Announcer(this, prefs.feedback, io, sound::duckMusic))
         updater = Updater(this)
         // So the engine hears about memory pressure and hands its players back.
         registerComponentCallbacks(sound)

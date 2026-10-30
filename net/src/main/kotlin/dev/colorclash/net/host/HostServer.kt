@@ -25,10 +25,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /** Embedded Ktor WebSocket server that feeds connections into a [GameHost]. */
 class HostServer(private val host: GameHost, private val port: Int = DEFAULT_PORT) {
-    private var server: EmbeddedServer<*, *>? = null
+    @Volatile private var server: EmbeddedServer<*, *>? = null
     private val open = AtomicInteger(0)
 
     /** Listens on every interface and returns the bound port (handy when [port] is 0). */
@@ -72,12 +73,13 @@ class HostServer(private val host: GameHost, private val port: Int = DEFAULT_POR
         val connection = SocketConnection(session)
         val writer = session.launch { connection.pump() }
         var greeted = false
+        val helloBy = TimeSource.Monotonic.markNow() + HANDSHAKE_TIMEOUT
         try {
             while (true) {
                 // Clients ping every couple of seconds, so silence this long means the link is dead.
-                // Before the hello a much shorter leash: a socket that never greets is holding host
-                // memory for nothing.
-                val wait = if (greeted) host.config.heartbeatTimeout else HANDSHAKE_TIMEOUT
+                // Before the hello a much shorter leash, counted from the connection opening: a socket
+                // that only ever pings would otherwise hold one of the few connection slots for good.
+                val wait = if (greeted) host.config.heartbeatTimeout else -helloBy.elapsedNow()
                 val frame = withTimeoutOrNull(wait) {
                     session.incoming.receiveCatching().getOrNull()
                 } ?: break

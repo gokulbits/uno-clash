@@ -6,7 +6,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,8 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,13 +25,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.colorclash.app.ui.components.RoundIconButton
+import dev.colorclash.app.ui.components.colorDotsIcon
 import dev.colorclash.app.ui.components.exitIcon
 import dev.colorclash.app.ui.components.gearIcon
 import dev.colorclash.app.ui.theme.GameTheme
@@ -51,25 +48,10 @@ internal fun TableTopBar(view: PlayerView, onLeave: () -> Unit, onSettings: () -
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        GlassButton(label = "Leave game", onClick = onLeave) { exitIcon() }
+        RoundIconButton("Leave game", onLeave) { exitIcon(it) }
         RoundBadge(view.round, target, Modifier.weight(1f).wrapContentWidth())
         ScoreChip(view.seats[view.you].score, target)
-        GlassButton(label = "Settings", onClick = onSettings) { gearIcon() }
-    }
-}
-
-@Composable
-private fun GlassButton(label: String, onClick: () -> Unit, icon: DrawScope.() -> Unit) {
-    Box(
-        Modifier
-            .size(TOP_BAR_HEIGHT)
-            .clip(CircleShape)
-            .background(Brush.verticalGradient(listOf(GameTheme.panelStrong, GameTheme.panel)))
-            .border(1.dp, GameTheme.glassEdge, CircleShape)
-            .clickable(onClickLabel = label, role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Canvas(Modifier.size(20.dp), onDraw = icon)
+        RoundIconButton("Settings", onSettings) { gearIcon(it) }
     }
 }
 
@@ -78,38 +60,25 @@ private fun RoundBadge(round: Int, target: Int, modifier: Modifier) {
     Column(
         modifier
             .height(TOP_BAR_HEIGHT)
-            .clip(PILL)
+            .clip(GameTheme.pillShape)
             .background(GameTheme.panel)
-            .border(1.dp, GameTheme.glassEdge, PILL)
+            .border(1.dp, GameTheme.glassEdge, GameTheme.pillShape)
             .padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ColorDots()
-            Text("ROUND $round", color = GameTheme.text, fontWeight = FontWeight.Black, fontSize = 14.sp, letterSpacing = 1.5.sp, maxLines = 1)
+            Canvas(Modifier.size(12.dp)) { colorDotsIcon() }
+            Text("ROUND $round", style = MaterialTheme.typography.labelMedium, letterSpacing = 1.5.sp, maxLines = 1)
         }
         Text(
             if (target == 0) "One round game" else "First to $target",
             color = GameTheme.mutedText,
+            style = MaterialTheme.typography.bodySmall,
             fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
             lineHeight = 13.sp,
             maxLines = 1,
         )
-    }
-}
-
-@Composable
-private fun ColorDots() {
-    Canvas(Modifier.size(12.dp)) {
-        val r = size.width * 0.16f
-        val c = center
-        val d = size.width * 0.34f
-        drawCircle(GameTheme.red, r, c + Offset(0f, -d))
-        drawCircle(GameTheme.yellow, r, c + Offset(d, 0f))
-        drawCircle(GameTheme.green, r, c + Offset(0f, d))
-        drawCircle(GameTheme.blue, r, c + Offset(-d, 0f))
     }
 }
 
@@ -125,9 +94,9 @@ private fun ScoreChip(score: Int, target: Int) {
     Box(
         Modifier
             .height(TOP_BAR_HEIGHT)
-            .clip(PILL)
+            .clip(GameTheme.pillShape)
             .background(GameTheme.panel)
-            .border(1.dp, GameTheme.glassEdge, PILL),
+            .border(1.dp, GameTheme.glassEdge, GameTheme.pillShape),
         contentAlignment = Alignment.Center,
     ) {
         Row(
@@ -138,15 +107,20 @@ private fun ScoreChip(score: Int, target: Int) {
         ) {
             Canvas(Modifier.size(16.dp)) { star() }
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("$shown", Modifier.alignByBaseline(), color = GameTheme.text, fontWeight = FontWeight.Black, fontSize = 17.sp, lineHeight = 18.sp, maxLines = 1)
-                Text("pts", Modifier.alignByBaseline(), color = GameTheme.mutedText, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text("$shown", Modifier.alignByBaseline(), style = MaterialTheme.typography.titleMedium, lineHeight = 18.sp, maxLines = 1)
+                Text("pts", Modifier.alignByBaseline(), color = GameTheme.mutedText, style = MaterialTheme.typography.labelSmall, maxLines = 1)
             }
         }
         if (target > 0) {
-            Canvas(Modifier.align(Alignment.BottomCenter).padding(horizontal = 14.dp, vertical = 5.dp).fillMaxWidth().height(3.dp)) {
-                val corner = CornerRadius(size.height / 2)
-                drawRoundRect(GameTheme.panelStrong, cornerRadius = corner)
-                if (progress > 0f) drawRoundRect(GameTheme.yellow, size = Size(size.width * progress, size.height), cornerRadius = corner)
+            // Matches the chip rather than filling the width on offer: that stretched the chip right
+            // across the bar, pushing the round badge and the settings button out of sight.
+            Canvas(Modifier.matchParentSize()) {
+                val inset = 14.dp.toPx()
+                val track = Size(size.width - inset * 2, 3.dp.toPx())
+                val at = Offset(inset, size.height - 5.dp.toPx() - track.height)
+                val corner = CornerRadius(track.height / 2)
+                drawRoundRect(GameTheme.panelStrong, at, track, corner)
+                if (progress > 0f) drawRoundRect(GameTheme.highlight, at, Size(track.width * progress, track.height), corner)
             }
         }
     }
@@ -163,8 +137,7 @@ private fun DrawScope.star() {
         if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
     }
     path.close()
-    drawPath(path, GameTheme.yellow)
+    drawPath(path, GameTheme.highlight)
 }
 
-private val TOP_BAR_HEIGHT = 42.dp
-private val PILL = RoundedCornerShape(50)
+private val TOP_BAR_HEIGHT = 46.dp

@@ -46,6 +46,16 @@ class ReactionLimiterTest {
     }
 
     @Test
+    fun `asking whether the burst is spent doesn't spend it`() {
+        val limiter = ReactionLimiter(burst = 2, windowMillis = 1_000, gapMillis = 0)
+        repeat(5) { assertFalse(limiter.exhausted(0)) }
+        assertTrue(limiter.allow(0))
+        assertTrue(limiter.allow(0))
+        assertTrue(limiter.exhausted(999))
+        assertFalse(limiter.exhausted(1_000))
+    }
+
+    @Test
     fun `a quiet player is never held back`() {
         val limiter = limiter()
         repeat(10) { i -> assertTrue(limiter.allow(i * 30_000L)) }

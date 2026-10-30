@@ -34,3 +34,11 @@ fun cropBox(width: Int, height: Int, viewport: Float, view: CropView): CropBox {
 }
 
 const val MAX_ZOOM = 5f
+
+/**
+ * Whether a photo from another phone is worth decoding. Ours are 160px; a few KB of hostile JPEG can
+ * claim to be tens of thousands of pixels a side and take this phone's whole heap to unpack.
+ */
+fun photoFits(width: Int, height: Int): Boolean = width in 1..MAX_PHOTO_SIDE && height in 1..MAX_PHOTO_SIDE
+
+private const val MAX_PHOTO_SIDE = 512

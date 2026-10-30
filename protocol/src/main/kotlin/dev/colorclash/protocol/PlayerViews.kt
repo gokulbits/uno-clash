@@ -5,6 +5,12 @@ import dev.colorclash.rules.GameEngine
 import dev.colorclash.rules.GameState
 import dev.colorclash.rules.Phase
 
+/** Whether a view from the network can be drawn at all: every seat it points at exists. */
+fun PlayerView.isWellFormed(): Boolean {
+    val seated = seats.indices
+    return you in seated && current in seated && (exposedPlayer == null || exposedPlayer in seated)
+}
+
 /**
  * Builds what [you] may see of [this] state. The only cards included are the viewer's own hand
  * and the top of the discard pile.

@@ -5,11 +5,13 @@ import dev.colorclash.protocol.ClientMessage
 import dev.colorclash.protocol.Codec
 import dev.colorclash.protocol.JoinError
 import dev.colorclash.protocol.LobbyView
+import dev.colorclash.protocol.MAX_PHOTO_CHARS
 import dev.colorclash.protocol.PROTOCOL_VERSION
 import dev.colorclash.protocol.PlayerIntent
 import dev.colorclash.protocol.PlayerView
 import dev.colorclash.protocol.ServerMessage
 import dev.colorclash.protocol.WS_PATH
+import dev.colorclash.protocol.isWellFormed
 import dev.colorclash.net.Rejoin
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -86,7 +88,8 @@ class GameClient(
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
 
     private val http = HttpClient(CIO) {
-        install(WebSockets)
+        // The host is just another phone on the network; it gets the same limit it gives its guests.
+        install(WebSockets) { maxFrameSize = MAX_FRAME_BYTES }
         engine {
             requestTimeout = 0
             endpoint.connectTimeout = config.connectTimeout.inWholeMilliseconds
@@ -110,11 +113,11 @@ class GameClient(
     private val _reactions = MutableSharedFlow<ServerMessage.Reaction>(extraBufferCapacity = 32)
     val reactions: SharedFlow<ServerMessage.Reaction> = _reactions.asSharedFlow()
 
-    /** Short messages worth showing, like a rejected move. */
     /** Photos by id (base64 JPEG), kept across reconnects. */
     private val _photos = MutableStateFlow<Map<String, String>>(emptyMap())
     val photos: StateFlow<Map<String, String>> = _photos.asStateFlow()
 
+    /** Short messages worth showing, like a rejected move. */
     private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val notices: SharedFlow<String> = _notices.asSharedFlow()
 
@@ -318,12 +321,16 @@ class GameClient(
                 _game.value = null
             }
             is ServerMessage.Game -> {
+                // The table indexes seats by these, so a broken view would take the app down with it.
+                if (!message.view.isWellFormed()) {
+                    return Outcome.Rejected("This phone couldn't understand the host. Install the same build on every phone.", JoinError.VERSION_MISMATCH)
+                }
                 _game.value = message.view
                 _updates.tryEmit(message)
             }
             is ServerMessage.ActionRejected -> _notices.tryEmit(message.reason)
             is ServerMessage.Reaction -> _reactions.tryEmit(message)
-            is ServerMessage.Photo -> _photos.update { current ->
+            is ServerMessage.Photo -> if (message.data.length <= MAX_PHOTO_CHARS) _photos.update { current ->
                 // Ids are content hashes, so a table that swaps avatars would grow this forever.
                 if (message.id in current) {
                     current
@@ -361,5 +368,6 @@ class GameClient(
     private companion object {
         /** Four times a full table, so nobody loses a photo that's still on screen. */
         const val MAX_PHOTOS = 24
+        const val MAX_FRAME_BYTES = 256L * 1024
     }
 }

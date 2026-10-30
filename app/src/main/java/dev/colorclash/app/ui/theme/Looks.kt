@@ -25,7 +25,7 @@ data class CardBackStyle(
 )
 
 data class TableStyle(val name: String, val top: Color, val bottom: Color) {
-    val brush: Brush get() = Brush.verticalGradient(listOf(top, bottom))
+    val brush: Brush = Brush.verticalGradient(listOf(top, bottom))
 }
 
 /** This phone's picks; nobody else sees them. */

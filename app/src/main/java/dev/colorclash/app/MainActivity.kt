@@ -1,8 +1,10 @@
 package dev.colorclash.app
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
@@ -17,7 +19,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Always light icons: every table is dark, whatever the phone's own theme is set to.
+        val bars = SystemBarStyle.dark(Color.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
         if (savedInstanceState == null) incomingLink = linkFrom(intent)
         setContent {
             ColorClashTheme {
@@ -28,11 +32,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        colorClash.sound.setMusicWanted(true)
+        colorClash.sound.setVisible(true)
     }
 
     override fun onStop() {
-        colorClash.sound.setMusicWanted(false)
+        colorClash.sound.setVisible(false)
         super.onStop()
     }
 

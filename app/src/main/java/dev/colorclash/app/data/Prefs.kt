@@ -1,12 +1,16 @@
 package dev.colorclash.app.data
 
 import android.content.Context
+import android.util.AtomicFile
 import java.io.File
+import java.io.IOException
 import dev.colorclash.protocol.AUTO_AVATAR_COLOR
 import dev.colorclash.protocol.Codec
 import dev.colorclash.protocol.GameSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,8 +58,11 @@ data class Stats(val gamesPlayed: Int = 0, val gamesWon: Int = 0, val roundsWon:
  */
 class Prefs(context: Context, private val io: CoroutineScope) {
     private val sp = context.getSharedPreferences("color_clash", Context.MODE_PRIVATE)
-    // The photo lives in its own file rather than bloating the preferences.
-    private val photoFile = File(context.filesDir, PHOTO_FILE)
+    // The photo lives in its own file rather than bloating the preferences. Atomic, so being killed
+    // mid-write leaves the old photo rather than half of a new one.
+    private val photoFile = AtomicFile(File(context.filesDir, PHOTO_FILE))
+    /** Conflated and read one at a time: only the latest photo matters, and two writes can't swap order. */
+    private val photoWrites = Channel<String?>(Channel.CONFLATED)
 
     private val _profile = MutableStateFlow(
         Profile(
@@ -70,8 +77,30 @@ class Prefs(context: Context, private val io: CoroutineScope) {
 
     /** Cancelled by [updateProfile], so a slow read can't bring back a photo that was just changed. */
     private val photoLoad: Job = io.launch {
-        val stored = runCatching { photoFile.takeIf { it.exists() }?.readText() }.getOrNull() ?: return@launch
+        val stored = runCatching { photoFile.baseFile.takeIf { it.exists() }?.let { String(photoFile.readFully()) } }.getOrNull() ?: return@launch
+        // Nothing above suspends, so cancelling wouldn't otherwise stop this from going through.
+        ensureActive()
         _profile.update { if (it.photo == null) it.copy(photo = stored) else it }
+    }
+
+    init {
+        io.launch {
+            for (photo in photoWrites) runCatching { storePhoto(photo) }
+        }
+    }
+
+    private fun storePhoto(photo: String?) {
+        if (photo == null) {
+            photoFile.delete()
+            return
+        }
+        val out = photoFile.startWrite()
+        try {
+            out.write(photo.toByteArray())
+            photoFile.finishWrite(out)
+        } catch (e: IOException) {
+            photoFile.failWrite(out)
+        }
     }
 
     private val _looks = MutableStateFlow(LookSettings(sp.getInt(KEY_TABLE, 0), sp.getInt(KEY_CARD_BACK, 0)))
@@ -122,9 +151,7 @@ class Prefs(context: Context, private val io: CoroutineScope) {
         if (profile.photo != previous) {
             photoLoad.cancel()
             // Up to 24 KB written to disk: not on whichever thread the settings screen ran on.
-            io.launch {
-                runCatching { if (profile.photo == null) photoFile.delete() else photoFile.writeText(profile.photo) }
-            }
+            photoWrites.trySend(profile.photo)
         }
         sp.edit()
             .putString(KEY_NAME, profile.name)

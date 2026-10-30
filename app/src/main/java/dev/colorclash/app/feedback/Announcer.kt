@@ -6,7 +6,9 @@ import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import dev.colorclash.app.data.FeedbackSettings
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -17,14 +19,17 @@ import java.util.concurrent.atomic.AtomicInteger
 class Announcer(
     context: Context,
     private val settings: StateFlow<FeedbackSettings>,
+    io: CoroutineScope,
     private val onSpeaking: (Boolean) -> Unit = {},
 ) {
     @Volatile private var ready = false
-    private var tts: TextToSpeech? = null
+    @Volatile private var tts: TextToSpeech? = null
 
     init {
+        // The init callback lands on the main thread, and picking a language is blocking IPC to
+        // the engine, right as the app is trying to draw its first frame.
         tts = TextToSpeech(context.applicationContext) { status ->
-            if (status == TextToSpeech.SUCCESS) start()
+            if (status == TextToSpeech.SUCCESS) io.launch { runCatching { start() } }
         }
     }
 

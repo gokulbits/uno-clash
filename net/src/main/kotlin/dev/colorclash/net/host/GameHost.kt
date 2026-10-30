@@ -9,6 +9,7 @@ import dev.colorclash.protocol.PROTOCOL_VERSION
 import dev.colorclash.protocol.REACTION_COUNT
 import dev.colorclash.protocol.SeatInfo
 import dev.colorclash.protocol.ServerMessage
+import dev.colorclash.protocol.cleanPlayerName
 import dev.colorclash.protocol.toAction
 import dev.colorclash.protocol.toView
 import dev.colorclash.protocol.viewFor
@@ -81,8 +82,13 @@ class GameHost(
         }
     }
 
-    fun onMessage(connection: Connection, message: ClientMessage) = post(Command.Received(connection, message))
-    fun onDisconnect(connection: Connection) = post(Command.Disconnected(connection))
+    fun onMessage(connection: Connection, message: ClientMessage) {
+        post(Command.Received(connection, message))
+    }
+
+    fun onDisconnect(connection: Connection) {
+        post(Command.Disconnected(connection))
+    }
 
     /** Creates the host player's own seat. Its client joins with the returned token. */
     fun reserveHostSeat(
@@ -97,26 +103,44 @@ class GameHost(
         return token
     }
 
-    fun updateSettings(settings: GameSettings) = post(Command.UpdateSettings(settings))
-    fun addBot() = post(Command.AddBot)
-    fun removeBot(seat: Int) = post(Command.RemoveBot(seat))
-    fun startNextRound() = post(Command.NextRound)
-    fun returnToLobby() = post(Command.ReturnToLobby)
+    fun updateSettings(settings: GameSettings) {
+        post(Command.UpdateSettings(settings))
+    }
+
+    fun addBot() {
+        post(Command.AddBot)
+    }
+
+    fun removeBot(seat: Int) {
+        post(Command.RemoveBot(seat))
+    }
+
+    fun startNextRound() {
+        post(Command.NextRound)
+    }
+
+    fun returnToLobby() {
+        post(Command.ReturnToLobby)
+    }
 
     /** After the last round: a fresh game with the same table, straight away. */
-    fun rematch() = post(Command.Rematch)
-    fun close() = post(Command.Close)
+    fun rematch() {
+        post(Command.Rematch)
+    }
+
+    fun close() {
+        post(Command.Close)
+    }
 
     /** Null on success, otherwise why the game can't start yet. */
     suspend fun startGame(): String? {
         val reply = CompletableDeferred<String?>()
-        post(Command.StartGame(reply))
+        // A closed room never reads its commands, and waiting on it would hang forever.
+        if (!post(Command.StartGame(reply))) return "This room has closed"
         return reply.await()
     }
 
-    private fun post(command: Command) {
-        commands.trySend(command)
-    }
+    private fun post(command: Command): Boolean = commands.trySend(command).isSuccess
 
     private fun handle(command: Command) {
         when (command) {
@@ -191,17 +215,21 @@ class GameHost(
                     "Install the same build on every phone.",
             )
         }
-        if (!hello.roomCode.equals(roomCode, ignoreCase = true)) {
-            if (!wrongCodes.allow(started.elapsedNow().inWholeMilliseconds)) {
-                return reject(connection, JoinError.BAD_REQUEST, "Too many wrong codes just now. Wait a moment and try again.")
-            }
-            return reject(connection, JoinError.WRONG_ROOM, "That room code doesn't match this host.")
-        }
+        // A proof can't be guessed and is tied to this room, so a seat can always be got back.
         val returning = reclaimed(hello)
         if (returning != null) {
             // Whoever had the seat is told why it went, rather than the link just dropping.
             returning.connection?.send(ServerMessage.Closed("Your seat was taken over from another phone"))
             return attach(returning, connection)
+        }
+        // Before the code is compared: guessing has to stop working, not just get a different refusal.
+        val now = started.elapsedNow().inWholeMilliseconds
+        if (wrongCodes.exhausted(now)) {
+            return reject(connection, JoinError.BAD_REQUEST, "Too many wrong codes just now. Wait a moment and try again.")
+        }
+        if (!hello.roomCode.equals(roomCode, ignoreCase = true)) {
+            wrongCodes.allow(now)
+            return reject(connection, JoinError.WRONG_ROOM, "That room code doesn't match this host.")
         }
         if (game != null) return reject(connection, JoinError.GAME_IN_PROGRESS, "A game is already running in this room.")
         if (seats.size >= GameEngine.MAX_PLAYERS) return reject(connection, JoinError.ROOM_FULL, "The room is full.")
@@ -360,13 +388,13 @@ class GameHost(
         if (game == null) return
         game = null
         cancelTimers()
+        seats.forEach { it.graceJob?.cancel() }
         // Anyone who dropped out during the game doesn't come back to the lobby.
         seats.removeAll { !it.isBot && !it.isHost && it.connection == null }
         seats.forEach {
             it.botControlled = false
             it.away = false
             it.timeouts = 0
-            it.graceJob?.cancel()
             if (!it.isBot && !it.isHost) it.ready = false
         }
         lobbyChanged()
@@ -501,8 +529,7 @@ class GameHost(
         _status.value = HostStatus(stage, seatInfos(), state, canStart())
     }
 
-    private fun cleanName(raw: String): String =
-        raw.filter { !it.isISOControl() }.trim().take(MAX_NAME_LENGTH).ifBlank { "Player ${seats.size + 1}" }
+    private fun cleanName(raw: String): String = cleanPlayerName(raw).ifBlank { "Player ${seats.size + 1}" }
 
     private fun nextBotName(): String =
         BOT_NAMES.firstOrNull { name -> seats.none { it.name == name } } ?: "Bot ${seats.size + 1}"
@@ -554,7 +581,6 @@ class GameHost(
     }
 
     private companion object {
-        const val MAX_NAME_LENGTH = 16
         const val AWAY_AFTER = 3
         const val WRONG_CODE_BURST = 10
         const val WRONG_CODE_WINDOW_MILLIS = 30_000L

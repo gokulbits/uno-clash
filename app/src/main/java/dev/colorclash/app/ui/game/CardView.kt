@@ -51,13 +51,20 @@ const val CARD_ASPECT = 1.5f
 
 /** Colorblind mode: each color also gets its own shape. */
 val LocalColorShapes = staticCompositionLocalOf { false }
+
+/**
+ * Shared by every card on screen. A card's labels repeat across the deck, so one cache means dealing
+ * a hand mostly finds them measured already, where each card used to bring its own empty cache.
+ */
+val LocalCardMeasurer = staticCompositionLocalOf<TextMeasurer?> { null }
+
 val HAND_CARD_WIDTH = 76.dp
 val TABLE_CARD_WIDTH = 92.dp
 
 /** A card face drawn from scratch. Every measurement is a fraction of the card's width. */
 @Composable
 fun CardFace(card: Card, width: Dp, modifier: Modifier = Modifier, dimmed: Boolean = false, elevation: Dp = 2.dp) {
-    val measurer = rememberTextMeasurer()
+    val measurer = LocalCardMeasurer.current ?: rememberTextMeasurer()
     val shapes = LocalColorShapes.current
     Spacer(
         modifier
@@ -72,7 +79,7 @@ fun CardFace(card: Card, width: Dp, modifier: Modifier = Modifier, dimmed: Boole
 
 @Composable
 fun CardBack(width: Dp, modifier: Modifier = Modifier, elevation: Dp = 2.dp, style: CardBackStyle = LocalCardBack.current) {
-    val measurer = rememberTextMeasurer()
+    val measurer = LocalCardMeasurer.current ?: rememberTextMeasurer()
     Spacer(
         modifier
             .size(width, width * CARD_ASPECT)
@@ -129,7 +136,7 @@ private fun CacheDrawScope.faceCache(card: Card, dimmed: Boolean, measurer: Text
         null
     } else {
         Brush.radialGradient(
-            listOf(tint(Color.White), tint(GameTheme.cardOvalEdge)),
+            listOf(tint(GameTheme.cardPaper), tint(GameTheme.cardOvalEdge)),
             center = oval.topLeft + Offset(oval.width * 0.42f, oval.height * 0.36f),
             radius = w * 0.62f,
         )
@@ -148,7 +155,7 @@ private fun CacheDrawScope.faceCache(card: Card, dimmed: Boolean, measurer: Text
         ink = tint(base),
         shade = tint(darker(base, 0.55f)),
         cornerShade = tint(darker(base, 0.65f)),
-        white = tint(Color.White),
+        white = tint(GameTheme.cardPaper),
         corners = listOf(near, Offset(w - near.x, size.height - near.y)),
         quadrants = QUADRANTS.map { tint(it) },
         fills = when (card.face) {
@@ -224,7 +231,7 @@ fun HandFan(count: Int, modifier: Modifier = Modifier) {
             val cardCenter = topLeft + Offset(cw / 2, cardSize.height / 2)
             // Each card leans around a point well below the hand, like cards held in a fan.
             rotate(t * turn, pivot = Offset(cardCenter.x, top + cardSize.height * 1.8f)) {
-                drawRoundRect(Color.Black.copy(alpha = 0.3f), topLeft + drop, cardSize, CornerRadius(cw * CORNER))
+                drawRoundRect(GameTheme.shadow.copy(alpha = 0.3f), topLeft + drop, cardSize, CornerRadius(cw * CORNER))
                 drawRoundRect(GameTheme.cardPaper, topLeft, cardSize, CornerRadius(cw * CORNER))
                 drawRoundRect(
                     body,
@@ -236,7 +243,7 @@ fun HandFan(count: Int, modifier: Modifier = Modifier) {
                     val ovalSize = Size(cw * 0.6f, cw * 0.96f)
                     val ovalTopLeft = cardCenter - Offset(ovalSize.width / 2, ovalSize.height / 2)
                     drawOval(oval, ovalTopLeft, ovalSize)
-                    drawOval(Color.White, ovalTopLeft, ovalSize, style = Stroke(cw * 0.035f))
+                    drawOval(GameTheme.cardPaper, ovalTopLeft, ovalSize, style = Stroke(cw * 0.035f))
                 }
             }
         }
@@ -254,12 +261,12 @@ private class Tint(private val dimmed: Boolean) {
     operator fun invoke(c: Color): Color {
         if (!dimmed) return c
         val l = 0.3f * c.red + 0.59f * c.green + 0.11f * c.blue
-        return lerp(lerp(c, Color(l, l, l, c.alpha), 0.12f), Color.Black.copy(alpha = c.alpha), 0.22f)
+        return lerp(lerp(c, Color(l, l, l, c.alpha), 0.12f), GameTheme.shadow.copy(alpha = c.alpha), 0.22f)
     }
 }
 
-private fun lighter(c: Color, t: Float) = lerp(c, Color.White, t)
-private fun darker(c: Color, t: Float) = lerp(c, Color.Black, t)
+private fun lighter(c: Color, t: Float) = lerp(c, GameTheme.cardPaper, t)
+private fun darker(c: Color, t: Float) = lerp(c, GameTheme.shadow, t)
 
 private fun TextMeasurer.label(text: String, px: Float, density: Density): TextLayoutResult = measure(
     text,
@@ -285,7 +292,7 @@ private fun DrawScope.drawPaperAndBody(paper: Brush, body: Brush) {
     )
     val hl = inset + w * 0.022f
     drawRoundRect(
-        Color.White.copy(alpha = 0.22f),
+        GameTheme.cardPaper.copy(alpha = 0.22f),
         topLeft = Offset(hl, hl),
         size = Size(w - hl * 2, size.height - hl * 2),
         cornerRadius = CornerRadius(w * 0.06f),
@@ -302,7 +309,7 @@ private inline fun DrawScope.inOval(block: DrawScope.(topLeft: Offset, size: Siz
 }
 
 private fun DrawScope.drawOvalShadow(topLeft: Offset, ovalSize: Size, alpha: Float) {
-    drawOval(Color.Black.copy(alpha = alpha), topLeft = topLeft + Offset(size.width * 0.014f, size.width * 0.026f), size = ovalSize)
+    drawOval(GameTheme.shadow.copy(alpha = alpha), topLeft = topLeft + Offset(size.width * 0.014f, size.width * 0.026f), size = ovalSize)
 }
 
 private fun DrawScope.drawQuadrants(topLeft: Offset, ovalSize: Size, colors: List<Color>) {
@@ -402,10 +409,10 @@ private fun DrawScope.drawBack(back: BackCache, style: CardBackStyle) {
     inOval { topLeft, ovalSize ->
         drawOvalShadow(topLeft, ovalSize, 0.3f)
         drawOval(back.glow, topLeft, ovalSize)
-        drawOval(Color.White, topLeft, ovalSize, style = Stroke(w * 0.025f))
+        drawOval(GameTheme.cardPaper, topLeft, ovalSize, style = Stroke(w * 0.025f))
     }
     rotate(-18f, pivot = center) {
-        drawLabel(back.words[0], center - Offset(0f, w * 0.1f), Color.White, style.ink, w * 0.6f)
+        drawLabel(back.words[0], center - Offset(0f, w * 0.1f), GameTheme.cardPaper, style.ink, w * 0.6f)
         drawLabel(back.words[1], center + Offset(0f, w * 0.1f), style.accent, style.ink, w * 0.6f)
     }
 }
@@ -415,7 +422,7 @@ private fun DrawScope.drawPattern(pattern: BackPattern, clip: Path, scratch: Pat
     val w = size.width
     val inset = w * INSET
     val body = Rect(inset, inset, w - inset, size.height - inset)
-    val ink = Color.White.copy(alpha = 0.09f)
+    val ink = GameTheme.cardPaper.copy(alpha = 0.09f)
     clipPath(clip) {
         val step = w * 0.16f
         when (pattern) {

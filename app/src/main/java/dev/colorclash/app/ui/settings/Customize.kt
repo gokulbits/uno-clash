@@ -1,5 +1,6 @@
 package dev.colorclash.app.ui.settings
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,11 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,23 +30,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.colorclash.app.data.LookSettings
 import dev.colorclash.app.data.Profile
 import dev.colorclash.app.ui.components.AvatarBadge
 import dev.colorclash.app.ui.components.BigButton
+import dev.colorclash.app.ui.components.ButtonTone
+import dev.colorclash.app.ui.components.ChoicePill
+import dev.colorclash.app.ui.components.GameTextField
+import dev.colorclash.app.ui.components.HintText
+import dev.colorclash.app.ui.components.SheetSurface
+import dev.colorclash.app.ui.components.SheetTitle
+import dev.colorclash.app.ui.components.SmallButton
+import dev.colorclash.app.ui.components.checkIcon
 import dev.colorclash.app.ui.components.rememberPhoto
 import dev.colorclash.app.ui.game.CardBack
 import dev.colorclash.app.ui.theme.GameTheme
-import dev.colorclash.app.ui.theme.LocalTableStyle
 import dev.colorclash.protocol.AUTO_AVATAR_COLOR
+import dev.colorclash.protocol.clipped
 
 /** Name and avatar, with the way into the avatar picker. */
 @Composable
@@ -62,16 +66,15 @@ fun ProfileEditor(profile: Profile, onProfileChange: (Profile) -> Unit) {
         ) {
             AvatarBadge(profile.avatar, size = 68.dp, color = profile.avatarColor, frame = profile.avatarFrame, photo = rememberPhoto(profile.photo))
         }
-        OutlinedTextField(
+        GameTextField(
             value = profile.name,
-            onValueChange = { onProfileChange(profile.copy(name = it.take(16))) },
-            label = { Text("Your name") },
-            singleLine = true,
+            onValueChange = { onProfileChange(profile.copy(name = it.clipped())) },
+            label = "Your name",
             modifier = Modifier.weight(1f),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
         )
     }
-    Pill("Change avatar, photo, color and frame", selected = false, Modifier.fillMaxWidth()) { picking = true }
+    SmallButton("Change avatar, color and frame", ButtonTone.QUIET, { picking = true }, Modifier.fillMaxWidth())
     if (picking) AvatarStudio(profile, onProfileChange, onDismiss = { picking = false })
 }
 
@@ -91,25 +94,15 @@ fun AvatarStudio(profile: Profile, onChange: (Profile) -> Unit, onDismiss: () ->
     val subtitle = if (photo != null) "Photo" else listOfNotNull(groups[chosenGroup].title, art.from?.takeIf { it != art.name }).joinToString(" · ")
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(LocalTableStyle.current.top)
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
+        SheetSurface {
             AvatarBadge(chosen, size = 104.dp, color = profile.avatarColor, frame = profile.avatarFrame, photo = photo)
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
-                Text(subtitle, color = GameTheme.mutedText, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                SheetTitle(title)
+                HintText(subtitle, textAlign = TextAlign.Center)
             }
 
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                (listOf("Photo") + groups.map { it.title }).forEachIndexed { i, name -> Pill(name, selected = i == tab) { tab = i } }
+                (listOf("Photo") + groups.map { it.title }).forEachIndexed { i, name -> ChoicePill(name, selected = i == tab) { tab = i } }
             }
             if (tab == 0) {
                 PhotoTab(profile, onChange)
@@ -144,8 +137,8 @@ fun AvatarStudio(profile: Profile, onChange: (Profile) -> Unit, onDismiss: () ->
                 }
             }
 
-            Text("Everyone at the table sees your avatar or photo, and its frame.", color = GameTheme.mutedText, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
-            BigButton("Done", GameTheme.green, onDismiss)
+            HintText("Everyone at the table sees your avatar or photo, and its frame.", textAlign = TextAlign.Center)
+            BigButton("Done", ButtonTone.PRIMARY, onDismiss)
         }
     }
 }
@@ -175,7 +168,7 @@ private fun AvatarGrid(first: Int, count: Int, rows: Int, profile: Profile, onPi
                                 index,
                                 size = cell,
                                 color = profile.avatarColor,
-                                ring = if (profile.photo == null && index == profile.avatar.mod(GameTheme.avatars.size)) Color.White else null,
+                                ring = if (profile.photo == null && index == profile.avatar.mod(GameTheme.avatars.size)) GameTheme.highlight else null,
                             )
                         }
                     }
@@ -195,9 +188,9 @@ fun LooksPicker(looks: LookSettings, onChange: (LookSettings) -> Unit) {
                 Box(
                     Modifier
                         .size(60.dp, 42.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(GameTheme.tagShape)
                         .background(table.brush)
-                        .border(1.dp, GameTheme.glassEdge, RoundedCornerShape(10.dp)),
+                        .border(1.dp, GameTheme.glassEdge, GameTheme.tagShape),
                 )
             }
         }
@@ -210,7 +203,7 @@ fun LooksPicker(looks: LookSettings, onChange: (LookSettings) -> Unit) {
             }
         }
     }
-    Text("Only you see these.", color = GameTheme.mutedText, style = MaterialTheme.typography.bodyMedium)
+    HintText("Only you see these.")
 }
 
 /** Something to pick, with its name under it. */
@@ -218,11 +211,16 @@ fun LooksPicker(looks: LookSettings, onChange: (LookSettings) -> Unit) {
 private fun Choice(name: String, selected: Boolean, onClick: () -> Unit, content: @Composable () -> Unit) {
     Column(
         Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) GameTheme.panelStrong else Color.Transparent)
-            .border(if (selected) 2.dp else 0.dp, if (selected) GameTheme.text else Color.Transparent, RoundedCornerShape(14.dp))
-            .clickable(onClickLabel = name, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 6.dp),
+            .clip(GameTheme.tileShape)
+            .then(
+                if (selected) {
+                    Modifier.background(GameTheme.panelStrong).border(2.dp, GameTheme.highlight, GameTheme.tileShape)
+                } else {
+                    Modifier
+                },
+            )
+            .clickable(onClickLabel = name, role = Role.RadioButton, onClick = onClick)
+            .padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -230,47 +228,35 @@ private fun Choice(name: String, selected: Boolean, onClick: () -> Unit, content
         Text(
             name,
             color = if (selected) GameTheme.text else GameTheme.mutedText,
-            fontSize = 12.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            style = MaterialTheme.typography.labelMedium,
             maxLines = 1,
         )
     }
 }
 
+/** A color to pick. The ring stays white because it has to show on the yellow swatches too. */
 @Composable
 private fun Swatch(color: Color, selected: Boolean, label: String? = null, onClick: () -> Unit) {
+    val content = GameTheme.contentOn(color)
     Box(
         Modifier
             .size(40.dp)
             .clip(CircleShape)
             .background(color)
             .border(if (selected) 3.dp else 1.dp, if (selected) GameTheme.text else GameTheme.glassEdge, CircleShape)
-            .clickable(onClickLabel = label ?: "Color", role = Role.Button, onClick = onClick),
+            .clickable(onClickLabel = label ?: "Color", role = Role.RadioButton, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        if (label != null) Text(label, color = GameTheme.text, fontSize = 11.sp, fontWeight = FontWeight.Black)
+        when {
+            label != null -> Text(label, color = content, style = MaterialTheme.typography.labelSmall)
+            selected -> Canvas(Modifier.size(18.dp)) { checkIcon(content) }
+        }
     }
 }
 
 @Composable
-private fun Pill(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Text(
-        text,
-        modifier
-            .clip(RoundedCornerShape(50))
-            .background(if (selected) GameTheme.yellow else GameTheme.panelStrong)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 9.dp),
-        color = if (selected) GameTheme.wild else GameTheme.text,
-        fontWeight = FontWeight.Bold,
-        textAlign = TextAlign.Center,
-        maxLines = 1,
-    )
-}
-
-@Composable
 private fun Label(text: String) {
-    Text(text, Modifier.fillMaxWidth(), fontWeight = FontWeight.Bold, color = GameTheme.text)
+    Text(text, Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleSmall)
 }
 
 private const val PER_ROW = 5
