@@ -47,6 +47,7 @@ import dev.colorclash.app.ui.components.HintText
 import dev.colorclash.app.ui.components.SheetSurface
 import dev.colorclash.app.ui.components.SheetTitle
 import dev.colorclash.app.ui.components.SmallButton
+import dev.colorclash.app.ui.components.SwitchRow
 import dev.colorclash.app.ui.components.checkIcon
 import dev.colorclash.app.ui.components.rememberPhoto
 import dev.colorclash.app.ui.game.CardBack
@@ -181,6 +182,16 @@ private fun AvatarGrid(first: Int, count: Int, rows: Int, profile: Profile, onPi
 /** Only this phone sees these. */
 @Composable
 fun LooksPicker(looks: LookSettings, onChange: (LookSettings) -> Unit) {
+    // A whole look in one switch, since it's the table and the card backs together.
+    SwitchRow("OLED black", GameTheme.table(looks.table) === GameTheme.oledTable) { on ->
+        onChange(
+            if (on) {
+                looks.copy(table = GameTheme.tables.indexOf(GameTheme.oledTable), cardBack = GameTheme.cardBacks.indexOf(GameTheme.oledCardBack))
+            } else {
+                LookSettings()
+            },
+        )
+    }
     Label("Table")
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         GameTheme.tables.forEachIndexed { i, table ->

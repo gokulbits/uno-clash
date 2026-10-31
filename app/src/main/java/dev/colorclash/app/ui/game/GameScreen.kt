@@ -390,7 +390,7 @@ private fun OpponentSeat(
         // Dark so it reads over anything; yellow on their turn.
         Tag(
             seat.info.name,
-            GameTheme.wild.copy(alpha = 0.8f),
+            GameTheme.scrim,
             Modifier.offset(y = (-6).dp),
             color = if (isCurrent) GameTheme.highlight else GameTheme.text,
             style = MaterialTheme.typography.labelMedium,

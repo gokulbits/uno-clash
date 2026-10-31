@@ -112,6 +112,7 @@ private fun ScoreChip(score: Int, target: Int) {
             }
         }
         if (target > 0) {
+            val empty = GameTheme.panelStrong
             // Matches the chip rather than filling the width on offer: that stretched the chip right
             // across the bar, pushing the round badge and the settings button out of sight.
             Canvas(Modifier.matchParentSize()) {
@@ -119,7 +120,7 @@ private fun ScoreChip(score: Int, target: Int) {
                 val track = Size(size.width - inset * 2, 3.dp.toPx())
                 val at = Offset(inset, size.height - 5.dp.toPx() - track.height)
                 val corner = CornerRadius(track.height / 2)
-                drawRoundRect(GameTheme.panelStrong, at, track, corner)
+                drawRoundRect(empty, at, track, corner)
                 if (progress > 0f) drawRoundRect(GameTheme.highlight, at, Size(track.width * progress, track.height), corner)
             }
         }

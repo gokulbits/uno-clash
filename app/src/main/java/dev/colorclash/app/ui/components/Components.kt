@@ -121,12 +121,12 @@ private fun ButtonTone.fill(): Color = when (this) {
     ButtonTone.QUIET -> quietFill()
 }
 
-/** Quiet buttons are a lighter shade of the table, so they belong on every table color. */
+/** Quiet buttons take their shade from the table, so they belong on every table color. */
 @Composable
-private fun quietFill(): Color = lerp(LocalTableStyle.current.top, GameTheme.text, 0.2f)
+private fun quietFill(): Color = LocalTableStyle.current.quiet
 
 @Composable
-private fun disabledFill(): Color = lerp(LocalTableStyle.current.top, GameTheme.shadow, 0.3f)
+private fun disabledFill(): Color = LocalTableStyle.current.disabled
 
 /**
  * The look every button shares, in the manner of today's big mobile games: a thin outline in a deeper

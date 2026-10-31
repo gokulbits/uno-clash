@@ -7,6 +7,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
@@ -28,9 +29,10 @@ object GameTheme {
 
     val tableTop = Color(0xFF3A1F8C)
     val tableBottom = Color(0xFF140A33)
-    val panel = Color(0x26FFFFFF)
-    val panelStrong = Color(0x40FFFFFF)
-    val glassEdge = Color(0x33FFFFFF)
+    // These three depend on the table, so they read it from where they're drawn.
+    val panel: Color @Composable @ReadOnlyComposable get() = LocalTableStyle.current.panel
+    val panelStrong: Color @Composable @ReadOnlyComposable get() = LocalTableStyle.current.panelStrong
+    val glassEdge: Color @Composable @ReadOnlyComposable get() = LocalTableStyle.current.edge
     val text = Color.White
     val mutedText = Color(0xB3FFFFFF)
     val danger = Color(0xFFFF4D6D)
@@ -94,7 +96,26 @@ object GameTheme {
         null -> wild
     }
 
-    /** Table colors to pick from in settings. The first is the classic one. */
+    /**
+     * True black with its pixels off, for OLED screens. Panels are barely lit and lean on their
+     * edges to show where they are; the cards keep their colors, because the game is played on them.
+     */
+    val oledTable = TableStyle(
+        "OLED",
+        Color.Black,
+        Color.Black,
+        panel = Color(0x0FFFFFFF),
+        panelStrong = Color(0x24FFFFFF),
+        edge = Color(0x38FFFFFF),
+        quiet = Color(0xFF2E2E2E),
+        disabled = Color(0xFF161616),
+    )
+    val oledCardBack = CardBackStyle(
+        "OLED", Color(0xFF141414), Color.Black, Color(0xFF2A2A2A), Color(0xFF0C0C0C), Color.Black,
+        yellow, BackPattern.PLAIN,
+    )
+
+    /** Table colors to pick from in settings. The first is the classic one. Add to the end: saved picks are indexes. */
     val tables = listOf(
         TableStyle("Classic", tableTop, tableBottom),
         TableStyle("Felt", Color(0xFF1E7A46), Color(0xFF0A3320)),
@@ -102,9 +123,10 @@ object GameTheme {
         TableStyle("Ruby", Color(0xFF8E1C3C), Color(0xFF2E0814)),
         TableStyle("Teal", Color(0xFF0F7C7C), Color(0xFF062E33)),
         TableStyle("Midnight", Color(0xFF2C2C3E), Color(0xFF0B0B12)),
+        oledTable,
     )
 
-    /** Card back designs to pick from in settings. The first is the classic one. */
+    /** Card back designs to pick from in settings. The first is the classic one. Add to the end, like the tables. */
     val cardBacks = listOf(
         CardBackStyle("Classic", cardBackGlow, cardBackDeep, cardBackOval, cardBackOvalDeep, cardBackInk, yellow, BackPattern.PLAIN),
         CardBackStyle(
@@ -127,6 +149,7 @@ object GameTheme {
             "Royal", Color(0xFF3949AB), Color(0xFF0D1440), Color(0xFFE0E6F0), Color(0xFF9AA5B8), Color(0xFF1A2340),
             Color(0xFFFFD54F), BackPattern.DIAMONDS,
         ),
+        oledCardBack,
     )
 
     fun table(index: Int): TableStyle = tables[index.mod(tables.size)]

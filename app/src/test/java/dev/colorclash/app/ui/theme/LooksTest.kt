@@ -1,5 +1,7 @@
 package dev.colorclash.app.ui.theme
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import dev.colorclash.protocol.AUTO_AVATAR_COLOR
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -44,6 +46,24 @@ class LooksTest {
         (GameTheme.cardColors + GameTheme.danger + GameTheme.highlight + GameTheme.wild).forEach { fill ->
             assertTrue(GameTheme.contrast(GameTheme.contentOn(fill), fill) >= 3f, "$fill")
         }
+    }
+
+    @Test
+    fun `the oled table is true black and text stays readable on its buttons`() {
+        val oled = GameTheme.oledTable
+        assertEquals(Color.Black, oled.top)
+        assertEquals(Color.Black, oled.bottom)
+        assertEquals(Color.Black, GameTheme.oledCardBack.deep)
+        assertTrue(GameTheme.contrast(GameTheme.contentOn(oled.quiet), oled.quiet) >= 3f)
+        // Still has to show as a button on black, with its words muted but legible.
+        assertTrue(GameTheme.contrast(oled.disabled, oled.top) > 1f)
+        assertTrue(GameTheme.contrast(GameTheme.mutedText.compositeOver(oled.disabled), oled.disabled) >= 3f)
+    }
+
+    @Test
+    fun `picks saved before the oled look still mean the same table and card back`() {
+        assertEquals(listOf("Classic", "Felt", "Ocean", "Ruby", "Teal", "Midnight"), GameTheme.tables.take(6).map { it.name })
+        assertEquals(listOf("Classic", "Midnight", "Ocean", "Jungle", "Sunset", "Royal"), GameTheme.cardBacks.take(6).map { it.name })
     }
 
     @Test

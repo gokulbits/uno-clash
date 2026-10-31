@@ -216,9 +216,10 @@ fun ScoreBoard(
                 // Progress to the target; a one-round game has none.
                 if (target > 0) {
                     val filled = (seat.score.toFloat() / target).coerceIn(0f, 1f)
+                    val empty = GameTheme.panel
                     Canvas(Modifier.fillMaxWidth().height(6.dp)) {
                         val corner = CornerRadius(size.height / 2)
-                        drawRoundRect(GameTheme.panel, cornerRadius = corner)
+                        drawRoundRect(empty, cornerRadius = corner)
                         if (filled > 0f) {
                             drawRoundRect(GameTheme.highlight, size = Size(size.width * filled * pop.value.coerceAtMost(1f), size.height), cornerRadius = corner)
                         }
