@@ -139,6 +139,7 @@ fun GameScreen(
     onBackToLobby: () -> Unit,
     onLeave: () -> Unit,
     onTick: () -> Unit,
+    onColorTap: () -> Unit,
 ) {
     // One heartbeat for the whole table. Each seat used to run its own two, a dozen animations ticking
     // every frame, nearly all of them for nothing.
@@ -146,7 +147,7 @@ fun GameScreen(
     CompositionLocalProvider(LocalColorShapes provides play.colorShapes, LocalPulse provides pulse) {
         GameTable(
             view, fx, log, history, notice, isHost, feedback, onFeedbackChange, play, onPlayChange, recentPlays,
-            onIntent, onReact, onNextRound, onRematch, onResume, onBackToLobby, onLeave, onTick,
+            onIntent, onReact, onNextRound, onRematch, onResume, onBackToLobby, onLeave, onTick, onColorTap,
         )
     }
 }
@@ -172,6 +173,7 @@ private fun GameTable(
     onBackToLobby: () -> Unit,
     onLeave: () -> Unit,
     onTick: () -> Unit,
+    onColorTap: () -> Unit,
 ) {
     val controls = tableControls(view)
     var showPeek by remember { mutableStateOf(false) }
@@ -288,7 +290,7 @@ private fun GameTable(
         }
 
         if (showPeek) RecentPlays(view, recentPlays, onDismiss = { showPeek = false })
-        if (controls.pickingColor) ColorPicker(view.hand, onPick = { onIntent(PlayerIntent.ChooseColor(it)) })
+        if (controls.pickingColor) ColorPicker(view.hand, onPick = { onIntent(PlayerIntent.ChooseColor(it)) }, onTap = onColorTap)
         if (controls.pickingSwapTarget) SwapPicker(view, onPick = { onIntent(PlayerIntent.SwapWith(it)) })
         if (roundOver && !scoresClosed) {
             ScoreBoard(view, controls.headline, history, isHost, onNextRound, onRematch, onBackToLobby, onLeave, onClose = { scoresClosed = true })

@@ -1,42 +1,60 @@
 package dev.colorclash.app.ui.game
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.colorclash.app.ui.components.AvatarBadge
@@ -47,33 +65,55 @@ import dev.colorclash.app.ui.components.ListRow
 import dev.colorclash.app.ui.components.SheetSurface
 import dev.colorclash.app.ui.components.SheetTitle
 import dev.colorclash.app.ui.theme.GameTheme
+import dev.colorclash.app.ui.theme.LocalTableStyle
 import dev.colorclash.protocol.PhaseKind
 import dev.colorclash.protocol.PlayerView
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.CardColor
+import kotlin.math.PI
 import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val MAX_HISTORY_ROWS = 5
+private val MAX_WHEEL = 340.dp
+/** How much of the wheel's radius is the open middle. */
+private const val WHEEL_HOLE = 0.4f
+/** Degrees of table showing between the slices. */
+private const val WHEEL_GAP = 3f
+/** How far the ring from a pick gets, in wheel radii. */
+private const val WHEEL_RING_REACH = 1.35f
+private const val WHEEL_BURST_MILLIS = 340
+private const val WHEEL_SEND_AFTER_MILLIS = 180L
+private const val WHEEL_LEAVE_MILLIS = 160
+private const val WHEEL_RETRY_MILLIS = 1_500L
 
-/** Dims the table and holds a choice the player has to make. */
+/** Dims the table. Taps outside what's on it close it if it can be closed, and never reach the table underneath. */
 @Composable
-private fun Overlay(onDismiss: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+private fun Scrim(onDismiss: (() -> Unit)? = null, dim: () -> Float = { 1f }, content: @Composable BoxScope.() -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
             // Past its own edges: the table sits inside the system bars, and they should dim with it.
             .drawBehind {
                 val bleed = 200.dp.toPx()
-                drawRect(GameTheme.scrim, Offset(-bleed, -bleed), Size(size.width + bleed * 2, size.height + bleed * 2))
+                drawRect(GameTheme.scrim, Offset(-bleed, -bleed), Size(size.width + bleed * 2, size.height + bleed * 2), alpha = dim())
             }
-            // Taps outside close it if it can be closed, and never reach the table underneath.
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss?.invoke() },
         contentAlignment = Alignment.Center,
-    ) {
+        content = content,
+    )
+}
+
+/** Dims the table and holds a choice the player has to make. */
+@Composable
+private fun Overlay(onDismiss: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+    Scrim(onDismiss) {
         SheetSurface(
             // Taps on the card itself mustn't count as tapping outside.
             Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
@@ -105,40 +145,183 @@ fun RecentPlays(view: PlayerView, plays: List<RecentPlay>, onDismiss: () -> Unit
     }
 }
 
+/**
+ * The four colors as a wheel, spinning in over the dimmed table with your hand still in view below it.
+ * A tap plays [onTap] straight away and a short effect, and the pick goes to the host partway through
+ * so the effect has time to be seen.
+ */
 @Composable
-fun ColorPicker(hand: List<Card>, onPick: (CardColor) -> Unit) {
+fun ColorPicker(hand: List<Card>, onPick: (CardColor) -> Unit, onTap: () -> Unit) {
     val counts = hand.mapNotNull { it.color }.groupingBy { it }.eachCount()
-    Overlay {
-        SheetTitle("Pick a color")
-        CardColor.entries.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                row.forEach { color ->
-                    val fill = GameTheme.cardColor(color)
-                    val content = GameTheme.contentOn(fill)
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .aspectRatio(1.2f)
-                            .clip(GameTheme.panelShape)
-                            .background(fill)
-                            .clickable { onPick(color) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(color.name.lowercase().replaceFirstChar { it.uppercase() }, color = content, style = MaterialTheme.typography.titleLarge)
-                            val count = counts[color] ?: 0
-                            Text(if (count == 1) "1 card" else "$count cards", color = content, style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (LocalColorShapes.current) {
-                            Canvas(Modifier.align(Alignment.TopStart).padding(12.dp).size(22.dp)) {
-                                colorShape(color, center, size.minDimension * 0.42f, GameTheme.text, GameTheme.scrim, 1.5.dp.toPx())
-                            }
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow)) }
+    var picked by remember { mutableStateOf<CardColor?>(null) }
+    val burst = remember { Animatable(0f) }
+    val leave = remember { Animatable(0f) }
+    val latestOnPick by rememberUpdatedState(onPick)
+    LaunchedEffect(picked) {
+        val color = picked ?: return@LaunchedEffect
+        launch { burst.animateTo(1f, tween(WHEEL_BURST_MILLIS)) }
+        delay(WHEEL_SEND_AFTER_MILLIS)
+        latestOnPick(color)
+        delay(WHEEL_BURST_MILLIS - WHEEL_SEND_AFTER_MILLIS)
+        leave.animateTo(1f, tween(WHEEL_LEAVE_MILLIS))
+        // Normally gone by now. Still here means the pick was lost with the connection, so offer it again.
+        delay(WHEEL_RETRY_MILLIS)
+        burst.snapTo(0f)
+        leave.snapTo(0f)
+        picked = null
+    }
+    Scrim(dim = { 1f - leave.value }) {
+        BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            val wheel = minOf(maxWidth - GameTheme.screenPadding * 2, MAX_WHEEL)
+            val hubColor = LocalTableStyle.current.top
+            Box(
+                Modifier
+                    .size(wheel)
+                    .graphicsLayer {
+                        val scale = (0.6f + 0.4f * appear.value) * (1f + 0.08f * leave.value)
+                        scaleX = scale
+                        scaleY = scale
+                        rotationZ = -60f * (1f - appear.value)
+                        alpha = appear.value.coerceIn(0f, 1f) * (1f - leave.value)
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                // Solid behind the slices, so the table's cards and text don't show through the gaps.
+                Box(Modifier.fillMaxSize().clip(CircleShape).background(hubColor))
+                CardColor.entries.forEachIndexed { i, color ->
+                    WheelSlice(color, i, counts[color] ?: 0, wheel, picked, { burst.value }) {
+                        if (picked == null) {
+                            picked = color
+                            onTap()
                         }
                     }
+                }
+                val choice = picked?.let { GameTheme.cardColor(it) }
+                // A ring in the picked color, thrown out past the wheel's edge.
+                if (choice != null) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        val p = burst.value
+                        drawCircle(
+                            choice.copy(alpha = (1f - p).coerceIn(0f, 1f)),
+                            radius = size.minDimension / 2 * (WHEEL_HOLE + (WHEEL_RING_REACH - WHEEL_HOLE) * p),
+                            style = Stroke(10.dp.toPx() * (1f - p) + 1.dp.toPx()),
+                        )
+                    }
+                }
+                // The middle takes on the color too, and says which one you went with.
+                Box(
+                    Modifier
+                        .size(wheel * WHEEL_HOLE * 0.9f)
+                        .clip(CircleShape)
+                        .drawBehind {
+                            drawRect(hubColor)
+                            // Quicker than the rest of the burst, since its text has already gone dark for it.
+                            if (choice != null) drawRect(choice, alpha = (burst.value * 3f).coerceIn(0f, 1f))
+                        }
+                        .border(1.dp, GameTheme.glassEdge, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        picked?.let { colorName(it) } ?: "Pick a\ncolor",
+                        color = if (choice != null) GameTheme.contentOn(choice) else GameTheme.text,
+                        style = MaterialTheme.typography.titleLarge,
+                        textAlign = TextAlign.Center,
+                    )
                 }
             }
         }
     }
+}
+
+private fun colorName(color: CardColor) = color.name.lowercase().replaceFirstChar { it.uppercase() }
+
+/**
+ * One quarter of the wheel. Each slice fills the whole wheel and is clipped to its own wedge, which
+ * limits its taps to that wedge too, so they stack without getting in each other's way. Pressed it
+ * lights up and pushes out; once [picked], the chosen slice flashes and bounces while the rest fall back.
+ */
+@Composable
+private fun WheelSlice(color: CardColor, index: Int, count: Int, wheel: Dp, picked: CardColor?, burst: () -> Float, onTap: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pop = animateFloatAsState(if (pressed) 1f else 0f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessHigh), label = "slice")
+    val fill = GameTheme.cardColor(color)
+    val content = GameTheme.contentOn(fill)
+    val name = colorName(color)
+    val chosen = picked == color
+    val passedOver = picked != null && !chosen
+    val start = -90f + index * 90f + WHEEL_GAP / 2
+    val sweep = 90f - WHEEL_GAP
+    val wedge = remember(index) { wedgeShape(start, sweep) }
+    val middle = (start + sweep / 2) * PI / 180
+    val labelAt = wheel / 2 * ((1f + WHEEL_HOLE) / 2)
+    Box(
+        Modifier
+            .fillMaxSize()
+            // Slices are square boxes, so they push out from the wheel's center when pressed.
+            .graphicsLayer {
+                val b = burst().coerceIn(0f, 1f)
+                val grow = 1f + 0.05f * pop.value.coerceIn(0f, 1f) + when {
+                    chosen -> 0.1f * sin(b * PI).toFloat()
+                    passedOver -> -0.06f * b
+                    else -> 0f
+                }
+                scaleX = grow
+                scaleY = grow
+                alpha = if (passedOver) 1f - 0.7f * b else 1f
+            }
+            .clip(wedge)
+            .drawWithCache {
+                val radius = size.minDimension / 2
+                val face = Brush.radialGradient(
+                    WHEEL_HOLE to lerp(fill, GameTheme.shadow, 0.2f),
+                    0.72f to fill,
+                    1f to lerp(fill, GameTheme.text, 0.16f),
+                    center = Offset(size.width / 2, size.height / 2),
+                    radius = radius,
+                )
+                val rimWidth = 2.dp.toPx()
+                val rim = lerp(fill, GameTheme.text, 0.55f)
+                onDrawBehind {
+                    drawRect(face)
+                    drawArc(
+                        rim, start, sweep, false,
+                        Offset(rimWidth / 2, rimWidth / 2),
+                        Size(size.width - rimWidth, size.height - rimWidth),
+                        style = Stroke(rimWidth),
+                    )
+                    val light = maxOf(0.22f * pop.value.coerceIn(0f, 1f), if (chosen) 0.6f * (1f - burst().coerceIn(0f, 1f)) else 0f)
+                    if (light > 0f) drawRect(GameTheme.text, alpha = light)
+                }
+            }
+            .clickable(interactionSource = interaction, indication = null, enabled = picked == null, onClickLabel = "Pick $name", role = Role.Button, onClick = onTap),
+    ) {
+        Column(
+            Modifier
+                .align(Alignment.Center)
+                .offset(x = labelAt * cos(middle).toFloat(), y = labelAt * sin(middle).toFloat()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (LocalColorShapes.current) {
+                Canvas(Modifier.size(20.dp)) {
+                    colorShape(color, center, size.minDimension * 0.42f, GameTheme.text, GameTheme.scrim, 1.5.dp.toPx())
+                }
+            }
+            Text(name, color = content, style = MaterialTheme.typography.titleLarge)
+            Text(if (count == 1) "1 card" else "$count cards", color = content, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/** A curved wedge of a ring, [sweep] degrees round from [start], with [WHEEL_HOLE] of the radius left open. */
+private fun wedgeShape(start: Float, sweep: Float): Shape = GenericShape { size, _ ->
+    val middle = Offset(size.width / 2, size.height / 2)
+    val radius = size.minDimension / 2
+    arcTo(Rect(middle, radius), start, sweep, forceMoveTo = true)
+    arcTo(Rect(middle, radius * WHEEL_HOLE), start + sweep, -sweep, forceMoveTo = false)
+    close()
 }
 
 @Composable

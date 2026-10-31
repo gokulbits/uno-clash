@@ -109,6 +109,10 @@ fun RoomScreen(session: Session, onLeave: () -> Unit) {
                                 app.feedback.sfx(Sfx.TICK, 0.6f)
                                 app.feedback.buzz(Buzz.TICK)
                             },
+                            onColorTap = {
+                                app.feedback.sfx(Sfx.POP)
+                                app.feedback.buzz(Buzz.BUMP)
+                            },
                             onIntent = session.client::send,
                             onReact = session.client::react,
                             onNextRound = { session.hosting?.host?.startNextRound() },
