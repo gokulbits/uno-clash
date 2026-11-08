@@ -41,11 +41,17 @@ jobs:
           fi
 
       - name: Fetch Gradle
-        # The only download with no retry of its own, and services.gradle.org times out now and
-        # then on a cold cache. Once it's here, setup-gradle caches it for the next run.
+        # The one download with no retry of its own, and services.gradle.org has handed out 504s
+        # for minutes at a time. Once the zip is here, setup-gradle caches it for later runs.
         run: |
           chmod +x gradlew
-          ./gradlew --version || { sleep 20; ./gradlew --version; }
+          for attempt in 1 2 3 4 5; do
+            if ./gradlew --version; then exit 0; fi
+            echo "::warning::Couldn't fetch Gradle (attempt $attempt of 5); retrying in 30s"
+            sleep 30
+          done
+          echo "::error::Gradle wouldn't download. Check https://services.gradle.org/distributions/ is up, then re-run."
+          exit 1
 
       - name: Tests and lint
         run: ./gradlew test :app:lintRelease
