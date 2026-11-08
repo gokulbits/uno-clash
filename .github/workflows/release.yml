@@ -40,10 +40,15 @@ jobs:
             echo "CC_VERSION_NAME=0.0.${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
           fi
 
-      - name: Tests and lint
+      - name: Fetch Gradle
+        # The only download with no retry of its own, and services.gradle.org times out now and
+        # then on a cold cache. Once it's here, setup-gradle caches it for the next run.
         run: |
           chmod +x gradlew
-          ./gradlew test :app:lintRelease
+          ./gradlew --version || { sleep 20; ./gradlew --version; }
+
+      - name: Tests and lint
+        run: ./gradlew test :app:lintRelease
 
       - name: Set up release key
         env:
