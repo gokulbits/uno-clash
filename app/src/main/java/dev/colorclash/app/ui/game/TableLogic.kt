@@ -28,14 +28,23 @@ data class TableControls(
 fun tableControls(view: PlayerView): TableControls {
     val yourTurn = view.isYourTurn
     val current = view.nameOf(view.current)
-    val headline = when (view.phase) {
+    val roundRunning = view.phase != PhaseKind.ROUND_OVER && view.phase != PhaseKind.GAME_OVER
+    val youreOut = view.seats.getOrNull(view.you)?.knockedOut == true
+    val headline = if (youreOut && roundRunning) "You're out of this round — back next one" else when (view.phase) {
         PhaseKind.GAME_OVER -> view.winner?.let { if (it == view.you) "You win the game!" else "${view.nameOf(it)} wins the game!" } ?: "Game over"
         PhaseKind.ROUND_OVER -> view.winner?.let { if (it == view.you) "You won the round!" else "${view.nameOf(it)} won the round" } ?: "Round over"
-        PhaseKind.PICK_COLOR -> if (yourTurn) "Pick a color" else "$current is picking a color"
+        PhaseKind.PICK_COLOR -> when {
+            view.roulette && yourTurn -> "Name a color — you keep everything turned over"
+            view.roulette -> "$current is spinning for a color"
+            yourTurn -> "Pick a color"
+            else -> "$current is picking a color"
+        }
         PhaseKind.PICK_SWAP_TARGET -> if (yourTurn) "Pick someone to swap hands with" else "$current is choosing who to swap with"
         PhaseKind.DREW_PLAYABLE -> if (yourTurn) "Play the card you drew, or keep it" else "$current's turn"
         PhaseKind.TURN -> when {
             yourTurn && view.canChallenge -> "Wild +4 on you! Challenge it or take ${view.pendingDraw}"
+            yourTurn && view.pendingDraw > 0 && view.pendingDrawValue > 0 ->
+                "Stack +${view.pendingDrawValue} or higher, or take ${view.pendingDraw}"
             yourTurn && view.pendingDraw > 0 -> "Stack a draw card or take ${view.pendingDraw}"
             yourTurn -> "Your turn"
             else -> "$current's turn"
@@ -84,10 +93,17 @@ fun sortHand(hand: List<Card>, byNumber: Boolean = false): List<Card> {
 
 data class RecentPlay(val seat: Int, val card: Card)
 
-/** Who plays after the current player, if the round is still going. */
+/** Who plays after the current player, if the round is still going. Steps over anyone knocked out. */
 fun nextSeat(view: PlayerView): Int? {
     if (view.phase == PhaseKind.ROUND_OVER || view.phase == PhaseKind.GAME_OVER) return null
-    return (view.current + view.direction.step).mod(view.seats.size)
+    val n = view.seats.size
+    var seat = (view.current + view.direction.step).mod(n)
+    var hops = 0
+    while (view.seats[seat].knockedOut && hops < n) {
+        seat = (seat + view.direction.step).mod(n)
+        hops++
+    }
+    return seat
 }
 
 enum class StampMark { SKIP, DRAW, CHECK, CROSS }
@@ -102,9 +118,12 @@ fun seatStampsFor(event: EventView, you: Int): List<SeatStamp> = when (event) {
     )
     // A +2 or +4 landing on you, or the penalty for finishing on a power card. A challenge's own
     // stamps already cover those cards, and an UNO penalty has its own flash.
+    is EventView.KnockedOut -> listOf(
+        SeatStamp(event.player, StampMark.CROSS, if (event.player == you) "YOU'RE OUT!" else "OUT!", good = false),
+    )
     is EventView.Drew -> when {
         event.count <= 0 -> emptyList()
-        event.reason == DrawReason.DRAW_CARD -> {
+        event.reason == DrawReason.DRAW_CARD || event.reason == DrawReason.ROULETTE -> {
             val tag = if (event.player == you) "YOU DRAW ${event.count}!" else "DRAW ${event.count}!"
             listOf(SeatStamp(event.player, StampMark.DRAW, tag, good = false, count = event.count))
         }
@@ -145,10 +164,23 @@ fun announcementFor(event: EventView, view: PlayerView): Announcement? {
                 Face.DRAW_TWO -> Triple("+2", "Draw two!", "a Draw Two")
                 Face.WILD -> Triple("WILD!", "Wild!", "a Wild")
                 Face.WILD_DRAW_FOUR -> Triple("+4", "Wild draw four!", "a Wild Draw Four")
+                Face.DRAW_FOUR -> Triple("+4", "Draw four!", "a Draw Four")
+                Face.SKIP_EVERYONE -> Triple("SKIP ALL!", "Skip everyone!", "Skip Everyone")
+                Face.DISCARD_ALL -> Triple("DISCARD ALL!", "Discard all!", "a Discard All")
+                Face.WILD_REVERSE_DRAW_FOUR -> Triple("REVERSE +4", "Reverse draw four!", "a Reverse +4")
+                Face.WILD_DRAW_SIX -> Triple("+6", "Draw six!", "a Wild Draw Six")
+                Face.WILD_DRAW_TEN -> Triple("+10", "Draw ten!", "a Wild Draw Ten")
+                Face.WILD_COLOR_ROULETTE -> Triple("ROULETTE!", "Color roulette!", "a Color Roulette")
                 else -> return null
             }
             Announcement(title, "${who(event.player)} played $name", event.card.color, spoken)
         }
+        is EventView.KnockedOut -> Announcement(
+            "NO MERCY!",
+            "${who(event.player)} ${if (event.player == view.you) "are" else "is"} out on ${event.cards} cards",
+            null,
+            "No mercy!",
+        )
         is EventView.WildColorChosen -> {
             val name = event.color.name.lowercase()
             Announcement("${event.color.name}!", "${who(event.player)} picked $name", event.color, name.replaceFirstChar { it.uppercase() } + "!")
@@ -170,9 +202,15 @@ fun describe(event: EventView, view: PlayerView): String? {
             DrawReason.MISSED_LAST_CARD -> null // covered by the penalty line
             DrawReason.CHALLENGE -> "${who(event.player)} took ${plural(event.count, "card")} from the challenge"
             DrawReason.POWER_FINISH -> "${who(event.player)} can't go out on a power card: +${event.count}"
+            DrawReason.ROULETTE -> "${who(event.player)} turned over ${plural(event.count, "card")}"
         }
         is EventView.Skipped -> "${who(event.player)} ${if (event.player == view.you) "are" else "is"} skipped"
+        is EventView.EveryoneSkipped -> "${who(event.player)} skipped everyone and ${if (event.player == view.you) "go" else "goes"} again"
         is EventView.Reversed -> if (event.direction == Direction.CLOCKWISE) "Play goes clockwise" else "Play goes counter-clockwise"
+        is EventView.DiscardedAll ->
+            "${who(event.player)} dumped ${plural(event.cards.size, "more ${event.color.name.lowercase()} card")}"
+        is EventView.ColorRoulette -> "${who(event.player)} spun ${event.color.name.lowercase()}"
+        is EventView.KnockedOut -> "${who(event.player)} ${if (event.player == view.you) "are" else "is"} out on ${event.cards} cards"
         is EventView.WildColorChosen -> "${who(event.player)} picked ${event.color.name.lowercase()}"
         is EventView.LastCardCalled -> "${who(event.player)} called UNO!"
         is EventView.PenaltyApplied -> "${who(event.caughtBy)} caught ${who(event.player).let { if (it == "You") "you" else it }}! +${event.cards}"
@@ -195,8 +233,15 @@ fun Card.label(): String {
         Face.SKIP -> "Skip"
         Face.REVERSE -> "Reverse"
         Face.DRAW_TWO -> "+2"
+        Face.DRAW_FOUR -> "+4"
+        Face.SKIP_EVERYONE -> "Skip Everyone"
+        Face.DISCARD_ALL -> "Discard All"
         Face.WILD -> "Wild"
         Face.WILD_DRAW_FOUR -> "Wild +4"
+        Face.WILD_REVERSE_DRAW_FOUR -> "Reverse +4"
+        Face.WILD_DRAW_SIX -> "Wild +6"
+        Face.WILD_DRAW_TEN -> "Wild +10"
+        Face.WILD_COLOR_ROULETTE -> "Color Roulette"
         else -> face.number.toString()
     }
     return color?.let { "${it.name.lowercase()} $face" } ?: face

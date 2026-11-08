@@ -8,12 +8,15 @@ import dev.colorclash.rules.EngineResult
 import dev.colorclash.rules.Face
 import dev.colorclash.rules.GameEngine
 import dev.colorclash.rules.GameEvent
+import dev.colorclash.rules.GameMode
 import dev.colorclash.rules.GameState
 import dev.colorclash.rules.Phase
+import dev.colorclash.rules.Player
 import dev.colorclash.rules.RuleSet
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -22,6 +25,7 @@ class ProtocolTest {
     private val seats = List(4) { SeatInfo(it, "P$it", avatar = it) }
     private val settings = GameSettings()
     private val game = GameEngine.newGame(4, RuleSet(), seed = 3).state
+    private val noMercy = GameEngine.newGame(4, RuleSet(mode = GameMode.NO_MERCY, targetScore = 1000), seed = 3).state
 
     @Test
     fun `messages round trip through json`() {
@@ -107,6 +111,40 @@ class ProtocolTest {
         val drawer = state.current
         assertNotNull(state.viewFor(drawer, seats, settings).drawnCardId)
         for (seat in 0 until 4) if (seat != drawer) assertNull(state.viewFor(seat, seats, settings).drawnCardId)
+    }
+
+    @Test
+    fun `no mercy events survive the wire and hide nothing`() {
+        val cards = listOf(Card(1, Face.ONE, CardColor.RED), Card(2, Face.SKIP, CardColor.RED))
+        val events = listOf(
+            EventView.EveryoneSkipped(2),
+            EventView.DiscardedAll(1, CardColor.RED, cards),
+            EventView.ColorRoulette(3, CardColor.BLUE, 7),
+            EventView.KnockedOut(0, 26),
+        )
+        val message = ServerMessage.Game(noMercy.viewFor(0, seats, settings), events)
+        assertEquals(message, Codec.decodeServer(Codec.encode(message)))
+
+        // These are all public: the cards went onto the pile or came off it in the open.
+        assertEquals(events[1], GameEvent.DiscardedAll(1, CardColor.RED, cards).toView(2))
+        assertEquals(events[3], GameEvent.KnockedOut(0, 26).toView(1))
+    }
+
+    @Test
+    fun `a knocked out seat and a roulette pick show up in the view`() {
+        val state = noMercy.copy(
+            players = noMercy.players.mapIndexed { i, p -> if (i == 2) Player(emptyList(), p.score, knockedOut = true) else p },
+            phase = Phase.PickColor(roulette = true),
+            current = 0,
+            pendingDraw = 6,
+            pendingDrawValue = 6,
+        )
+        val view = state.viewFor(0, seats, settings)
+        assertTrue(view.seats[2].knockedOut)
+        assertFalse(view.seats[0].knockedOut)
+        assertTrue(view.roulette)
+        assertEquals(6, view.pendingDrawValue)
+        assertEquals(0, view.seats[2].cardCount)
     }
 
     @Test

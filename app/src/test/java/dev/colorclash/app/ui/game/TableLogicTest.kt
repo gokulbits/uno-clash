@@ -14,6 +14,7 @@ import dev.colorclash.rules.DrawReason
 import dev.colorclash.rules.EngineResult
 import dev.colorclash.rules.Face
 import dev.colorclash.rules.GameEngine
+import dev.colorclash.rules.GameMode
 import dev.colorclash.rules.GameState
 import dev.colorclash.rules.Phase
 import dev.colorclash.rules.Player
@@ -21,6 +22,7 @@ import dev.colorclash.rules.RuleSet
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -224,5 +226,70 @@ class TableLogicTest {
         assertEquals("Dee called UNO", announcementFor(EventView.LastCardCalled(3), view)?.detail)
         assertNull(announcementFor(EventView.CardPlayed(1, card(9, Face.SEVEN)), view))
         assertNull(announcementFor(EventView.Skipped(1), view))
+    }
+
+    // No Mercy
+
+    private val noMercy = RuleSet(mode = GameMode.NO_MERCY, targetScore = 1000)
+
+    @Test
+    fun `a no mercy stack says what it takes to pass it on`() {
+        val state = table(rules = noMercy).copy(
+            discardPile = listOf(card(2, Face.WILD_DRAW_SIX, null)),
+            pendingDraw = 10,
+            pendingDrawValue = 6,
+        )
+        assertEquals("Stack +6 or higher, or take 10", tableControls(state.view(0)).headline)
+        assertEquals("Take 10", tableControls(state.view(0)).drawLabel)
+    }
+
+    @Test
+    fun `a roulette spin is spelled out to whoever has to call it`() {
+        val state = table(rules = noMercy).copy(
+            discardPile = listOf(card(2, Face.WILD_COLOR_ROULETTE, null)),
+            phase = Phase.PickColor(roulette = true),
+        )
+        assertEquals("Name a color — you keep everything turned over", tableControls(state.view(0)).headline)
+        assertEquals("Ana is spinning for a color", tableControls(state.view(2)).headline)
+        assertTrue(tableControls(state.view(0)).pickingColor)
+    }
+
+    @Test
+    fun `being knocked out takes over the headline and the turn order`() {
+        val state = table(rules = noMercy).copy(
+            players = List(4) { if (it == 1) Player(emptyList(), knockedOut = true) else Player(listOf(card(300 + it, Face.ONE, CardColor.BLUE))) },
+        )
+        assertEquals(2, nextSeat(state.view(0)))
+        assertEquals("You're out of this round — back next one", tableControls(state.view(1)).headline)
+        assertEquals("Ana's turn", tableControls(state.view(2)).headline)
+        assertTrue(state.view(2).seats[1].knockedOut)
+    }
+
+    @Test
+    fun `the new cards all have a name and a callout`() {
+        val view = table(rules = noMercy).view(0)
+        val faces = listOf(
+            Face.DRAW_FOUR, Face.SKIP_EVERYONE, Face.DISCARD_ALL,
+            Face.WILD_REVERSE_DRAW_FOUR, Face.WILD_DRAW_SIX, Face.WILD_DRAW_TEN, Face.WILD_COLOR_ROULETTE,
+        )
+        for (face in faces) {
+            val c = card(9, face, if (face.isWild) null else CardColor.RED)
+            assertFalse(c.label().contains("null"), "$face has no name")
+            assertNotNull(announcementFor(EventView.CardPlayed(1, c), view), "$face has no callout")
+        }
+        assertEquals("red Discard All", card(9, Face.DISCARD_ALL).label())
+        assertEquals("Wild +10", card(9, Face.WILD_DRAW_TEN, null).label())
+    }
+
+    @Test
+    fun `a knockout is stamped, announced and written up`() {
+        val view = table(rules = noMercy).view(0)
+        assertEquals("YOU'RE OUT!", seatStampsFor(EventView.KnockedOut(0, 26), you = 0).single().tag)
+        assertEquals("OUT!", seatStampsFor(EventView.KnockedOut(1, 25), you = 0).single().tag)
+        assertEquals("NO MERCY!", announcementFor(EventView.KnockedOut(1, 25), view)?.title)
+        assertEquals("Ben is out on 25 cards", describe(EventView.KnockedOut(1, 25), view))
+        assertEquals("Ben skipped everyone and goes again", describe(EventView.EveryoneSkipped(1), view))
+        assertEquals("Ben dumped 3 more red cards", describe(EventView.DiscardedAll(1, CardColor.RED, List(3) { card(it, Face.ONE) }), view))
+        assertEquals("Ben turned over 7 cards", describe(EventView.Drew(1, 7, DrawReason.ROULETTE), view))
     }
 }

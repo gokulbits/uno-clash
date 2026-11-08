@@ -6,7 +6,12 @@ import kotlinx.serialization.Serializable
 enum class BotLevel { EASY, NORMAL }
 
 @Serializable
+enum class GameMode { CLASSIC, NO_MERCY }
+
+@Serializable
 data class RuleSet(
+    /** Which deck and which rules. No Mercy forces most of the toggles below. */
+    val mode: GameMode = GameMode.CLASSIC,
     val handSize: Int = 7,
     /** First to this many points wins the game. 0 means a single round. */
     val targetScore: Int = 500,
@@ -24,11 +29,33 @@ data class RuleSet(
      * works, but you don't go out. 0 turns the rule off.
      */
     val powerFinishPenalty: Int = 0,
+    /** No Mercy: holding this many cards knocks you out of the round. */
+    val mercyLimit: Int = 25,
+    /** No Mercy: what the round winner scores for each player knocked out that round. */
+    val knockoutBonus: Int = 250,
 ) {
+    val noMercy: Boolean get() = mode == GameMode.NO_MERCY
+
+    /** No Mercy stacks any draw card of equal or higher value, so it's always on. */
+    val stacking: Boolean get() = noMercy || stackDraws
+
+    /** The 7 swap and the 0 pass-along are compulsory in No Mercy. */
+    val swaps: Boolean get() = noMercy || sevenZero
+
+    val drawsUntilPlayable: Boolean get() = noMercy || drawUntilPlayable
+
+    /** No Mercy has no Wild +4, so there's nothing to challenge. */
+    val canChallenge: Boolean get() = !noMercy && challengeDrawFour
+
+    /** No Mercy lets you win on any card. */
+    val powerFinish: Int get() = if (noMercy) 0 else powerFinishPenalty
+
     init {
         require(handSize in 1..15) { "Hand size must be 1-15" }
         require(targetScore >= 0) { "Target score can't be negative" }
         require(lastCardPenalty >= 0) { "Penalty can't be negative" }
         require(powerFinishPenalty >= 0) { "Penalty can't be negative" }
+        require(mercyLimit > handSize) { "The mercy limit has to be above the hand size" }
+        require(knockoutBonus >= 0) { "Bonus can't be negative" }
     }
 }

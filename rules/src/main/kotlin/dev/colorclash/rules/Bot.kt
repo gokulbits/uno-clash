@@ -31,14 +31,19 @@ class SimpleBot(
     /** A timed-out turn: draw and keep it, picking a color or swap target if needed. Never plays a card. */
     fun chooseTimeoutAction(state: GameState, seat: Int): PlayerAction? {
         if (seat != state.current) return null
-        return when (state.phase) {
+        return when (val phase = state.phase) {
             Phase.Turn -> Draw(seat)
-            is Phase.DrewPlayable -> Action.Pass(seat)
+            // No Mercy has no pass: the card you drew has to go down.
+            is Phase.DrewPlayable -> if (state.rules.noMercy) PlayCard(seat, phase.cardId) else Action.Pass(seat)
             is Phase.PickColor -> ChooseColor(seat, favoriteColor(state.hand(seat)))
-            Phase.PickSwapTarget -> SwapWith(seat, state.players.indices.filter { it != seat }.minBy { state.hand(it).size })
+            Phase.PickSwapTarget -> swapTarget(state, seat)?.let { SwapWith(seat, it) }
             else -> null
         }
     }
+
+    private fun swapTarget(state: GameState, seat: Int): Int? = state.players.indices
+        .filter { it != seat && !state.players[it].knockedOut }
+        .minByOrNull { state.hand(it).size }
 
     /** An easy bot's UNO lapse. Fixed for a given table, so asking twice gives the same answer. */
     private fun forgetsUno(state: GameState, seat: Int): Boolean =
@@ -53,10 +58,7 @@ class SimpleBot(
         val hand = state.hand(seat)
         return when (state.phase) {
             is Phase.PickColor -> ChooseColor(seat, if (level == BotLevel.EASY) randomColor() else favoriteColor(hand))
-            Phase.PickSwapTarget -> {
-                val target = state.players.indices.filter { it != seat }.minBy { state.hand(it).size }
-                SwapWith(seat, target)
-            }
+            Phase.PickSwapTarget -> swapTarget(state, seat)?.let { SwapWith(seat, it) }
             is Phase.DrewPlayable -> legal.first { it is PlayCard }
             Phase.Turn -> chooseTurn(state, seat, legal)
             else -> null
@@ -72,7 +74,7 @@ class SimpleBot(
         }
         if (level == BotLevel.EASY) return PlayCard(seat, plays[random.nextInt(plays.size)].id)
         // Drawing one beats a penalty for finishing on a power card.
-        if (state.rules.powerFinishPenalty > 0 && hand.size == 1 && plays.all { it.face.number == null }) return Draw(seat)
+        if (state.rules.powerFinish > 0 && hand.size == 1 && plays.all { it.face.isAction }) return Draw(seat)
 
         // Skip a +4 we'd lose a challenge on, unless it's the only move or we're stacking.
         val honest = if (state.pendingDraw > 0) plays else plays.filter {
@@ -80,7 +82,9 @@ class SimpleBot(
         }
         val options = honest.ifEmpty { plays }
         val colorCounts = hand.mapNotNull { it.color }.groupingBy { it }.eachCount()
-        val threatened = state.players.indices.any { it != seat && state.hand(it).size <= 2 }
+        val threatened = state.players.indices.any {
+            it != seat && !state.players[it].knockedOut && state.hand(it).size <= 2
+        }
 
         val pick = if (threatened) {
             options.maxWith(compareBy<Card>({ attackValue(it.face) }, { colorCounts[it.color] ?: 0 }))
@@ -90,18 +94,23 @@ class SimpleBot(
         return PlayCard(seat, pick.id)
     }
 
+    // Hit as hard as the hand allows; draw cards first, then the turn-stealers.
     private fun attackValue(face: Face) = when (face) {
-        Face.WILD_DRAW_FOUR -> 4
+        Face.WILD_DRAW_TEN -> 7
+        Face.WILD_DRAW_SIX -> 6
+        Face.WILD_REVERSE_DRAW_FOUR -> 5
+        Face.WILD_DRAW_FOUR, Face.DRAW_FOUR, Face.WILD_COLOR_ROULETTE -> 4
         Face.DRAW_TWO -> 3
-        Face.SKIP -> 2
+        Face.SKIP, Face.SKIP_EVERYONE -> 2
         Face.REVERSE -> 1
         else -> 0
     }
 
-    // Lower plays first: dump numbers, hold actions, hold wilds longest.
+    // Lower plays first: shed a whole color if we can, then numbers, then actions, wilds last.
     private fun keepValue(face: Face) = when {
+        face == Face.DISCARD_ALL -> -1
         face.isWild -> 2
-        face.number == null -> 1
+        face.isAction -> 1
         else -> 0
     }
 

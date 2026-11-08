@@ -284,7 +284,7 @@ class TableFx {
                     fly(event.card, Anchor.Seat(event.player), Anchor.DiscardPile, 440, fromScale = SEAT_SCALE, toRotation = discardTilt(event.card), flips = true)
                 }
                 land(event.card, feedback)
-                if (event.card.face == Face.DRAW_TWO || event.card.face == Face.WILD_DRAW_FOUR) shakeTable()
+                if (event.card.face.isDraw) shakeTable()
             }
             is EventView.Drew -> {
                 val cards = event.cards
@@ -302,6 +302,21 @@ class TableFx {
                 }
             }
             is EventView.Skipped -> Unit // its stamp is the whole effect
+            is EventView.EveryoneSkipped -> {
+                flash(Anchor.DiscardPile, "Skip everyone!", GameTheme.red)
+                shakeTable()
+            }
+            is EventView.DiscardedAll -> {
+                burst(Anchor.DiscardPile, GameTheme.cardColor(event.color))
+                flash(Anchor.Seat(event.player), "-${event.cards.size}", GameTheme.green)
+            }
+            // The Drew event right behind it flies the cards over.
+            is EventView.ColorRoulette -> flash(Anchor.DiscardPile, event.color.name.lowercase(), GameTheme.cardColor(event.color))
+            is EventView.KnockedOut -> coroutineScope {
+                launch { flash(Anchor.Seat(event.player), "OUT!", GameTheme.red) }
+                launch { shakeTable() }
+                if (event.player == view.you) launch { glowRed() }
+            }
             is EventView.Reversed -> {
                 val turn = if (event.direction == Direction.CLOCKWISE) 360f else -360f
                 arrowSpin.animateTo(arrowSpin.value + turn, tween(550, easing = FastOutSlowInEasing))

@@ -16,6 +16,8 @@ import dev.colorclash.protocol.PlayerIntent
 import dev.colorclash.protocol.REACTION_COUNT
 import dev.colorclash.protocol.ServerMessage
 import dev.colorclash.protocol.WS_PATH
+import dev.colorclash.rules.Deck
+import dev.colorclash.rules.GameMode
 import dev.colorclash.rules.RuleSet
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -78,6 +80,30 @@ class HostClientIntegrationTest {
                         else -> Unit
                     }
                 }
+            }
+        }
+    }
+
+    @Test
+    fun `four clients play a no mercy round with the big deck`(): Unit = runBlocking {
+        Harness().start().use { h ->
+            h.host.updateSettings(GameSettings(RuleSet(mode = GameMode.NO_MERCY, targetScore = 0)))
+            val clients = (1..4).map { h.client("P$it") }
+            clients.forEach { it.awaitConnected(); it.setReady(true) }
+            h.awaitHost { it.seats.size == 4 && it.canStart }
+            assertNull(h.host.startGame())
+            clients.forEach { h.scope.autoPlay(it) }
+
+            val final = h.awaitHost(90.seconds) { it.stage == HostStage.GAME_OVER }
+            val state = assertNotNull(final.game)
+            assertTrue(state.rules.noMercy)
+            val cards = state.drawPile.size + state.discardPile.size + state.setAside.size + state.players.sumOf { it.hand.size }
+            assertEquals(Deck.NO_MERCY_SIZE, cards)
+
+            for (client in clients) {
+                val view = withTimeout(5.seconds) { client.game.filterNotNull().first { it.phase == PhaseKind.GAME_OVER } }
+                assertEquals(state.hand(view.you), view.hand)
+                assertEquals(state.players.map { it.knockedOut }, view.seats.map { it.knockedOut })
             }
         }
     }

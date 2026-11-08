@@ -19,6 +19,7 @@ class FuzzTest {
             val random = Random(game)
             val players = random.nextInt(GameEngine.MIN_PLAYERS, GameEngine.MAX_PLAYERS + 1)
             val rules = RuleSet(
+                mode = if (random.nextInt(3) == 0) GameMode.NO_MERCY else GameMode.CLASSIC,
                 targetScore = random.nextInt(100, 400),
                 challengeDrawFour = random.nextBoolean(),
                 stackDraws = random.nextBoolean(),
@@ -70,35 +71,45 @@ class FuzzTest {
     }
 
     private fun checkInvariants(s: GameState) {
+        val deckSize = if (s.rules.noMercy) Deck.NO_MERCY_SIZE else Deck.SIZE
         val ids = s.allCards().map { it.id }
-        check(ids.size == Deck.SIZE) { "Card count is ${ids.size}" }
-        check(ids.toSet() == (0 until Deck.SIZE).toSet()) { "Duplicate or missing cards" }
+        check(ids.size == deckSize) { "Card count is ${ids.size}" }
+        check(ids.toSet() == (0 until deckSize).toSet()) { "Duplicate or missing cards" }
         check(s.discardPile.isNotEmpty()) { "Empty discard pile" }
         check(s.current in s.players.indices) { "Bad current seat ${s.current}" }
         check(s.pendingDraw >= 0) { "Negative pending draw" }
         check(s.players.all { it.score >= 0 })
+        check(s.players.all { !it.knockedOut || it.hand.isEmpty() }) { "A knocked-out seat still holds cards" }
+        check(s.rules.noMercy || (s.players.none { it.knockedOut } && s.setAside.isEmpty())) { "Knockouts outside No Mercy" }
+        check(s.activeSeats.isNotEmpty()) { "Everyone is out" }
 
         val phase = s.phase
         if (phase is Phase.RoundOver || phase is Phase.GameOver) {
             val winner = if (phase is Phase.RoundOver) phase.winner else (phase as Phase.GameOver).winner
-            check(s.hand(winner).isEmpty()) { "Winner still holds cards" }
+            // Either they went out, or the mercy rule left them the last one standing.
+            check(s.hand(winner).isEmpty() || s.activeSeats == listOf(winner)) { "Winner still holds cards" }
+            check(!s.players[winner].knockedOut) { "A knocked-out seat won" }
             check(s.pendingDraw == 0 && s.exposedPlayer == null)
             if (phase is Phase.GameOver) check(s.players[winner].score >= s.rules.targetScore)
             return
         }
 
-        check(s.players.all { it.hand.isNotEmpty() }) { "Someone has no cards mid-round" }
+        check(s.activeSeats.size >= 2) { "Round still going with one seat left" }
+        check(!s.players[s.current].knockedOut) { "Turn sits on a knocked-out seat" }
+        check(s.activeSeats.all { s.hand(it).isNotEmpty() }) { "Someone has no cards mid-round" }
+        check(s.activeSeats.all { s.hand(it).size < s.rules.mercyLimit || !s.rules.noMercy }) { "Past the mercy limit" }
         check(phase is Phase.PickColor || s.activeColor != null) { "No active color" }
         when (phase) {
             is Phase.PickColor -> check(s.topCard.isWild) { "Picking a color for a non-wild" }
             is Phase.DrewPlayable -> check(s.hand(s.current).any { it.id == phase.cardId }) { "Drawn card not in hand" }
-            Phase.PickSwapTarget -> check(s.topCard.face == Face.SEVEN && s.rules.sevenZero)
+            Phase.PickSwapTarget -> check(s.topCard.face == Face.SEVEN && s.rules.swaps)
             else -> Unit
         }
         if (s.pendingDraw > 0) {
-            check(s.topCard.face == Face.DRAW_TWO || s.topCard.face == Face.WILD_DRAW_FOUR) { "Pending draw without a draw card" }
+            check(s.topCard.face.isDraw) { "Pending draw without a draw card" }
             check(phase == Phase.Turn || phase is Phase.PickColor) { "Pending draw in $phase" }
-            check(s.rules.stackDraws || s.drawFourCheck != null || phase is Phase.PickColor) { "Pending draw nobody can respond to" }
+            check(s.rules.stacking || s.drawFourCheck != null || phase is Phase.PickColor) { "Pending draw nobody can respond to" }
+            check(!s.rules.noMercy || s.pendingDrawValue > 0) { "Pending draw with no value to beat" }
         }
         s.drawFourCheck?.let {
             check(s.topCard.face == Face.WILD_DRAW_FOUR && s.pendingDraw == 4 && s.rules.challengeDrawFour) { "Stale draw four check" }

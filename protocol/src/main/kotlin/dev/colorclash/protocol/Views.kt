@@ -51,6 +51,8 @@ data class SeatView(
     val cardCount: Int,
     val score: Int,
     val calledLastCard: Boolean,
+    /** No Mercy: hit the mercy limit and they're out until the next round. */
+    val knockedOut: Boolean = false,
 )
 
 enum class PhaseKind { TURN, PICK_COLOR, DREW_PLAYABLE, PICK_SWAP_TARGET, ROUND_OVER, GAME_OVER }
@@ -72,6 +74,10 @@ data class PlayerView(
     val winner: Int? = null,
     val roundPoints: Int? = null,
     val pendingDraw: Int = 0,
+    /** What a card has to be worth to stack onto [pendingDraw]. No Mercy only. */
+    val pendingDrawValue: Int = 0,
+    /** The color being picked is a Color Roulette spin, so whatever turns up is yours. */
+    val roulette: Boolean = false,
     val exposedPlayer: Int? = null,
     val drawPileCount: Int,
     val round: Int,

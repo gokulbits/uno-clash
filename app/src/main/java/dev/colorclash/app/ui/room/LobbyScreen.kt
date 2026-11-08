@@ -82,6 +82,7 @@ import dev.colorclash.protocol.LobbyView
 import dev.colorclash.protocol.SeatInfo
 import dev.colorclash.rules.BotLevel
 import dev.colorclash.rules.GameEngine
+import dev.colorclash.rules.GameMode
 import dev.colorclash.rules.RuleSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -328,22 +329,43 @@ private fun AddBotTile(modifier: Modifier, onAdd: () -> Unit) {
 @Composable
 private fun RulesPanel(settings: GameSettings, editable: Boolean, onChange: (GameSettings) -> Unit) {
     val rules = settings.rules
+    val noMercy = rules.noMercy
     fun update(block: RuleSet.() -> RuleSet) = onChange(settings.copy(rules = rules.block()))
+    // No Mercy brings its own rules, so the ones it decides are shown on and locked.
     val toggles = listOf(
-        Triple("Stack +2 / +4", "Pass the pain along", rules.stackDraws) to { on: Boolean -> update { copy(stackDraws = on) } },
-        Triple("Jump in", "Same card, out of turn", rules.jumpIn) to { on: Boolean -> update { copy(jumpIn = on) } },
-        Triple("7-0", "7 swaps, 0 passes all", rules.sevenZero) to { on: Boolean -> update { copy(sevenZero = on) } },
-        Triple("Draw till playable", "Draw until you can play", rules.drawUntilPlayable) to { on: Boolean -> update { copy(drawUntilPlayable = on) } },
-        Triple("Challenge +4", "Call out an illegal +4", rules.challengeDrawFour) to { on: Boolean -> update { copy(challengeDrawFour = on) } },
+        RuleToggle("Stack draws", "Pass the pain along", rules.stacking, editable && !noMercy) { update { copy(stackDraws = it) } },
+        RuleToggle("Jump in", "Same card, out of turn", rules.jumpIn, editable) { update { copy(jumpIn = it) } },
+        RuleToggle("7-0", "7 swaps, 0 passes all", rules.swaps, editable && !noMercy) { update { copy(sevenZero = it) } },
+        RuleToggle("Draw till playable", "Draw until you can play", rules.drawsUntilPlayable, editable && !noMercy) {
+            update { copy(drawUntilPlayable = it) }
+        },
+        RuleToggle("Challenge +4", "Call out an illegal +4", rules.canChallenge, editable && !noMercy) {
+            update { copy(challengeDrawFour = it) }
+        },
     )
+
+    Panel {
+        SectionTitle(if (editable) "Game mode" else "Game mode (set by host)")
+        SettingRow("Mode", GameMode.entries, rules.mode, editable, ::modeLabel) { onChange(settings.copy(rules = rules.switchTo(it))) }
+        HintText(
+            if (noMercy) {
+                "168 cards with +4, +6, +10, Skip Everyone, Discard All and Color Roulette. " +
+                    "Reach ${rules.mercyLimit} cards and you're out of the round; the winner gets ${rules.knockoutBonus} for each."
+            } else {
+                "The 108-card game. Match by color or number, first to empty their hand wins the round."
+            },
+        )
+    }
 
     Panel {
         SectionTitle(if (editable) "House rules" else "House rules (set by host)")
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             toggles.chunked(2).forEach { row ->
                 Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { (rule, onToggle) ->
-                        RuleTile(rule.first, rule.second, rule.third, editable, Modifier.weight(1f).fillMaxHeight()) { onToggle(!rule.third) }
+                    row.forEach { rule ->
+                        RuleTile(rule.title, rule.detail, rule.on, rule.editable, Modifier.weight(1f).fillMaxHeight()) {
+                            rule.set(!rule.on)
+                        }
                     }
                     if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
@@ -351,13 +373,15 @@ private fun RulesPanel(settings: GameSettings, editable: Boolean, onChange: (Gam
         }
 
         Spacer(Modifier.height(2.dp))
-        SettingRow("Play to", listOf(0, 100, 250, 500), rules.targetScore, editable, { if (it == 0) "1 round" else "$it" }) {
+        SettingRow("Play to", targetScores(rules.mode), rules.targetScore, editable, { if (it == 0) "1 round" else "$it" }) {
             update { copy(targetScore = it) }
         }
-        SettingRow("Power finish", listOf(0, 2, 4), rules.powerFinishPenalty, editable, { if (it == 0) "Allowed" else "Draw $it" }) {
-            update { copy(powerFinishPenalty = it) }
+        if (!noMercy) {
+            SettingRow("Power finish", listOf(0, 2, 4), rules.powerFinishPenalty, editable, { if (it == 0) "Allowed" else "Draw $it" }) {
+                update { copy(powerFinishPenalty = it) }
+            }
+            HintText("Going out on a Skip, Reverse, +2 or Wild: the card still works, but you draw instead of winning")
         }
-        HintText("Going out on a Skip, Reverse, +2 or Wild: the card still works, but you draw instead of winning")
         SettingRow("Bots", BotLevel.entries, settings.botLevel, editable, { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } }) {
             onChange(settings.copy(botLevel = it))
         }
@@ -365,6 +389,26 @@ private fun RulesPanel(settings: GameSettings, editable: Boolean, onChange: (Gam
             onChange(settings.copy(turnTimerSeconds = it))
         }
     }
+}
+
+private class RuleToggle(
+    val title: String,
+    val detail: String,
+    val on: Boolean,
+    val editable: Boolean,
+    val set: (Boolean) -> Unit,
+)
+
+private fun modeLabel(mode: GameMode) = if (mode == GameMode.NO_MERCY) "No Mercy" else "Classic"
+
+/** No Mercy rounds pay out in hundreds, so it plays to bigger numbers. */
+private fun targetScores(mode: GameMode) = if (mode == GameMode.NO_MERCY) listOf(0, 500, 1000) else listOf(0, 100, 250, 500)
+
+/** Switching mode moves the target score onto the other mode's scale. */
+private fun RuleSet.switchTo(mode: GameMode): RuleSet = when {
+    mode == this.mode -> this
+    mode == GameMode.NO_MERCY -> copy(mode = mode, targetScore = 1000)
+    else -> copy(mode = mode, targetScore = if (targetScore == 1000) 500 else targetScore)
 }
 
 /** A house rule as a tile you tap on and off; outlined with a tick when it's on. */

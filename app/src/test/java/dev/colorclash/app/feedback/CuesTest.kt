@@ -94,4 +94,15 @@ class CuesTest {
         assertEquals(9, clips.size)
         assertTrue(clips.all { it.minGapMillis >= 800 })
     }
+
+    @Test
+    fun `the no mercy events all make a noise`() {
+        assertEquals(Cue(Sfx.LOSE, Buzz.HEAVY), cueFor(EventView.KnockedOut(0, 26), you = 0))
+        assertEquals(Cue(Sfx.LOSE, null), cueFor(EventView.KnockedOut(1, 26), you = 0))
+        assertEquals(Cue(Sfx.SKIP, Buzz.BUMP), cueFor(EventView.EveryoneSkipped(1), you = 0))
+        // Whoever played it isn't the one being skipped.
+        assertEquals(Cue(Sfx.SKIP, null), cueFor(EventView.EveryoneSkipped(0), you = 0))
+        assertEquals(Sfx.SHUFFLE, cueFor(EventView.DiscardedAll(0, CardColor.RED, emptyList()), you = 0)?.sfx)
+        assertEquals(Sfx.WILD, cueFor(EventView.ColorRoulette(1, CardColor.BLUE, 5), you = 0)?.sfx)
+    }
 }

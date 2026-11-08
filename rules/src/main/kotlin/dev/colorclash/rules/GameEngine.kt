@@ -55,6 +55,7 @@ object GameEngine {
         action as PlayerAction
         val p = action.player
         if (p !in state.players.indices) return "No such player"
+        if (state.players[p].knockedOut) return "You're out of this round"
         val isCurrent = p == state.current
 
         return when (action) {
@@ -72,6 +73,8 @@ object GameEngine {
             is Pass -> when {
                 phase !is Phase.DrewPlayable -> "Nothing to pass on"
                 !isCurrent -> "Not your turn"
+                // No Mercy makes you draw until something is playable, then play it.
+                state.rules.noMercy -> "You have to play it"
                 else -> null
             }
             is CallLastCard -> when {
@@ -94,6 +97,7 @@ object GameEngine {
             is SwapWith -> when {
                 phase != Phase.PickSwapTarget || !isCurrent -> "Not swapping"
                 action.target == p || action.target !in state.players.indices -> "Pick another player"
+                state.players[action.target].knockedOut -> "They're out of this round"
                 else -> null
             }
         }
@@ -122,7 +126,9 @@ object GameEngine {
 
     private fun canPlayOnTurn(state: GameState, card: Card): Boolean {
         if (state.pendingDraw > 0) {
-            if (!state.rules.stackDraws) return false
+            if (!state.rules.stacking) return false
+            // No Mercy stacks any draw card worth as much as the last one or more.
+            if (state.rules.noMercy) return card.face.drawCount >= state.pendingDrawValue
             return card.face == Face.WILD_DRAW_FOUR ||
                 (card.face == Face.DRAW_TWO && state.topCard.face == Face.DRAW_TWO)
         }

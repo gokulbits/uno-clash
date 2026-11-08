@@ -29,8 +29,20 @@ sealed interface EventView {
     @Serializable @SerialName("skipped")
     data class Skipped(val player: Int) : EventView
 
+    @Serializable @SerialName("skippedAll")
+    data class EveryoneSkipped(val player: Int) : EventView
+
     @Serializable @SerialName("reversed")
     data class Reversed(val direction: Direction) : EventView
+
+    @Serializable @SerialName("discardedAll")
+    data class DiscardedAll(val player: Int, val color: CardColor, val cards: List<Card>) : EventView
+
+    @Serializable @SerialName("roulette")
+    data class ColorRoulette(val player: Int, val color: CardColor, val cards: Int) : EventView
+
+    @Serializable @SerialName("knockedOut")
+    data class KnockedOut(val player: Int, val cards: Int) : EventView
 
     @Serializable @SerialName("colorChosen")
     data class WildColorChosen(val player: Int, val color: CardColor) : EventView
@@ -67,7 +79,11 @@ fun GameEvent.toView(viewer: Int): EventView = when (this) {
     is GameEvent.CardPlayed -> EventView.CardPlayed(player, card, jumpIn)
     is GameEvent.Drew -> EventView.Drew(player, cards.size, reason, cards.takeIf { player == viewer })
     is GameEvent.Skipped -> EventView.Skipped(player)
+    is GameEvent.EveryoneSkipped -> EventView.EveryoneSkipped(player)
     is GameEvent.Reversed -> EventView.Reversed(direction)
+    is GameEvent.DiscardedAll -> EventView.DiscardedAll(player, color, cards)
+    is GameEvent.ColorRoulette -> EventView.ColorRoulette(player, color, cards)
+    is GameEvent.KnockedOut -> EventView.KnockedOut(player, cards)
     is GameEvent.WildColorChosen -> EventView.WildColorChosen(player, color)
     is GameEvent.LastCardCalled -> EventView.LastCardCalled(player)
     is GameEvent.PenaltyApplied -> EventView.PenaltyApplied(player, caughtBy, cards)

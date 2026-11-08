@@ -27,6 +27,8 @@
 - 🔴 **UNO buzzer:** always on screen, never hints when to press it. Forget, and anyone can **CATCH!** you
 - 🤖 **Friends or bots:** fill empty seats with Easy or Normal bots, or practise alone on one phone
 - 🏠 **House rules:** stacking, jump-in, 7-0, draw until playable, +4 challenges, a power-card finish penalty
+- 💀 **No Mercy:** the whole 168-card game — +4, +6, +10, Skip Everyone, Discard All, Color Roulette —
+  and 25 cards in your hand puts you out of the round
 - 💥 **Juicy table:** flying cards, stamps that slam onto whoever gets skipped or hit with a +2/+4, spoken call-outs
 - 😂 **Trash talk:** emoji reactions and quick-chat bubbles that pop out of your seat
 - 🖼️ **Make it yours:** use a photo or one of 50 avatars (animals plus Malayalam, Tamil and English film
@@ -48,6 +50,8 @@
 Match the top card by **color** or **number**, or play a wild. First to empty their hand wins the round
 and scores the cards left in everyone else's hands. Play to 100, 250 or 500 points, or just one round.
 
+The host picks **Classic** or **No Mercy** in the lobby; the table below is the classic deck.
+
 | Card | What it does |
 | --- | --- |
 | **0–9** | Match by color or number. Scores its face value |
@@ -62,6 +66,30 @@ On your turn, hit **UNO!** before playing your second-to-last card. Every turn h
 
 Coming from a build before 1.0.0? Uninstall it first: those were signed with a temporary key, so
 Android won't update them. From 1.0.0 on, new versions install over the top.
+
+<details>
+<summary><b>💀 No Mercy</b></summary>
+
+A bigger, meaner deck: 168 cards, six new actions, and a hand that can get so big it throws you out. It
+brings its own rules, so stacking, the 7 swap, the 0 pass-along and draw-till-playable are all on and the
++4 challenge is gone.
+
+| Card | What it does |
+| --- | --- |
+| **+4** | A colored one this time: the next player draws 4 and misses their turn |
+| **Skip everyone** | Everyone else loses their turn, so you go straight again |
+| **Discard all** | Dump every other card of that color from your hand onto the pile |
+| **Reverse +4** | Flips the direction, then the next player that way draws 4 — with two players, that's you |
+| **+6** / **+10** | Pick the color; the next player draws 6 or 10 and misses their turn |
+| **Color roulette** | The next player names a color, turns cards over until it shows up, and keeps the lot |
+
+**Stacking:** answer a draw card with one worth as much or more (a +6 onto a +4, a +10 onto anything), and
+the whole pile lands on the first player who can't.
+
+**Mercy rule:** hit 25 cards and you're out for the rest of the round — your hand goes back into the deck at
+the next shuffle. Knock everyone out and the round is yours. The round winner scores 250 for each knockout
+on top of the cards left in everyone's hands, and games play to 1000.
+</details>
 
 <details>
 <summary><b>🏠 House rules</b></summary>

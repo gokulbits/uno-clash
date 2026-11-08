@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
@@ -118,7 +119,8 @@ private fun CacheDrawScope.faceCache(card: Card, dimmed: Boolean, measurer: Text
     val w = size.width
     val tint = Tint(dimmed)
     val number = card.face.number?.toString()
-    val big = number?.let { measurer.label(it, 0.66f * w, this) }
+    val bigText = number ?: card.face.centerText()
+    val big = bigText?.let { measurer.label(it, bigTextSize(it) * w, this) }
     val cornerText = number ?: card.face.cornerText()
     val corner = cornerText?.let { measurer.label(it, if (it.length > 1) 0.18f * w else 0.24f * w, this) }
 
@@ -160,6 +162,8 @@ private fun CacheDrawScope.faceCache(card: Card, dimmed: Boolean, measurer: Text
         quadrants = QUADRANTS.map { tint(it) },
         fills = when (card.face) {
             Face.DRAW_TWO -> listOf(tint(base), tint(base))
+            Face.DRAW_FOUR -> List(4) { tint(base) }
+            Face.DISCARD_ALL -> List(3) { tint(base) }
             Face.WILD_DRAW_FOUR -> DRAW_FOUR_FANS.map { tint(it) }
             else -> emptyList()
         },
@@ -252,8 +256,23 @@ fun HandFan(count: Int, modifier: Modifier = Modifier) {
 
 private fun Face.cornerText(): String? = when (this) {
     Face.DRAW_TWO -> "+2"
-    Face.WILD_DRAW_FOUR -> "+4"
+    Face.DRAW_FOUR, Face.WILD_DRAW_FOUR, Face.WILD_REVERSE_DRAW_FOUR -> "+4"
+    Face.WILD_DRAW_SIX -> "+6"
+    Face.WILD_DRAW_TEN -> "+10"
     else -> null
+}
+
+/** What goes in the middle when there's no digit and no icon for it. */
+private fun Face.centerText(): String? = when (this) {
+    Face.WILD_DRAW_SIX -> "+6"
+    Face.WILD_DRAW_TEN -> "+10"
+    else -> null
+}
+
+private fun bigTextSize(text: String) = when (text.length) {
+    1 -> 0.66f
+    2 -> 0.44f
+    else -> 0.33f
 }
 
 /** Unplayable cards are drawn a little darker and flatter, never muddied by a scrim. */
@@ -336,10 +355,25 @@ private fun DrawScope.drawFace(card: Card, face: FaceCache, shapes: Boolean) {
     val mid = center
     when (card.face) {
         Face.SKIP -> outlined(w, face.shade, face.ink, mid, w * 0.009f) { c, color, grow -> skipIcon(c, w * 0.25f, color, grow) }
+        Face.SKIP_EVERYONE ->
+            outlined(w, face.shade, face.ink, mid, w * 0.009f) { c, color, grow -> skipEveryoneIcon(c, w * 0.19f, color, grow) }
         Face.REVERSE -> outlined(w, face.shade, face.ink, mid, w * 0.009f) { c, color, grow -> reverseIcon(c, w * 0.25f, color, grow) }
-        Face.DRAW_TWO -> miniCards(face.fills, face.shade, face.white)
+        Face.DRAW_TWO, Face.DRAW_FOUR -> miniCards(face.fills, face.shade, face.white)
+        Face.DISCARD_ALL -> {
+            translate(top = -w * 0.07f) { miniCards(face.fills, face.shade, face.white) }
+            outlined(w, face.shade, face.ink, mid + Offset(0f, w * 0.27f), w * 0.009f) { c, color, grow ->
+                downArrow(c, w * 0.1f, color, grow)
+            }
+        }
         Face.WILD_DRAW_FOUR -> miniCards(face.fills, face.tint(GameTheme.wild), face.white)
+        // White over the rainbow oval, like the corner marks: the card's own ink would vanish into it.
+        Face.WILD_REVERSE_DRAW_FOUR ->
+            outlined(w, face.cornerShade, face.white, mid, w * 0.014f) { c, color, grow -> reverseIcon(c, w * 0.22f, color, grow) }
+        Face.WILD_COLOR_ROULETTE -> rouletteIcon(mid, w * 0.19f, face.quadrants, face.white, face.cornerShade)
         Face.WILD -> Unit // the oval says it all
+        Face.WILD_DRAW_SIX, Face.WILD_DRAW_TEN -> face.big?.let {
+            drawLabel(it, mid, face.white, face.cornerShade, w, outline = face.cornerShade, outlineWidth = w * 0.05f)
+        }
         else -> if (face.big != null) {
             drawLabel(face.big, mid, face.ink, face.shade, w, outline = face.shade)
             if (card.face == Face.SIX || card.face == Face.NINE) {
@@ -361,10 +395,12 @@ private fun DrawScope.drawFace(card: Card, face: FaceCache, shapes: Boolean) {
                         underline(at.x, at.y + w * 0.108f, Size(w * 0.13f, w * 0.024f), face.white, face.cornerShade, w * 0.01f)
                     }
                 }
-                card.face == Face.SKIP ->
+                card.face == Face.SKIP || card.face == Face.SKIP_EVERYONE ->
                     outlined(w * 0.9f, face.cornerShade, face.white, at, w * 0.022f) { c, color, grow -> skipIcon(c, w * 0.09f, color, grow) }
                 card.face == Face.REVERSE ->
                     outlined(w * 0.9f, face.cornerShade, face.white, at, w * 0.022f) { c, color, grow -> reverseIcon(c, w * 0.09f, color, grow) }
+                card.face == Face.DISCARD_ALL ->
+                    outlined(w * 0.9f, face.cornerShade, face.white, at, w * 0.022f) { c, color, grow -> downArrow(c, w * 0.085f, color, grow) }
                 else -> wildPip(at, w * 0.08f, face.quadrants, face.white, face.cornerShade)
             }
             // Under the corner mark, where it still shows in a tight fan. Drawn relative to the mark, so
@@ -548,6 +584,39 @@ private fun DrawScope.skipIcon(c: Offset, r: Float, ink: Color, grow: Float) {
     drawCircle(ink, rr, c, style = Stroke(sw + grow * 2))
     val d = rr * SQRT_HALF
     drawLine(ink, Offset(c.x - d, c.y + d), Offset(c.x + d, c.y - d), sw + grow * 2)
+}
+
+/** Skip Everyone: the no-entry sign with a little one either side, so it reads as all of them. */
+private fun DrawScope.skipEveryoneIcon(c: Offset, r: Float, ink: Color, grow: Float) {
+    skipIcon(c - Offset(r * 1.45f, 0f), r * 0.52f, ink, grow * 0.6f)
+    skipIcon(c + Offset(r * 1.45f, 0f), r * 0.52f, ink, grow * 0.6f)
+    skipIcon(c, r, ink, grow)
+}
+
+/** Discard All: the cards above it are on their way to the pile. */
+private fun DrawScope.downArrow(c: Offset, r: Float, ink: Color, grow: Float) {
+    val sw = r * 0.5f
+    val head = r * 0.85f
+    drawLine(ink, Offset(c.x, c.y - r), Offset(c.x, c.y + r - head * 0.7f), sw + grow * 2, StrokeCap.Round)
+    val tip = Path().apply {
+        moveTo(c.x, c.y + r)
+        lineTo(c.x + head, c.y + r - head)
+        lineTo(c.x - head, c.y + r - head)
+        close()
+    }
+    drawPath(tip, ink)
+    drawPath(tip, ink, style = Stroke(sw * 0.3f + grow * 2, join = StrokeJoin.Round))
+}
+
+/** Color Roulette: a little four-color wheel with a pointer over it. */
+private fun DrawScope.rouletteIcon(c: Offset, r: Float, quadrants: List<Color>, white: Color, edge: Color) {
+    val w = size.width
+    drawCircle(edge.copy(alpha = 0.45f), r, c + Offset(w * 0.02f, w * 0.03f))
+    wildPip(c, r, quadrants, white, edge)
+    val spoke = w * 0.016f
+    drawLine(white, c, c + Offset(r * 0.78f, -r * 0.78f), spoke * 2, StrokeCap.Round)
+    drawCircle(edge, spoke * 1.9f, c)
+    drawCircle(white, spoke * 1.2f, c)
 }
 
 private fun DrawScope.reverseIcon(c: Offset, r: Float, ink: Color, grow: Float) {

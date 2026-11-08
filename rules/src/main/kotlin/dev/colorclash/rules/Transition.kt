@@ -19,15 +19,19 @@ internal class Transition(state: GameState) {
     private val hands = state.players.map { it.hand.toMutableList() }.toMutableList()
     private val scores = state.players.map { it.score }.toMutableList()
     private val called = state.players.map { it.calledLastCard }.toMutableList()
+    private val knockedOut = state.players.map { it.knockedOut }.toMutableList()
     private val drawPile = state.drawPile.toMutableList()
     private val discard = state.discardPile.toMutableList()
+    private val setAside = state.setAside.toMutableList()
     private var activeColor = state.activeColor
     private var direction = state.direction
     private var current = state.current
     private var phase = state.phase
     private var pendingDraw = state.pendingDraw
+    private var pendingDrawValue = state.pendingDrawValue
     private var drawFourCheck = state.drawFourCheck
     private var exposed = state.exposedPlayer
+    private var knockouts = state.knockouts
     private var dealer = state.dealer
     private var round = state.round
     private val rng = Rng(state.rngState)
@@ -35,11 +39,14 @@ internal class Transition(state: GameState) {
 
     private val playerCount get() = hands.size
     private val top get() = discard.last()
+    private val finished get() = phase is Phase.RoundOver || phase is Phase.GameOver
+
+    private fun activeSeats() = hands.indices.filter { !knockedOut[it] }
 
     fun result() = EngineResult.Ok(
         GameState(
             rules = rules,
-            players = hands.indices.map { Player(hands[it].toList(), scores[it], called[it]) },
+            players = hands.indices.map { Player(hands[it].toList(), scores[it], called[it], knockedOut[it]) },
             drawPile = drawPile.toList(),
             discardPile = discard.toList(),
             activeColor = activeColor,
@@ -47,8 +54,11 @@ internal class Transition(state: GameState) {
             current = current,
             phase = phase,
             pendingDraw = pendingDraw,
+            pendingDrawValue = pendingDrawValue,
             drawFourCheck = drawFourCheck,
             exposedPlayer = exposed,
+            setAside = setAside.toList(),
+            knockouts = knockouts,
             dealer = dealer,
             round = round,
             rngState = rng.state,
@@ -72,6 +82,10 @@ internal class Transition(state: GameState) {
             is SwapWith -> swapHands(action.player, action.target)
             StartNextRound -> startRound(round + 1, (dealer + 1) % playerCount)
         }
+
+        // Mercy rule: knock everyone else out and the round is yours.
+        val left = activeSeats()
+        if (!finished && left.size == 1) finishRound(left.single())
     }
 
     fun startRound(round: Int, dealer: Int) {
@@ -79,13 +93,17 @@ internal class Transition(state: GameState) {
         this.dealer = dealer
         direction = Direction.CLOCKWISE
         pendingDraw = 0
+        pendingDrawValue = 0
         drawFourCheck = null
         exposed = null
         hands.forEach { it.clear() }
         called.fill(false)
+        knockedOut.fill(false)
+        knockouts = 0
+        setAside.clear()
         discard.clear()
         drawPile.clear()
-        drawPile += Deck.standard()
+        drawPile += Deck.forMode(rules.mode)
         rng.shuffle(drawPile)
         events += GameEvent.RoundStarted(round, dealer)
 
@@ -99,9 +117,9 @@ internal class Transition(state: GameState) {
             events += GameEvent.Dealt(seat, hands[seat].toList())
         }
 
-        // A Wild Draw 4 can't start a round; bury it and flip again.
+        // No Mercy opens on a number card; classic only refuses a Wild Draw 4.
         var starter = drawPile.removeAt(0)
-        while (starter.face == Face.WILD_DRAW_FOUR) {
+        while (if (rules.noMercy) starter.face.isAction else starter.face == Face.WILD_DRAW_FOUR) {
             drawPile += starter
             rng.shuffle(drawPile)
             starter = drawPile.removeAt(0)
@@ -146,37 +164,58 @@ internal class Transition(state: GameState) {
         phase = Phase.Turn
         drawFourCheck = null
 
-        if (hand.isEmpty() && rules.powerFinishPenalty > 0 && card.face.number == null) {
-            drawCards(player, rules.powerFinishPenalty, DrawReason.POWER_FINISH)
+        // Dumps the rest of its color before anything else, so it can win the round on its own.
+        if (card.face == Face.DISCARD_ALL) discardAll(player, checkNotNull(card.color))
+
+        if (hand.isEmpty() && rules.powerFinish > 0 && card.face.isAction) {
+            drawCards(player, rules.powerFinish, DrawReason.POWER_FINISH)
         }
         if (hand.isEmpty()) return goOut(player, card)
         if (hand.size == 1 && !called[player]) exposed = player
 
+        if (card.face.isDraw) pendingDrawValue = card.face.drawCount
+
         when (card.face) {
             Face.SKIP -> skipNext()
-            Face.REVERSE -> if (playerCount == 2) {
+            Face.SKIP_EVERYONE -> events += GameEvent.EveryoneSkipped(player) // Still their turn.
+            Face.REVERSE -> if (activeSeats().size == 2) {
                 skipNext()
             } else {
                 direction = direction.reversed()
                 events += GameEvent.Reversed(direction)
                 advance()
             }
-            Face.DRAW_TWO -> {
-                pendingDraw += 2
+            Face.DRAW_TWO, Face.DRAW_FOUR -> {
+                pendingDraw += card.face.drawCount
                 passDrawPenalty()
             }
             Face.WILD -> phase = Phase.PickColor()
             Face.WILD_DRAW_FOUR -> {
                 // Only a fresh +4 can be challenged, not one stacked on another draw.
-                if (rules.challengeDrawFour && pendingDraw == 0) {
+                if (rules.canChallenge && pendingDraw == 0) {
                     drawFourCheck = DrawFourCheck(player, guilty = hand.any { it.color == colorBefore })
                 }
                 pendingDraw += 4
                 phase = Phase.PickColor()
             }
-            Face.SEVEN -> if (rules.sevenZero) phase = Phase.PickSwapTarget else advance()
+            Face.WILD_DRAW_SIX, Face.WILD_DRAW_TEN -> {
+                pendingDraw += card.face.drawCount
+                phase = Phase.PickColor()
+            }
+            Face.WILD_REVERSE_DRAW_FOUR -> {
+                direction = direction.reversed()
+                events += GameEvent.Reversed(direction)
+                pendingDraw += 4
+                phase = Phase.PickColor()
+            }
+            Face.WILD_COLOR_ROULETTE -> {
+                // The player who gets hit names the color, so the turn passes before the pick.
+                current = seatAfter(player)
+                phase = Phase.PickColor(roulette = true)
+            }
+            Face.SEVEN -> if (rules.swaps) phase = Phase.PickSwapTarget else advance()
             Face.ZERO -> {
-                if (rules.sevenZero) rotateHands()
+                if (rules.swaps) rotateHands()
                 advance()
             }
             else -> advance()
@@ -184,39 +223,71 @@ internal class Transition(state: GameState) {
     }
 
     private fun chooseColor(player: Int, color: CardColor) {
-        val keepTurn = (phase as Phase.PickColor).keepTurn
+        val pick = phase as Phase.PickColor
         activeColor = color
         events += GameEvent.WildColorChosen(player, color)
         phase = Phase.Turn
         when {
-            keepTurn -> Unit
-            top.face == Face.WILD_DRAW_FOUR -> passDrawPenalty()
+            pick.roulette -> spinRoulette(player, color)
+            pick.keepTurn -> Unit
+            top.face.isDraw -> passDrawPenalty()
             else -> advance()
         }
     }
 
+    /** Turns the pile over one card at a time until [color] shows up; the lot goes to [player]. */
+    private fun spinRoulette(player: Int, color: CardColor) {
+        val revealed = mutableListOf<Card>()
+        while (true) {
+            val card = drawOne() ?: break
+            revealed += card
+            if (card.color == color) break
+        }
+        events += GameEvent.ColorRoulette(player, color, revealed.size)
+        receive(player, revealed, DrawReason.ROULETTE)
+        advance()
+    }
+
+    /** Everything else of that color goes under the Discard All card. */
+    private fun discardAll(player: Int, color: CardColor) {
+        val hand = hands[player]
+        val extras = hand.filter { it.color == color }
+        if (extras.isEmpty()) return
+        hand.removeAll(extras)
+        discard.addAll(discard.lastIndex, extras)
+        events += GameEvent.DiscardedAll(player, color, extras)
+    }
+
     /** Hands the pending draw to the next player, or applies it right away if they can't respond to it. */
     private fun passDrawPenalty() {
-        val victim = seatAfter(current)
-        if (rules.stackDraws || drawFourCheck != null) {
+        // A Wild Reverse +4 at a table of two turns the draw back on whoever played it.
+        val victim = if (top.face == Face.WILD_REVERSE_DRAW_FOUR && activeSeats().size == 2) {
+            current
+        } else {
+            seatAfter(current)
+        }
+        if (rules.stacking || drawFourCheck != null) {
             current = victim
             phase = Phase.Turn
             return
         }
         drawCards(victim, pendingDraw, DrawReason.DRAW_CARD)
         pendingDraw = 0
-        advance(2)
+        pendingDrawValue = 0
+        current = seatAfter(victim)
+        phase = Phase.Turn
     }
 
     private fun draw(player: Int) {
         if (pendingDraw > 0) {
             drawCards(player, pendingDraw, DrawReason.DRAW_CARD)
             pendingDraw = 0
+            pendingDrawValue = 0
             drawFourCheck = null
             advance()
             return
         }
-        val limit = if (rules.drawUntilPlayable) Int.MAX_VALUE else 1
+        val limit = if (rules.drawsUntilPlayable) Int.MAX_VALUE else 1
         val drawn = mutableListOf<Card>()
         while (drawn.size < limit) {
             val card = drawOne() ?: break
@@ -225,7 +296,11 @@ internal class Transition(state: GameState) {
         }
         receive(player, drawn, DrawReason.TURN)
         val last = drawn.lastOrNull()
-        if (last != null && matchesTop(last, top, activeColor)) phase = Phase.DrewPlayable(last.id) else advance()
+        if (last != null && !knockedOut[player] && matchesTop(last, top, activeColor)) {
+            phase = Phase.DrewPlayable(last.id)
+        } else {
+            advance()
+        }
     }
 
     private fun challenge(player: Int) {
@@ -236,10 +311,12 @@ internal class Transition(state: GameState) {
             // Offender takes the cards, challenger carries on with a normal turn.
             drawCards(check.offender, pendingDraw, DrawReason.CHALLENGE)
             pendingDraw = 0
+            pendingDrawValue = 0
             phase = Phase.Turn
         } else {
             drawCards(player, pendingDraw + 2, DrawReason.CHALLENGE)
             pendingDraw = 0
+            pendingDrawValue = 0
             advance()
         }
     }
@@ -264,37 +341,47 @@ internal class Transition(state: GameState) {
         called[target] = false
         if (exposed == player || exposed == target) exposed = null
         events += GameEvent.HandsSwapped(player, target)
+        checkMercy(player, target)
         advance()
     }
 
     private fun rotateHands() {
-        val before = hands.toList()
-        for (seat in before.indices) hands[seatAfter(seat)] = before[seat]
+        val seats = activeSeats()
+        if (seats.size < 2) return
+        val before = seats.map { hands[it] }
+        seats.forEachIndexed { i, seat -> hands[seatAfter(seat)] = before[i] }
         called.fill(false)
         exposed = null
         events += GameEvent.HandsRotated(direction)
+        checkMercy(*seats.toIntArray())
     }
 
     private fun goOut(player: Int, card: Card) {
         exposed = null
         // A draw card as the last card still hits the next player, and those cards count toward points.
-        val finalDraw = when (card.face) {
-            Face.DRAW_TWO -> pendingDraw + 2
-            Face.WILD_DRAW_FOUR -> pendingDraw + 4
-            else -> 0
-        }
+        val finalDraw = if (card.face.isDraw) pendingDraw + card.face.drawCount else 0
         pendingDraw = 0
+        pendingDrawValue = 0
         drawFourCheck = null
         if (finalDraw > 0) drawCards(seatAfter(player), finalDraw, DrawReason.DRAW_CARD)
+        finishRound(player)
+    }
 
-        val points = hands.indices.filter { it != player }.sumOf { hands[it].points() }
-        scores[player] += points
-        events += GameEvent.RoundWon(player, points, scores[player])
-        phase = if (scores[player] >= rules.targetScore) {
-            events += GameEvent.GameWon(player)
-            Phase.GameOver(player)
+    private fun finishRound(winner: Int) {
+        exposed = null
+        pendingDraw = 0
+        pendingDrawValue = 0
+        drawFourCheck = null
+        val inHands = hands.indices.filter { it != winner && !knockedOut[it] }.sumOf { hands[it].points() }
+        val bonus = if (rules.noMercy) knockouts * rules.knockoutBonus else 0
+        val points = inHands + bonus
+        scores[winner] += points
+        events += GameEvent.RoundWon(winner, points, scores[winner])
+        phase = if (scores[winner] >= rules.targetScore) {
+            events += GameEvent.GameWon(winner)
+            Phase.GameOver(winner)
         } else {
-            Phase.RoundOver(player, points)
+            Phase.RoundOver(winner, points)
         }
     }
 
@@ -309,15 +396,42 @@ internal class Transition(state: GameState) {
         if (cards.isNotEmpty()) called[player] = false
         if (exposed == player && hands[player].size != 1) exposed = null
         events += Drew(player, cards, reason)
+        checkMercy(player)
     }
 
-    /** Takes the top card, reshuffling the discard pile (minus its top) first if needed. Null if every card is in a hand. */
+    private fun checkMercy(vararg seats: Int) {
+        if (!rules.noMercy) return
+        for (seat in seats) if (!knockedOut[seat] && hands[seat].size >= rules.mercyLimit) knockOut(seat)
+    }
+
+    /** The mercy rule. Their hand waits in [setAside] until the pile needs refilling. */
+    private fun knockOut(player: Int) {
+        // Somebody has to be left to take the round.
+        if (activeSeats().size <= 1) return
+        val hand = hands[player]
+        events += GameEvent.KnockedOut(player, hand.size)
+        setAside += hand
+        hand.clear()
+        knockedOut[player] = true
+        called[player] = false
+        knockouts++
+        if (exposed == player) exposed = null
+    }
+
+    /**
+     * Takes the top card, refilling from the discard pile (minus its top) and any knocked-out hands
+     * first if needed. Null if every card is in a hand.
+     */
     private fun drawOne(): Card? {
-        if (drawPile.isEmpty() && discard.size > 1) {
-            val keep = discard.removeAt(discard.lastIndex)
-            drawPile += discard
-            discard.clear()
-            discard += keep
+        if (drawPile.isEmpty() && (discard.size > 1 || setAside.isNotEmpty())) {
+            if (discard.size > 1) {
+                val keep = discard.removeAt(discard.lastIndex)
+                drawPile += discard
+                discard.clear()
+                discard += keep
+            }
+            drawPile += setAside
+            setAside.clear()
             rng.shuffle(drawPile)
             events += GameEvent.DeckReshuffled(drawPile.size)
         }
@@ -334,5 +448,6 @@ internal class Transition(state: GameState) {
         phase = Phase.Turn
     }
 
-    private fun seatAfter(seat: Int, steps: Int = 1) = (seat + direction.step * steps).mod(playerCount)
+    private fun seatAfter(seat: Int, steps: Int = 1) =
+        nextSeat(seat, steps, direction, playerCount) { knockedOut[it] }
 }

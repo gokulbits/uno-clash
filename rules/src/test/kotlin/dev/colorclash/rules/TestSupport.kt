@@ -28,15 +28,21 @@ class Table {
         direction: Direction = Direction.CLOCKWISE,
         scores: List<Int> = List(hands.size) { 0 },
         discardBelow: List<Card> = emptyList(),
+        phase: Phase = Phase.Turn,
+        knockedOut: List<Boolean> = List(hands.size) { false },
+        setAside: List<Card> = emptyList(),
+        knockouts: Int = knockedOut.count { it },
     ) = GameState(
         rules = rules,
-        players = hands.mapIndexed { i, h -> Player(h, scores[i]) },
+        players = hands.mapIndexed { i, h -> Player(h, scores[i], knockedOut = knockedOut[i]) },
         drawPile = drawPile,
         discardPile = discardBelow + top,
         activeColor = activeColor,
         direction = direction,
         current = current,
-        phase = Phase.Turn,
+        phase = phase,
+        setAside = setAside,
+        knockouts = knockouts,
     )
 }
 
@@ -50,4 +56,4 @@ fun GameState.rejects(action: Action) {
     assertIs<EngineResult.Rejected>(GameEngine.reduce(this, action), "Expected $action to be rejected")
 }
 
-fun GameState.allCards(): List<Card> = drawPile + discardPile + players.flatMap { it.hand }
+fun GameState.allCards(): List<Card> = drawPile + discardPile + setAside + players.flatMap { it.hand }

@@ -9,6 +9,11 @@ project, never published. See README.md for the player-facing overview.
   is the single source of truth; `validate` decides legality and `legalActions` is just `validate` over
   candidates, so the UI and host can't disagree. `Transition` is a mutable scratch copy used inside one
   reduce call only. Randomness only through `Rng` (state stored in `GameState.rngState`).
+- `RuleSet.mode` picks Classic or No Mercy. No Mercy brings its own deck (`Deck.forMode`, 168 cards) and
+  forces most house rules, so the engine reads the derived accessors (`stacking`, `swaps`, `drawsUntilPlayable`,
+  `canChallenge`, `powerFinish`) and never the raw toggles — that way flipping back to Classic restores what
+  the host had set. A knocked-out seat keeps `knockedOut = true` with an empty hand and its cards in
+  `GameState.setAside` until the next reshuffle; `seatAfter` steps over it, so nothing else has to know.
 - `:protocol` — serializable messages and per-player views. `GameState.viewFor` and `GameEvent.toView`
   are where hidden information is stripped: other players' cards and their card ids must never reach a
   client (ids map to fixed cards, so an id is as good as the card). `ClientMessage.Hello` must stay
@@ -45,6 +50,8 @@ python tools/sfx/generate_sounds.py      # regenerate res/raw sounds (stdlib onl
 
 - JUnit silently skips test methods that don't return `Unit`. Write `fun x(): Unit = runBlocking { ... }`.
 - On Windows `--rerun-tasks` across modules can fail on locked build files; prefer `--rerun` on one task.
+- The Kotlin daemon here crashes now and then (an internal error, or a stale classes dir giving
+  `NoClassDefFoundError` in tests). It's the environment, not the code: `./gradlew --stop` and re-run.
 - AGP 9.4 needs Gradle 9.6+. Compile/target SDK is 37: Android 17 requires the runtime
   `ACCESS_LOCAL_NETWORK` permission before any LAN traffic (`Permissions.network()`).
 - JVM modules compile with `-Xjdk-release=17` so JDK 21-only APIs (e.g. `List.removeLast`) can't sneak in
@@ -74,4 +81,6 @@ python tools/sfx/generate_sounds.py      # regenerate res/raw sounds (stdlib onl
 
 ## Status
 
-All six phases are done. Remaining risk is real-device behaviour; work from `docs/DEVICE_TESTING.md` results.
+All six phases are done, plus the No Mercy mode. Remaining risk is real-device behaviour; work from
+`docs/DEVICE_TESTING.md` results. No Mercy has not been played on phones yet: the 168-card deck means much
+bigger hands, so check the hand strip and the seat fans at 25 cards.

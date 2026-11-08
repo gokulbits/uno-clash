@@ -59,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -360,7 +361,9 @@ private fun OpponentSeat(
         }
     }
     Column(
-        modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showCount = true },
+        modifier
+            .alpha(if (seat.knockedOut) 0.5f else 1f)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showCount = true },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -398,6 +401,7 @@ private fun OpponentSeat(
             style = MaterialTheme.typography.labelMedium,
         )
         when {
+            seat.knockedOut -> Tag("OUT", GameTheme.danger)
             canCatch -> Tag(
                 "CATCH!",
                 GameTheme.danger,

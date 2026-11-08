@@ -114,6 +114,8 @@ private val RETRY_EVERY = 400.milliseconds
 /** A simple player that only looks at its own view, like a real phone would. */
 fun decide(view: PlayerView): PlayerIntent? {
     if (view.phase == PhaseKind.ROUND_OVER || view.phase == PhaseKind.GAME_OVER) return null
+    // Knocked out by the mercy rule: nothing to do until the next round.
+    if (view.seats.getOrNull(view.you)?.knockedOut == true) return null
     view.exposedPlayer?.let { if (it != view.you) return PlayerIntent.Catch(it) }
     if (view.canCallLastCard) return PlayerIntent.CallLastCard
     if (!view.isYourTurn) return null
@@ -122,7 +124,8 @@ fun decide(view: PlayerView): PlayerIntent? {
             val color = view.hand.mapNotNull { it.color }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
             PlayerIntent.ChooseColor(color ?: CardColor.RED)
         }
-        PhaseKind.PICK_SWAP_TARGET -> PlayerIntent.SwapWith(view.seats.first { it.info.seat != view.you }.info.seat)
+        PhaseKind.PICK_SWAP_TARGET ->
+            PlayerIntent.SwapWith(view.seats.first { it.info.seat != view.you && !it.knockedOut }.info.seat)
         PhaseKind.DREW_PLAYABLE -> PlayerIntent.Play(checkNotNull(view.drawnCardId))
         else -> view.playable.firstOrNull()?.let { PlayerIntent.Play(it) }
             ?: if (view.canChallenge) PlayerIntent.Challenge else PlayerIntent.Draw
