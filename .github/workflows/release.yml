@@ -41,17 +41,43 @@ jobs:
           fi
 
       - name: Fetch Gradle
-        # The one download with no retry of its own, and services.gradle.org has handed out 504s
-        # for minutes at a time. Once the zip is here, setup-gradle caches it for later runs.
+        # services.gradle.org only redirects; the zip is a release asset on gradle/gradle-distributions,
+        # and github.com's download endpoint has been 504ing at some edges while the asset itself
+        # serves fine. So: try the wrapper, then go round that endpoint via the API.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           chmod +x gradlew
-          for attempt in 1 2 3 4 5; do
+
+          for attempt in 1 2 3; do
             if ./gradlew --version; then exit 0; fi
-            echo "::warning::Couldn't fetch Gradle (attempt $attempt of 5); retrying in 30s"
-            sleep 30
+            echo "::warning::Couldn't fetch Gradle (attempt $attempt of 3); retrying in 20s"
+            sleep 20
           done
-          echo "::error::Gradle wouldn't download. Check https://services.gradle.org/distributions/ is up, then re-run."
-          exit 1
+
+          props=gradle/wrapper/gradle-wrapper.properties
+          version=$(sed -n 's|^distributionUrl=.*/gradle-\(.*\)-bin\.zip$|\1|p' "$props")
+          if [ -z "$version" ]; then
+            echo "::error::Couldn't read the Gradle version out of $props"
+            exit 1
+          fi
+          echo "::warning::Direct download failed; fetching Gradle $version through the GitHub API"
+
+          zip="$RUNNER_TEMP/gradle-$version-bin.zip"
+          id=$(gh api "repos/gradle/gradle-distributions/releases/tags/v$version" \
+                 --jq ".assets[] | select(.name == \"gradle-$version-bin.zip\") | .id")
+          gh api -H 'Accept: application/octet-stream' \
+            "repos/gradle/gradle-distributions/releases/assets/$id" > "$zip"
+
+          # Never unpack bytes we haven't checked. The checksum file serves even when the zip won't.
+          want=$(curl -fsSL "https://services.gradle.org/distributions/gradle-$version-bin.zip.sha256")
+          echo "$want  $zip" | sha256sum -c -
+
+          # The wrapper happily takes a file: URL, but its own URL check only speaks http.
+          sed -i "s|^distributionUrl=.*|distributionUrl=file:$zip|" "$props"
+          sed -i "s|^validateDistributionUrl=.*|validateDistributionUrl=false|" "$props"
+          ./gradlew --version
 
       - name: Tests and lint
         run: ./gradlew test :app:lintRelease
