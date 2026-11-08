@@ -104,6 +104,7 @@ import dev.colorclash.app.ui.components.smileIcon
 import dev.colorclash.app.ui.game.fx.Anchor
 import dev.colorclash.app.ui.game.fx.FxLayer
 import dev.colorclash.app.ui.game.fx.TableFx
+import dev.colorclash.app.ui.room.RulesDialog
 import dev.colorclash.app.ui.settings.QuickSettingsDialog
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.app.ui.theme.LocalTableStyle
@@ -179,6 +180,7 @@ private fun GameTable(
     val controls = tableControls(view)
     var showPeek by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showRules by remember { mutableStateOf(false) }
     var showReactions by remember { mutableStateOf(false) }
     // The host rations reactions; grey the button out on the same numbers so a drop is never a surprise.
     var reactionsSent by remember { mutableIntStateOf(0) }
@@ -196,7 +198,7 @@ private fun GameTable(
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().graphicsLayer { translationX = fx.shake.value }) {
-            TableTopBar(view, onLeave = onLeave, onSettings = { showSettings = true })
+            TableTopBar(view, onLeave = onLeave, onRules = { showRules = true }, onSettings = { showSettings = true })
 
             OpponentsArc(
                 view = view,
@@ -301,6 +303,11 @@ private fun GameTable(
     }
 
     if (showSettings) QuickSettingsDialog(feedback, onFeedbackChange, play, onPlayChange, onDismiss = { showSettings = false })
+    if (showRules) {
+        RulesDialog(view.settings, onDismiss = { showRules = false }) {
+            BigButton("Got it", ButtonTone.PRIMARY, { showRules = false })
+        }
+    }
 }
 
 @Composable

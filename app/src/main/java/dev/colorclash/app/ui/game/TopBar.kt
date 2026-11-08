@@ -33,24 +33,26 @@ import dev.colorclash.app.ui.components.RoundIconButton
 import dev.colorclash.app.ui.components.colorDotsIcon
 import dev.colorclash.app.ui.components.exitIcon
 import dev.colorclash.app.ui.components.gearIcon
+import dev.colorclash.app.ui.components.infoIcon
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.PlayerView
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Leave, round and game length, your score, settings. */
+/** Leave, round and game length, your score, the rules, settings. */
 @Composable
-internal fun TableTopBar(view: PlayerView, onLeave: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
+internal fun TableTopBar(view: PlayerView, onLeave: () -> Unit, onRules: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
     val target = view.settings.rules.targetScore
     Row(
         modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         RoundIconButton("Leave game", onLeave) { exitIcon(it) }
         RoundBadge(view.round, target, Modifier.weight(1f).wrapContentWidth())
         ScoreChip(view.seats[view.you].score, target)
+        RoundIconButton("How to play", onRules) { infoIcon(it) }
         RoundIconButton("Settings", onSettings) { gearIcon(it) }
     }
 }

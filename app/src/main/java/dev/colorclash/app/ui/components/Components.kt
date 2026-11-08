@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -338,7 +339,13 @@ fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> 
 
 /** Anything that floats over the screen: dialogs, pickers, the scoreboard. Takes the table's color. */
 @Composable
-fun SheetSurface(modifier: Modifier = Modifier, onClose: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+fun SheetSurface(
+    modifier: Modifier = Modifier,
+    onClose: (() -> Unit)? = null,
+    /** Buttons pinned under the content, which scrolls on its own when it's too tall. */
+    footer: (@Composable RowScope.() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Box(
         modifier
             .fillMaxWidth()
@@ -347,15 +354,44 @@ fun SheetSurface(modifier: Modifier = Modifier, onClose: (() -> Unit)? = null, c
             .background(LocalTableStyle.current.top)
             .border(1.dp, GameTheme.glassEdge, GameTheme.sheetShape),
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            content = content,
-        )
+        Column(Modifier.fillMaxWidth()) {
+            val scroll = rememberScrollState()
+            val sheet = LocalTableStyle.current.top
+            Column(
+                Modifier
+                    .weight(1f, fill = false)
+                    .fillMaxWidth()
+                    // Content scrolling under pinned buttons fades out instead of being cut off.
+                    .then(
+                        if (footer == null) {
+                            Modifier
+                        } else {
+                            Modifier.drawWithContent {
+                                drawContent()
+                                if (scroll.canScrollForward) {
+                                    val fade = 28.dp.toPx()
+                                    drawRect(
+                                        Brush.verticalGradient(listOf(sheet.copy(alpha = 0f), sheet), startY = size.height - fade, endY = size.height),
+                                        topLeft = Offset(0f, size.height - fade),
+                                    )
+                                }
+                            }
+                        },
+                    )
+                    .verticalScroll(scroll)
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                content = content,
+            )
+            if (footer != null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    content = footer,
+                )
+            }
+        }
         if (onClose != null) {
             RoundIconButton("Close", onClose, Modifier.align(Alignment.TopEnd).padding(10.dp), size = 38.dp) { closeIcon(it) }
         }
@@ -371,10 +407,9 @@ fun GameDialog(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        SheetSurface {
+        SheetSurface(footer = actions) {
             SheetTitle(title)
             content()
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), content = actions)
         }
     }
 }

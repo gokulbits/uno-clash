@@ -107,6 +107,12 @@ fun LobbyScreen(
     onSettingsChange: (GameSettings) -> Unit,
     onLeave: () -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
+    // Everyone reads the rules on the way in: guests as they ready up, the host as they start.
+    var rulesFor by remember { mutableStateOf<RulesGate?>(null) }
+    // The settings this player last readied up for, so they hear about it when the host changes them.
+    var acceptedSettings by remember { mutableStateOf<GameSettings?>(null) }
+
     Column(Modifier.fillMaxSize()) {
         Column(
             Modifier
@@ -126,11 +132,47 @@ fun LobbyScreen(
                 PlayerGrid(lobby, hosting)
             }
 
-            RulesPanel(lobby.settings, editable = hosting != null, onSettingsChange)
+            RulesPanel(lobby.settings, editable = hosting != null, onSettingsChange, onHowToPlay = { rulesFor = RulesGate.LOOK })
         }
-        LobbyActions(lobby, hosting, startError, onStartError, onReady)
+        val me = lobby.seats.getOrNull(lobby.you)
+        val rulesChanged = hosting == null && me?.ready == false && acceptedSettings.let { it != null && it != lobby.settings }
+        LobbyActions(
+            lobby,
+            hosting,
+            startError,
+            notice = "The host changed the rules. Have a look, then ready up again.".takeIf { rulesChanged },
+            onStart = { rulesFor = RulesGate.START },
+            onReady = { ready -> if (ready) rulesFor = RulesGate.READY else onReady(false) },
+        )
+    }
+
+    rulesFor?.let { gate ->
+        val close = { rulesFor = null }
+        RulesDialog(lobby.settings, onDismiss = close) {
+            when (gate) {
+                RulesGate.LOOK -> BigButton("Got it", ButtonTone.PRIMARY, close, Modifier.weight(1f))
+                RulesGate.READY -> {
+                    BigButton("Not yet", ButtonTone.QUIET, close, Modifier.weight(1f))
+                    BigButton("I'm ready", ButtonTone.PRIMARY, {
+                        close()
+                        acceptedSettings = lobby.settings
+                        onReady(true)
+                    }, Modifier.weight(1f))
+                }
+                RulesGate.START -> {
+                    BigButton("Back", ButtonTone.QUIET, close, Modifier.weight(1f))
+                    BigButton("Start", ButtonTone.PRIMARY, {
+                        close()
+                        scope.launch { onStartError(hosting?.start()) }
+                    }, Modifier.weight(1f), enabled = lobby.canStart)
+                }
+            }
+        }
     }
 }
+
+/** Why the rules are up: just looking, or on the way to readying up or starting. */
+private enum class RulesGate { LOOK, READY, START }
 
 /** Start or ready up, pinned under the scrolling lobby so nobody has to go looking for it. */
 @Composable
@@ -138,10 +180,10 @@ private fun LobbyActions(
     lobby: LobbyView,
     hosting: LobbyHostControls?,
     startError: String?,
-    onStartError: (String?) -> Unit,
+    notice: String?,
+    onStart: () -> Unit,
     onReady: (Boolean) -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
     val me = lobby.seats.getOrNull(lobby.you)
     Column(
         Modifier
@@ -153,8 +195,9 @@ private fun LobbyActions(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         startError?.let { NoticeBar(it) }
+        notice?.let { NoticeBar(it, error = false) }
         if (hosting != null) {
-            BigButton(startLabel(lobby), ButtonTone.PRIMARY, { scope.launch { onStartError(hosting.start()) } }, enabled = lobby.canStart)
+            BigButton(startLabel(lobby), ButtonTone.PRIMARY, onStart, enabled = lobby.canStart)
         } else if (me != null) {
             if (me.ready) {
                 BigButton("Ready! Tap to undo", ButtonTone.QUIET, { onReady(false) }, icon = { checkIcon(it) })
@@ -327,7 +370,7 @@ private fun AddBotTile(modifier: Modifier, onAdd: () -> Unit) {
 }
 
 @Composable
-private fun RulesPanel(settings: GameSettings, editable: Boolean, onChange: (GameSettings) -> Unit) {
+private fun RulesPanel(settings: GameSettings, editable: Boolean, onChange: (GameSettings) -> Unit, onHowToPlay: () -> Unit) {
     val rules = settings.rules
     val noMercy = rules.noMercy
     fun update(block: RuleSet.() -> RuleSet) = onChange(settings.copy(rules = rules.block()))
@@ -355,6 +398,7 @@ private fun RulesPanel(settings: GameSettings, editable: Boolean, onChange: (Gam
                 "The 108-card game. Match by color or number, first to empty their hand wins the round."
             },
         )
+        TextLink("How to play with these rules", onHowToPlay)
     }
 
     Panel {

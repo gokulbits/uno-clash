@@ -154,10 +154,27 @@ fun seatStampsFor(event: EventView, you: Int): List<SeatStamp> = when (event) {
 /** A table-wide callout: an action card landing, a color picked, an UNO call. */
 data class Announcement(val title: String, val detail: String, val color: CardColor?, val spoken: String)
 
-fun announcementFor(event: EventView, view: PlayerView): Announcement? {
+/**
+ * What a draw card in [events] leaves someone to take: the whole stack, not just its own face.
+ * [view] is the table after those events, so a stack still waiting shows as its pending draw, and one
+ * that's already been dealt out (no stacking, or the round ending on it) as the Drew right behind it.
+ */
+fun drawTotalFor(played: EventView.CardPlayed, events: List<EventView>, view: PlayerView): Int {
+    val face = played.card.face
+    if (!face.isDraw) return 0
+    if (view.pendingDraw > 0) return view.pendingDraw
+    val after = events.indexOf(played).takeIf { it >= 0 } ?: return face.drawCount
+    val taken = events.drop(after + 1).firstOrNull { it is EventView.Drew && it.reason == DrawReason.DRAW_CARD } as EventView.Drew?
+    return maxOf(taken?.count ?: 0, face.drawCount)
+}
+
+/** [events] is the whole update [event] came in, so a stacked draw card can call out the full total. */
+fun announcementFor(event: EventView, view: PlayerView, events: List<EventView> = listOf(event)): Announcement? {
     fun who(seat: Int) = view.who(seat)
     return when (event) {
         is EventView.CardPlayed -> {
+            val total = drawTotalFor(event, events, view)
+            if (total > event.card.face.drawCount) return stackedAnnouncement(event, total, who(event.player))
             val (title, spoken, name) = when (event.card.face) {
                 Face.SKIP -> Triple("SKIP!", "Skip!", "a Skip")
                 Face.REVERSE -> Triple("REVERSE!", "Reverse!", "a Reverse")
@@ -189,6 +206,25 @@ fun announcementFor(event: EventView, view: PlayerView): Announcement? {
         else -> null
     }
 }
+
+/** A draw card piled onto others: the banner and the voice both give the running total. */
+private fun stackedAnnouncement(event: EventView.CardPlayed, total: Int, who: String): Announcement {
+    val reverse = event.card.face == Face.WILD_REVERSE_DRAW_FOUR
+    return Announcement(
+        title = if (reverse) "REVERSE +$total" else "+$total",
+        detail = "$who stacked ${event.card.label()}: +$total",
+        color = event.card.color,
+        spoken = "${if (reverse) "Reverse! Draw" else "Draw"} ${spokenNumber(total)}!",
+    )
+}
+
+private val SMALL_NUMBERS = listOf(
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
+)
+
+/** Words up to twenty, like the other call-outs; past that the speech engine reads digits fine. */
+fun spokenNumber(n: Int): String = SMALL_NUMBERS.getOrNull(n) ?: n.toString()
 
 /** One line of table chatter for an event, or null for events not worth a line. */
 fun describe(event: EventView, view: PlayerView): String? {

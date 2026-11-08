@@ -5,6 +5,7 @@ import dev.colorclash.protocol.GameSettings
 import dev.colorclash.protocol.PhaseKind
 import dev.colorclash.protocol.PlayerView
 import dev.colorclash.protocol.SeatInfo
+import dev.colorclash.protocol.toView
 import dev.colorclash.protocol.viewFor
 import dev.colorclash.rules.Action
 import dev.colorclash.rules.Card
@@ -226,6 +227,69 @@ class TableLogicTest {
         assertEquals("Dee called UNO", announcementFor(EventView.LastCardCalled(3), view)?.detail)
         assertNull(announcementFor(EventView.CardPlayed(1, card(9, Face.SEVEN)), view))
         assertNull(announcementFor(EventView.Skipped(1), view))
+    }
+
+    /** Plays [action] and returns the callout for the card it played, as seat [viewer] gets it. */
+    private fun GameState.calloutFor(action: Action, viewer: Int = 2): Announcement? {
+        val result = GameEngine.reduce(this, action) as EngineResult.Ok
+        val events = result.events.map { it.toView(viewer) }
+        val played = events.filterIsInstance<EventView.CardPlayed>().single()
+        return announcementFor(played, result.state.view(viewer), events)
+    }
+
+    @Test
+    fun `a stacked draw card calls out the whole stack`() {
+        val red2 = card(10, Face.DRAW_TWO)
+        val blue2 = card(11, Face.DRAW_TWO, CardColor.BLUE)
+        val spare = { s: Int -> List(3) { card(100 + s * 10 + it, Face.ONE, CardColor.BLUE) } }
+        val start = table(
+            hands = listOf(spare(0) + red2, spare(1) + blue2, spare(2), spare(3)),
+            rules = RuleSet(stackDraws = true),
+        )
+        // The first +2 is just a +2.
+        assertEquals("Draw two!", start.calloutFor(Action.PlayCard(0, red2.id))?.spoken)
+
+        val pending = start.then(Action.PlayCard(0, red2.id))
+        assertEquals(
+            Announcement("+4", "Ben stacked blue +2: +4", CardColor.BLUE, "Draw four!"),
+            pending.calloutFor(Action.PlayCard(1, blue2.id)),
+        )
+    }
+
+    @Test
+    fun `a no mercy wild stacked on a stack says the total`() {
+        val six = card(10, Face.WILD_DRAW_SIX, null)
+        val reverse = card(11, Face.WILD_REVERSE_DRAW_FOUR, null)
+        val waiting = table(rules = noMercy, current = 1).copy(
+            players = List(4) { s -> Player(List(3) { card(100 + s * 10 + it, Face.ONE, CardColor.BLUE) } + if (s == 1) listOf(six, reverse) else emptyList()) },
+            discardPile = listOf(card(2, Face.DRAW_FOUR)),
+            pendingDraw = 8,
+            pendingDrawValue = 4,
+        )
+        val sixCall = waiting.calloutFor(Action.PlayCard(1, six.id))
+        assertEquals("+14", sixCall?.title)
+        assertEquals("Draw fourteen!", sixCall?.spoken)
+        assertEquals("REVERSE +12", waiting.calloutFor(Action.PlayCard(1, reverse.id))?.title)
+        assertEquals("Reverse! Draw twelve!", waiting.calloutFor(Action.PlayCard(1, reverse.id))?.spoken)
+    }
+
+    @Test
+    fun `a stack ending the round still calls out what the next player takes`() {
+        val last = card(10, Face.DRAW_TWO)
+        val state = table(rules = RuleSet(stackDraws = true)).copy(
+            players = List(4) { s -> Player(if (s == 0) listOf(last) else List(3) { card(100 + s * 10 + it, Face.ONE, CardColor.BLUE) }) },
+            discardPile = listOf(card(2, Face.DRAW_TWO)),
+            pendingDraw = 4,
+            pendingDrawValue = 2,
+        )
+        assertEquals("+6", state.calloutFor(Action.PlayCard(0, last.id))?.title)
+    }
+
+    @Test
+    fun `numbers are spoken as words up to twenty`() {
+        assertEquals("six", spokenNumber(6))
+        assertEquals("twenty", spokenNumber(20))
+        assertEquals("24", spokenNumber(24))
     }
 
     // No Mercy

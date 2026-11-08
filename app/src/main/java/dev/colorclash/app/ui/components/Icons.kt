@@ -48,6 +48,14 @@ fun DrawScope.plusIcon(color: Color) {
     polyline(color, 0.14f, 0.5f, 0.86f, 0.5f)
 }
 
+/** A lowercase i: the rules. */
+fun DrawScope.infoIcon(color: Color) {
+    val w = size.width
+    drawCircle(color, radius = w * 0.1f, center = Offset(w * 0.5f, w * 0.18f))
+    polyline(color, 0.38f, 0.42f, 0.52f, 0.42f, 0.52f, 0.86f)
+    polyline(color, 0.36f, 0.86f, 0.66f, 0.86f)
+}
+
 fun DrawScope.chevronIcon(color: Color) = polyline(color, 0.34f, 0.14f, 0.7f, 0.5f, 0.34f, 0.86f)
 
 fun DrawScope.exitIcon(color: Color) {

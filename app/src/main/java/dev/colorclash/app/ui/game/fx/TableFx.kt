@@ -240,7 +240,7 @@ class TableFx {
                 continue
             }
             feedback.cue(cueFor(event, view.you))
-            val callout = announcementFor(event, view)
+            val callout = announcementFor(event, view, update.events)
             val seatStamps = seatStampsFor(event, view.you)
             // A played card is called out as it lands; a picked color or an UNO call straight away.
             if (event !is EventView.CardPlayed) callout?.let { announce(it, feedback) }

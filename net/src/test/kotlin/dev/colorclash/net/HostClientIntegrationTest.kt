@@ -16,6 +16,7 @@ import dev.colorclash.protocol.PlayerIntent
 import dev.colorclash.protocol.REACTION_COUNT
 import dev.colorclash.protocol.ServerMessage
 import dev.colorclash.protocol.WS_PATH
+import dev.colorclash.rules.BotLevel
 import dev.colorclash.rules.Deck
 import dev.colorclash.rules.GameMode
 import dev.colorclash.rules.RuleSet
@@ -81,6 +82,27 @@ class HostClientIntegrationTest {
                     }
                 }
             }
+        }
+    }
+
+    @Test
+    fun `changing the rules makes guests ready up again, other settings don't`(): Unit = runBlocking {
+        Harness().start().use { h ->
+            val clients = (1..2).map { h.client("P$it") }
+            clients.forEach { it.awaitConnected(); it.setReady(true) }
+            h.awaitHost { it.seats.size == 2 && it.canStart }
+
+            h.host.updateSettings(GameSettings(botLevel = BotLevel.EASY))
+            delay(200)
+            assertTrue(h.host.status.value.canStart, "a bot level change shouldn't un-ready anyone")
+
+            h.host.updateSettings(GameSettings(RuleSet(stackDraws = true), botLevel = BotLevel.EASY))
+            val after = h.awaitHost { !it.canStart }
+            assertTrue(after.seats.filter { !it.isHost }.none { it.ready })
+            assertNotNull(h.host.startGame(), "the game shouldn't start with nobody ready")
+
+            clients.forEach { it.setReady(true) }
+            h.awaitHost { it.canStart }
         }
     }
 

@@ -151,6 +151,10 @@ class GameHost(
                 lobbyChanged()
             }
             is Command.UpdateSettings -> if (game == null) {
+                // Guests readied up for the old rules; they get to see the new ones first.
+                if (command.settings.rules != settings.rules || command.settings.turnTimerSeconds != settings.turnTimerSeconds) {
+                    seats.forEach { if (!it.isBot && !it.isHost) it.ready = false }
+                }
                 settings = command.settings
                 lobbyChanged()
             }
