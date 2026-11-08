@@ -26,7 +26,13 @@ class UpdatesTest {
         assertEquals("1.0.2", release.version)
         assertEquals(13107200L, release.apkBytes)
         assertTrue(release.apkUrl.endsWith("color-clash-1.0.2.apk"))
-        assertEquals("• Faaa bubble", release.notes)
+        assertEquals(listOf("What's Changed", "Faaa bubble"), release.notes.map {
+            when (it) {
+                is NoteBlock.Heading -> it.text.plain()
+                is NoteBlock.Bullet -> it.text.plain()
+                else -> it.toString()
+            }
+        })
     }
 
     @Test

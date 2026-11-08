@@ -13,7 +13,7 @@ const val LATEST_RELEASE_URL = "https://api.github.com/repos/$RELEASE_REPO/relea
 /** The newest release on GitHub, boiled down to what the update prompt needs. */
 data class Release(
     val version: String,
-    val notes: String,
+    val notes: List<NoteBlock>,
     val apkUrl: String,
     val apkBytes: Long,
     /** Hex SHA-256 of the APK when the release publishes one, so the download can be checked. */
@@ -38,7 +38,7 @@ fun parseLatestRelease(json: String): Release? = runCatching {
 
     Release(
         version = tag.removePrefix("v"),
-        notes = releaseNotes(release["body"]?.jsonPrimitive?.content ?: ""),
+        notes = parseReleaseNotes(release["body"]?.jsonPrimitive?.content ?: ""),
         apkUrl = url,
         apkBytes = apk["size"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L,
         sha256 = apk["digest"]?.jsonPrimitive?.content?.removePrefix("sha256:")?.takeIf { it.length == 64 },
@@ -63,15 +63,6 @@ fun isNewer(current: String?, candidate: String): Boolean {
     }
     return false
 }
-
-/** GitHub's generated notes, cut down to a few bullets that fit in a dialog. */
-fun releaseNotes(body: String, maxLines: Int = 6): String = body.lineSequence()
-    .map { it.trim() }
-    .filterNot { it.isEmpty() || it.startsWith("#") || it.startsWith("**Full Changelog**") }
-    .map { it.removePrefix("* ").removePrefix("- ").substringBefore(" by @").trim() }
-    .filter { it.isNotEmpty() }
-    .take(maxLines)
-    .joinToString("\n") { "• $it" }
 
 /** Download size for the prompt, so nobody starts this on mobile data by accident. */
 fun sizeLabel(bytes: Long): String = when {

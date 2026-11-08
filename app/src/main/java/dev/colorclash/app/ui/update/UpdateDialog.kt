@@ -41,9 +41,7 @@ fun UpdateDialog(state: UpdateState, onUpdate: (Release) -> Unit, onDismiss: () 
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center,
                 )
-                if (state.release.notes.isNotEmpty()) {
-                    Text(state.release.notes, Modifier.fillMaxWidth(), color = GameTheme.mutedText, style = MaterialTheme.typography.bodySmall)
-                }
+                if (state.release.notes.isNotEmpty()) ReleaseNotes(state.release.notes)
                 val size = sizeLabel(state.release.apkBytes)
                 if (size.isNotEmpty()) HintText("Downloads $size over Wi-Fi or data.", textAlign = TextAlign.Center)
             }
