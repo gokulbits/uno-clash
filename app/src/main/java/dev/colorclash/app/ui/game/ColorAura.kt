@@ -3,186 +3,152 @@ package dev.colorclash.app.ui.game
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.colorclash.app.ui.theme.GameTheme
-import dev.colorclash.app.ui.theme.LocalTableStyle
 import dev.colorclash.rules.CardColor
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
- * The backdrop behind the discard pile: a blob of whatever color is in play, wobbling the way a drop
- * of liquid would and turning with the play, so a reverse is something you feel at the pile and not
- * only in the arrow. Every card that lands gives it a shove. Nothing here recomposes — the shape is
- * worked out while drawing, off a clock of its own.
+ * The mat the discard pile is dealt onto, in whatever color is in play. It is the one thing on the
+ * table that says what the color is when the top card can't — after a wild — so it stays put and
+ * stays readable: stripes drift across it, and it swells when the color changes or a card lands.
+ * The drift and the swell are read while drawing, so none of this recomposes.
  */
 @Composable
 fun ColorAura(
     color: CardColor?,
-    clockwise: Boolean,
-    /** Changes whenever a card lands, which is what shoves the blob. Null while the pile is empty. */
+    /** Changes whenever a card lands, which is what makes the mat swell. Null while the pile is empty. */
     beat: Any?,
     cardWidth: Dp,
 ) {
-    val tint by animateColorAsState(GameTheme.cardColor(color), tween(COLOR_FADE), label = "auraTint")
-    val strength by animateFloatAsState(if (color == null) 0f else 1f, tween(COLOR_FADE), label = "auraStrength")
-    val clock = rememberBlobClock(clockwise, color != null)
-    val splash = remember { Animatable(0f) }
+    val tint by animateColorAsState(GameTheme.cardColor(color), tween(COLOR_FADE), label = "matTint")
+    val strength by animateFloatAsState(if (color == null) 0f else 1f, tween(COLOR_FADE), label = "matStrength")
+    val drift = rememberDrift()
+    val land = remember { Animatable(0f) }
+    val change = remember { Animatable(0f) }
     LaunchedEffect(beat) {
         if (beat == null) return@LaunchedEffect
-        splash.snapTo(1f)
-        splash.animateTo(0f, spring(dampingRatio = 0.4f, stiffness = Spring.StiffnessLow))
+        land.snapTo(1f)
+        land.animateTo(0f, tween(LAND_MILLIS, easing = FastOutSlowInEasing))
     }
-    val fill = remember(tint) {
-        Brush.radialGradient(listOf(tint.copy(alpha = 0.85f), tint.copy(alpha = 0.5f), tint.copy(alpha = 0.18f)))
+    LaunchedEffect(color) {
+        if (color == null) return@LaunchedEffect
+        change.snapTo(1f)
+        change.animateTo(0f, tween(CHANGE_MILLIS, easing = FastOutSlowInEasing))
     }
     val shapes = LocalColorShapes.current
-    val path = remember { Path() }
-    Canvas(Modifier.freeSize(cardWidth * AURA_CARDS)) {
+    val edge = remember { Path() }
+    val reach = MAT_PAD + SOFT_STEP * SOFT_RINGS
+    Canvas(Modifier.freeSize(cardWidth + reach * 2, cardWidth * CARD_ASPECT + reach * 2)) {
         if (strength < 0.01f) return@Canvas
-        val radius = cardWidth.toPx() * BLOB_RADIUS * (1f + 0.1f * splash.value)
-        blob(path, radius, clock.turn.value, clock.time.value)
-        clipPath(path) { drawCircle(fill, radius * 1.45f, alpha = strength) }
-        drawPath(path, tint, alpha = strength * 0.9f, style = Stroke(BLOB_EDGE.toPx()))
-        drawPath(path, GameTheme.text, alpha = strength * 0.22f, style = Stroke(BLOB_SHINE.toPx()))
-        // With colors off, the blob is all there is to say which color is in play.
+        val pad = MAT_PAD.toPx()
+        val swell = 1f + 0.035f * land.value + 0.02f * change.value
+        val mat = Size((cardWidth.toPx() + pad * 2) * swell, (cardWidth.toPx() * CARD_ASPECT + pad * 2) * swell)
+        val at = Offset(center.x - mat.width / 2, center.y - mat.height / 2)
+        val corner = cardWidth.toPx() * 0.2f
+        softEdge(tint, at, mat, corner, strength)
+        drawRoundRect(tint, at, mat, CornerRadius(corner), alpha = strength * (0.55f + 0.2f * change.value))
+        edge.reset()
+        edge.addRoundRect(RoundRect(Rect(at, mat), CornerRadius(corner)))
+        clipPath(edge) { stripes(mat, at, drift.value, strength) }
+        drawRoundRect(
+            lerp(tint, GameTheme.text, 0.45f),
+            at,
+            mat,
+            CornerRadius(corner),
+            alpha = strength * 0.8f,
+            style = Stroke(MAT_BORDER.toPx()),
+        )
+        // With colors off, the mat is all there is to say which color is in play.
         if (shapes && color != null) {
-            val up = radius * BLOB_TALL * 0.8f
-            val r = cardWidth.toPx() * 0.07f
+            val away = mat.height / 2 - pad * swell / 2
             val mark = GameTheme.contentOn(tint).copy(alpha = strength * 0.9f)
-            colorShape(color, center - Offset(0f, up), r, mark, Color.Transparent, 0f)
-            colorShape(color, center + Offset(0f, up), r, mark, Color.Transparent, 0f)
+            colorShape(color, center - Offset(0f, away), pad * 0.4f, mark, Color.Transparent, 0f)
+            colorShape(color, center + Offset(0f, away), pad * 0.4f, mark, Color.Transparent, 0f)
         }
     }
 }
 
-/** Rebuilds [path] as the blob's outline: a circle pushed around by three waves running over it. */
-private fun DrawScope.blob(path: Path, radius: Float, turn: Float, time: Float) {
-    path.reset()
-    val breath = 1f + 0.03f * sin(time * BREATH_RATE)
-    for (i in 0..BLOB_POINTS) {
-        val a = i.toFloat() / BLOB_POINTS * TAU
-        val wobble = 1f + 0.085f * sin(3f * a + turn * 2f) + 0.055f * sin(5f * a - turn * 1.4f) + 0.04f * sin(2f * a + turn * 3f)
-        val r = radius * wobble * breath
-        val x = center.x + cos(a) * r
-        val y = center.y + sin(a) * r * BLOB_TALL
-        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+/** Rings of the mat's shape, each wider and no stronger, so its edge melts into the table. */
+private fun DrawScope.softEdge(tint: Color, at: Offset, mat: Size, corner: Float, strength: Float) {
+    val step = SOFT_STEP.toPx()
+    for (ring in SOFT_RINGS downTo 1) {
+        val out = step * ring
+        drawRoundRect(
+            tint,
+            Offset(at.x - out, at.y - out),
+            Size(mat.width + out * 2, mat.height + out * 2),
+            CornerRadius(corner + out),
+            alpha = strength * SOFT_ALPHA,
+        )
     }
-    path.close()
 }
 
-/** The whole table lit by the color in play, which is how you spot it from across the room. */
-@Composable
-fun ColorWash(color: CardColor?) {
-    val tint by animateColorAsState(GameTheme.cardColor(color), tween(COLOR_FADE), label = "washTint")
-    val strength by animateFloatAsState(if (color == null) 0f else 1f, tween(COLOR_FADE), label = "washStrength")
-    val breathe = rememberBreathe()
-    val glow = LocalTableStyle.current.glow
-    Box(
-        Modifier.fillMaxSize().drawBehind {
-            if (strength < 0.01f) return@drawBehind
-            drawRect(
-                Brush.radialGradient(
-                    listOf(tint, tint.copy(alpha = 0.45f), Color.Transparent),
-                    center = Offset(size.width / 2f, size.height * WASH_CENTER),
-                    radius = size.minDimension * 1.15f,
-                ),
-                alpha = strength * glow * (0.13f + 0.05f * breathe.value),
-            )
-        },
-    )
+/** Light running across the mat on the diagonal. [drift] is one stripe's worth, so it never jumps. */
+private fun DrawScope.stripes(mat: Size, at: Offset, drift: Float, strength: Float) {
+    val gap = STRIPE_GAP.toPx()
+    val shade = GameTheme.text.copy(alpha = strength * 0.07f)
+    val width = STRIPE_WIDTH.toPx()
+    var x = -mat.height
+    while (x < mat.width + mat.height) {
+        val edge = at.x + x + drift * gap
+        drawLine(shade, Offset(edge - mat.height, at.y), Offset(edge, at.y + mat.height), strokeWidth = width)
+        x += gap
+    }
 }
 
-/** A slow breath, 0 to 1 and back. The State is what's passed on, so reading it doesn't recompose. */
+/** One stripe's worth of travel, over and over, which reads as an endless drift. */
 @Composable
-private fun rememberBreathe(): State<Float> = rememberInfiniteTransition(label = "breathe").animateFloat(
+private fun rememberDrift(): State<Float> = rememberInfiniteTransition(label = "drift").animateFloat(
     initialValue = 0f,
     targetValue = 1f,
-    animationSpec = infiniteRepeatable(tween(BREATH_MILLIS, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-    label = "breathePhase",
+    animationSpec = infiniteRepeatable(tween(DRIFT_MILLIS, easing = LinearEasing)),
+    label = "driftPhase",
 )
 
-/** [turn] runs the way the play does, [time] always forward. Both in seconds-worth of radians. */
-private class BlobClock(val turn: State<Float>, val time: State<Float>)
-
-/**
- * Counted up by hand off the frame clock rather than animated to a target: a reverse only changes
- * which way [BlobClock.turn] is counting, so the blob carries on from the shape it's in.
- */
-@Composable
-private fun rememberBlobClock(clockwise: Boolean, live: Boolean): BlobClock {
-    val turn = remember { mutableFloatStateOf(0f) }
-    val time = remember { mutableFloatStateOf(0f) }
-    val clock = remember { BlobClock(turn, time) }
-    val way = rememberUpdatedState(if (clockwise) 1f else -1f)
-    LaunchedEffect(live) {
-        if (!live) return@LaunchedEffect
-        var last = 0L
-        while (true) {
-            withFrameNanos { now ->
-                if (last != 0L) {
-                    val seconds = (now - last) / 1_000_000_000f
-                    turn.value = (turn.value + TURN_RATE * way.value * seconds).mod(TAU)
-                    time.value = (time.value + seconds).mod(TIME_WRAP)
-                }
-                last = now
-            }
-        }
-    }
-    return clock
+/** Measures at the given size but takes up nothing, so it sits centered behind the pile. */
+private fun Modifier.freeSize(width: Dp, height: Dp) = layout { measurable, _ ->
+    val w = width.roundToPx()
+    val h = height.roundToPx()
+    val placeable = measurable.measure(Constraints.fixed(w, h))
+    layout(0, 0) { placeable.place(-w / 2, -h / 2) }
 }
 
-/** Measures at [side] but takes up nothing, so it sits centered behind the pile without moving it. */
-private fun Modifier.freeSize(side: Dp) = layout { measurable, _ ->
-    val px = side.roundToPx()
-    val placeable = measurable.measure(Constraints.fixed(px, px))
-    layout(0, 0) { placeable.place(-px / 2, -px / 2) }
-}
-
-private const val TAU = (Math.PI * 2).toFloat()
 private const val COLOR_FADE = 420
-private const val BREATH_MILLIS = 2400
-private const val BREATH_RATE = 1.1f
-/** Radians a second the waves travel round the blob. */
-private const val TURN_RATE = 0.5f
-/** Seconds before the clock wraps, long enough that nobody sees it and short enough to stay precise. */
-private const val TIME_WRAP = 3600f
-private const val BLOB_POINTS = 96
-/** The blob's radius and how much taller than wide it sits, both in cards. */
-private const val BLOB_RADIUS = 1.02f
-private const val BLOB_TALL = 1.12f
-private const val AURA_CARDS = 2.9f
-private const val WASH_CENTER = 0.44f
-private val BLOB_EDGE = 2.5.dp
-private val BLOB_SHINE = 1.dp
+private const val LAND_MILLIS = 600
+private const val CHANGE_MILLIS = 900
+private const val DRIFT_MILLIS = 2860
+/** How far the mat reaches past the cards, before its soft edge. */
+private val MAT_PAD = 15.dp
+private val MAT_BORDER = 2.dp
+private val SOFT_STEP = 5.dp
+private const val SOFT_RINGS = 4
+private const val SOFT_ALPHA = 0.1f
+private val STRIPE_GAP = 26.dp
+private val STRIPE_WIDTH = 7.dp

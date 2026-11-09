@@ -61,9 +61,11 @@ class LooksTest {
     }
 
     @Test
-    fun `only the oled table holds the color wash back`() {
-        assertEquals(0.4f, GameTheme.oledTable.glow)
-        assertTrue(GameTheme.tables.filter { it !== GameTheme.oledTable }.all { it.glow == 1f })
+    fun `only the oled table dims the button rim`() {
+        assertTrue(GameTheme.oledTable.rim != Color.White)
+        // Still has to draw a button on black: the rim sits between the table and the quiet fill.
+        assertTrue(GameTheme.contrast(GameTheme.oledTable.rim, GameTheme.oledTable.top) > 2f)
+        assertTrue(GameTheme.tables.filter { it !== GameTheme.oledTable }.all { it.rim == Color.White })
     }
 
     @Test

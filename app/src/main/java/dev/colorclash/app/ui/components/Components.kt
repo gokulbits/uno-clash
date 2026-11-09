@@ -44,12 +44,17 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -130,42 +135,83 @@ private fun quietFill(): Color = LocalTableStyle.current.quiet
 @Composable
 private fun disabledFill(): Color = LocalTableStyle.current.disabled
 
+/** The line round a button, from whichever table the player picked. */
+@Composable
+private fun rimColor(): Color = LocalTableStyle.current.rim
+
 /**
- * The look every button shares, in the manner of today's big mobile games: flat color, a hard ink
- * outline, and a solid shadow of its own color behind it that the button slides into when pressed.
- * [drop] is how far that shadow sits off; at zero the shape stays flat, which is what the pills
- * inside a track want. [sink] from 0 to 1 is read while drawing, so a press never recomposes.
+ * The look every button shares: a [rim] line round the outside like the one on the cards, a dark
+ * edge inside it, then a glossy face in the button's own color with a curve of light over the top
+ * and a couple of bubbles in the corner. [drop] is how far it stands above its shadow; at zero the
+ * shape sits flat, which is what the pills inside a track want. [sink] from 0 to 1 presses it down
+ * and dulls the shine, and is read while drawing, so a press never recomposes.
  */
-private fun Modifier.chunky(fill: Color, corner: Dp, drop: Dp, sink: State<Float>): Modifier = drawWithCache {
-    val ink = BUTTON_INK.toPx()
+private fun Modifier.chunky(fill: Color, rim: Color, corner: Dp, drop: Dp, sink: State<Float>): Modifier = drawWithCache {
+    val border = BUTTON_BORDER.toPx()
+    val edge = BUTTON_EDGE.toPx()
     val dropPx = drop.toPx()
-    // Half an outline sits outside the shape it strokes, so everything is inset by that much.
-    val inset = ink / 2
-    val faceSize = Size(size.width - dropPx - ink, size.height - dropPx - ink)
-    val radius = CornerRadius(corner.toPx())
-    val shadow = lerp(fill, GameTheme.shadow, 0.62f)
-    // The one soft thing about it: a hint of light across the top, gone by halfway down.
-    val sheen = Brush.verticalGradient(
-        listOf(GameTheme.text.copy(alpha = 0.2f), GameTheme.text.copy(alpha = 0f)),
+    val body = Size(size.width, size.height - dropPx)
+    val outer = CornerRadius(corner.toPx())
+    val edgeSize = Size(body.width - border * 2, body.height - border * 2)
+    val edgeCorner = CornerRadius((corner.toPx() - border).coerceAtLeast(0f))
+    val inset = border + edge
+    val faceSize = Size(body.width - inset * 2, body.height - inset * 2)
+    val faceCorner = CornerRadius((corner.toPx() - inset).coerceAtLeast(0f))
+    val facePath = Path().apply { addRoundRect(RoundRect(Rect(Offset.Zero, faceSize), faceCorner)) }
+    val deep = lerp(fill, GameTheme.shadow, 0.5f)
+    val face = Brush.verticalGradient(
+        listOf(lerp(fill, GameTheme.text, 0.22f), fill, lerp(fill, GameTheme.shadow, 0.18f)),
+        startY = 0f,
+        endY = faceSize.height,
+    )
+    // An oval hanging off the top: what shows of it is the curve of light across the face.
+    val gloss = Brush.verticalGradient(
+        listOf(GameTheme.text.copy(alpha = 0.34f), GameTheme.text.copy(alpha = 0.05f)),
         startY = 0f,
         endY = faceSize.height * 0.5f,
     )
+    val shadow = GameTheme.shadow.copy(alpha = 0.3f)
     onDrawBehind {
-        val move = dropPx * sink.value.coerceIn(0f, 1f)
-        if (dropPx > 0f) drawRoundRect(shadow, Offset(inset + dropPx, inset + dropPx), faceSize, radius)
-        translate(inset + move, inset + move) {
-            drawRoundRect(fill, size = faceSize, cornerRadius = radius)
-            drawRoundRect(sheen, size = Size(faceSize.width, faceSize.height * 0.5f), cornerRadius = radius)
-            drawRoundRect(GameTheme.ink, size = faceSize, cornerRadius = radius, style = Stroke(ink))
+        val press = sink.value.coerceIn(0f, 1f)
+        if (dropPx > 0f) drawRoundRect(shadow, Offset(0f, dropPx), body, outer)
+        translate(0f, dropPx * press) {
+            drawRoundRect(rim, size = body, cornerRadius = outer)
+            drawRoundRect(deep, Offset(border, border), edgeSize, edgeCorner)
+            translate(inset, inset) {
+                clipPath(facePath) {
+                    drawRect(face, size = faceSize)
+                    drawOval(
+                        gloss,
+                        Offset(faceSize.width * 0.05f, -faceSize.height * 0.5f),
+                        Size(faceSize.width * 0.9f, faceSize.height),
+                        alpha = 1f - 0.7f * press,
+                    )
+                    bubbles(faceSize, 1f - 0.8f * press)
+                    // Held down, the whole face goes a shade darker.
+                    if (press > 0f) drawRect(GameTheme.shadow, size = faceSize, alpha = 0.16f * press)
+                }
+            }
         }
     }
 }
 
-/** Moves a button's words along with its face as it slides. */
+/** The pair of highlights in the top corner. A long button gets them at both ends, as glass would. */
+private fun DrawScope.bubbles(face: Size, alpha: Float) {
+    if (alpha <= 0.01f) return
+    val h = face.height
+    fun pair(x: Float, flip: Float) {
+        val big = Offset(x + flip * h * 0.42f, h * 0.26f)
+        val small = Offset(x + flip * h * 0.72f, h * 0.2f)
+        rotate(-18f * flip, big) { drawOval(GameTheme.text, big - Offset(h * 0.14f, h * 0.07f), Size(h * 0.28f, h * 0.14f), alpha = alpha * 0.5f) }
+        rotate(-18f * flip, small) { drawOval(GameTheme.text, small - Offset(h * 0.08f, h * 0.05f), Size(h * 0.16f, h * 0.1f), alpha = alpha * 0.4f) }
+    }
+    pair(face.width, -1f)
+    if (face.width > h * 2.2f) pair(0f, 1f)
+}
+
+/** Moves a button's words down along with its face. */
 private fun Modifier.slide(drop: Dp, sink: State<Float>): Modifier = graphicsLayer {
-    val move = drop.toPx() * sink.value.coerceIn(0f, 1f)
-    translationX = move
-    translationY = move
+    translationY = drop.toPx() * sink.value.coerceIn(0f, 1f)
 }
 
 /** Pressed: down into the shadow, with a little squash and bounce on the way back. */
@@ -213,13 +259,13 @@ private fun ArcadeButton(
             .height(height)
             .squash(sink)
             // Round in proportion to how tall it is, so a small button isn't a scaled-down big one.
-            .chunky(fill, height * BUTTON_ROUNDNESS, BUTTON_DROP, sink)
+            .chunky(fill, rimColor(), height * BUTTON_ROUNDNESS, BUTTON_DROP, sink)
             .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick),
         propagateMinConstraints = true,
     ) {
         Row(
             Modifier
-                .padding(start = 18.dp, end = 18.dp + BUTTON_DROP, bottom = BUTTON_DROP)
+                .padding(start = 18.dp, end = 18.dp, bottom = BUTTON_DROP)
                 .slide(BUTTON_DROP, sink),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
@@ -289,14 +335,14 @@ fun RoundButton(
         modifier
             .size(size)
             .squash(sink)
-            .chunky(fill, size / 2, drop, sink)
+            .chunky(fill, rimColor(), size / 2, drop, sink)
             .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClickLabel = label, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
         Box(
             Modifier
-                .padding(end = drop, bottom = drop)
+                .padding(bottom = drop)
                 .slide(drop, sink),
             contentAlignment = Alignment.Center,
         ) {
@@ -485,7 +531,7 @@ fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
 fun ChoicePill(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         modifier
-            .then(if (selected) Modifier.chunky(GameTheme.highlight, 20.dp, 0.dp, NOT_PRESSED) else Modifier.clip(GameTheme.pillShape).background(GameTheme.panelStrong))
+            .then(if (selected) Modifier.chunky(GameTheme.highlight, rimColor(), 20.dp, 0.dp, NOT_PRESSED) else Modifier.clip(GameTheme.pillShape).background(GameTheme.panelStrong))
             .clip(GameTheme.pillShape)
             .clickable(role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -512,6 +558,7 @@ private fun PickLabel(text: String, selected: Boolean) {
 @Composable
 fun <T> SegmentedPicker(options: List<T>, selected: T, enabled: Boolean, label: (T) -> String, onPick: (T) -> Unit, modifier: Modifier = Modifier) {
     val lockedPick = quietFill()
+    val rim = rimColor()
     Row(
         modifier
             .clip(GameTheme.pillShape)
@@ -524,7 +571,7 @@ fun <T> SegmentedPicker(options: List<T>, selected: T, enabled: Boolean, label: 
             Box(
                 Modifier
                     .weight(1f)
-                    .then(if (picked) Modifier.chunky(if (enabled) GameTheme.highlight else lockedPick, 18.dp, 0.dp, NOT_PRESSED) else Modifier)
+                    .then(if (picked) Modifier.chunky(if (enabled) GameTheme.highlight else lockedPick, rim, 18.dp, 0.dp, NOT_PRESSED) else Modifier)
                     .clip(GameTheme.pillShape)
                     .clickable(enabled = enabled && !picked, role = Role.RadioButton) { onPick(option) }
                     .padding(vertical = 8.dp),
@@ -674,9 +721,10 @@ fun RoomCodeTiles(code: String, modifier: Modifier = Modifier) {
     }
 }
 
-private val BUTTON_INK = 2.5.dp
-private val BUTTON_DROP = 5.dp
-private const val BUTTON_ROUNDNESS = 0.34f
+private val BUTTON_BORDER = 3.dp
+private val BUTTON_EDGE = 2.dp
+private val BUTTON_DROP = 4.dp
+private const val BUTTON_ROUNDNESS = 0.42f
 private val NOT_PRESSED: State<Float> = mutableFloatStateOf(0f)
 private val ROUND_BUTTON_SIZE = 46.dp
 private const val MAX_ROOM_CODE = 6

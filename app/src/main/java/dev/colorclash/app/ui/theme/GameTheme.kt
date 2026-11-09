@@ -109,7 +109,8 @@ object GameTheme {
         edge = Color(0x38FFFFFF),
         quiet = Color(0xFF2E2E2E),
         disabled = Color(0xFF161616),
-        glow = 0.4f,
+        // A white line round every button would be the brightest thing on the screen here.
+        rim = Color(0xFF5A5A5A),
     )
     val oledCardBack = CardBackStyle(
         "OLED", Color(0xFF141414), Color.Black, Color(0xFF2A2A2A), Color(0xFF0C0C0C), Color.Black,
