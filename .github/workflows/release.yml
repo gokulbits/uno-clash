@@ -121,6 +121,8 @@ jobs:
             echo "::error::Not publishing a release signed with a throwaway key. Add the signing secrets first (README > Releases)."
             exit 1
           fi
+          # A draft, so the notes can be read over before players are offered the update.
           gh release create "$GITHUB_REF_NAME" color-clash-*.apk \
             --title "Color Clash $CC_VERSION_NAME" \
-            --generate-notes
+            --generate-notes \
+            --draft
