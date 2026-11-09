@@ -29,6 +29,7 @@ data class CardBackStyle(
  * A table, and the surfaces that sit on it. The panels are see-through white over the table, except
  * on [GameTheme.oledTable], where they stay close to off so the screen's black really is black.
  * [quiet] and [disabled] fill the buttons that back out and the ones that can't be pressed yet.
+ * [glow] scales how far the active color washes over the table, turned down where lit pixels cost.
  */
 data class TableStyle(
     val name: String,
@@ -39,6 +40,7 @@ data class TableStyle(
     val edge: Color = Color(0x33FFFFFF),
     val quiet: Color = lerp(top, Color.White, 0.2f),
     val disabled: Color = lerp(top, Color.Black, 0.3f),
+    val glow: Float = 1f,
 ) {
     val brush: Brush = Brush.verticalGradient(listOf(top, bottom))
 }

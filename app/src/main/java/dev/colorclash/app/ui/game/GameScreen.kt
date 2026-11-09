@@ -197,6 +197,7 @@ private fun GameTable(
     BackHandler(enabled = roundOver && !scoresClosed) { scoresClosed = true }
 
     Box(Modifier.fillMaxSize()) {
+        ColorWash(view.activeColor)
         Column(Modifier.fillMaxSize().graphicsLayer { translationX = fx.shake.value }) {
             TableTopBar(view, onLeave = onLeave, onRules = { showRules = true }, onSettings = { showSettings = true })
 
@@ -478,12 +479,12 @@ private fun CenterTable(
                 contentAlignment = Alignment.Center,
                 modifier = fx.anchor(Anchor.DiscardPile).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onPeek),
             ) {
-                // Halo in the active color, which matters most after a wild.
-                Box(
-                    Modifier
-                        .size(TABLE_CARD_WIDTH + 22.dp, TABLE_CARD_WIDTH * CARD_ASPECT + 22.dp)
-                        .clip(GameTheme.panelShape)
-                        .background(GameTheme.cardColor(view.activeColor).copy(alpha = if (view.activeColor == null) 0f else 0.55f)),
+                // The active color, which matters most after a wild, lit up and turning with the play.
+                ColorAura(
+                    color = view.activeColor,
+                    clockwise = clockwise,
+                    beat = (fx.pileTop ?: view.topCard).id.takeUnless { fx.pileCleared },
+                    cardWidth = TABLE_CARD_WIDTH,
                 )
                 fx.pileUnder.forEach { card ->
                     key(card.id) { CardFace(card, TABLE_CARD_WIDTH, Modifier.graphicsLayer { rotationZ = TableFx.discardTilt(card) }, elevation = 1.dp) }

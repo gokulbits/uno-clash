@@ -109,6 +109,7 @@ object GameTheme {
         edge = Color(0x38FFFFFF),
         quiet = Color(0xFF2E2E2E),
         disabled = Color(0xFF161616),
+        glow = 0.4f,
     )
     val oledCardBack = CardBackStyle(
         "OLED", Color(0xFF141414), Color.Black, Color(0xFF2A2A2A), Color(0xFF0C0C0C), Color.Black,

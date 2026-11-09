@@ -61,6 +61,12 @@ class LooksTest {
     }
 
     @Test
+    fun `only the oled table holds the color wash back`() {
+        assertEquals(0.4f, GameTheme.oledTable.glow)
+        assertTrue(GameTheme.tables.filter { it !== GameTheme.oledTable }.all { it.glow == 1f })
+    }
+
+    @Test
     fun `picks saved before the oled look still mean the same table and card back`() {
         assertEquals(listOf("Classic", "Felt", "Ocean", "Ruby", "Teal", "Midnight"), GameTheme.tables.take(6).map { it.name })
         assertEquals(listOf("Classic", "Midnight", "Ocean", "Jungle", "Sunset", "Royal"), GameTheme.cardBacks.take(6).map { it.name })
