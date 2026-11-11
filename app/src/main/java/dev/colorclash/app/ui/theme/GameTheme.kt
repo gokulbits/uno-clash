@@ -82,6 +82,12 @@ object GameTheme {
     val cardPaper = Color.White
     val cardPaperEdge = Color(0xFFE9EBF2)
     val cardOvalEdge = Color(0xFFE4E7F0)
+    // A Flip deck's dark side: black stock, and the color does the shining.
+    val darkCardPaper = Color(0xFF221D33)
+    val darkCardPaperEdge = Color(0xFF0B0914)
+    val darkCardOval = Color(0xFF171325)
+    val darkCardOvalEdge = Color(0xFF0A0812)
+
     val cardBackGlow = Color(0xFF3A2A78)
     val cardBackDeep = Color(0xFF120C2C)
     val cardBackOval = Color(0xFFFF5A74)

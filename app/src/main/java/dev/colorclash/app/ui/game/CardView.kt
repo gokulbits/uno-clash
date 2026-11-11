@@ -44,6 +44,7 @@ import dev.colorclash.app.ui.theme.LocalCardBack
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.CardColor
 import dev.colorclash.rules.Face
+import dev.colorclash.rules.Side
 // The same package holds the CardBack composable, so the card's own side goes by another name here.
 import dev.colorclash.rules.CardBack as CardSide
 import kotlin.math.abs
@@ -63,6 +64,12 @@ val LocalColorShapes = staticCompositionLocalOf { false }
  */
 val LocalCardMeasurer = staticCompositionLocalOf<TextMeasurer?> { null }
 
+/**
+ * Which side of a Flip deck is face up. Every card but a wild carries a color that says which side
+ * it belongs to; a wild has none, so it takes the table's.
+ */
+val LocalCardSide = staticCompositionLocalOf { Side.LIGHT }
+
 val HAND_CARD_WIDTH = 76.dp
 val TABLE_CARD_WIDTH = 92.dp
 
@@ -71,12 +78,13 @@ val TABLE_CARD_WIDTH = 92.dp
 fun CardFace(card: Card, width: Dp, modifier: Modifier = Modifier, dimmed: Boolean = false, elevation: Dp = 2.dp) {
     val measurer = LocalCardMeasurer.current ?: rememberTextMeasurer()
     val shapes = LocalColorShapes.current
+    val dark = card.sideOn(LocalCardSide.current) == Side.DARK
     Spacer(
         modifier
             .size(width, width * CARD_ASPECT)
             .shadow(elevation, RoundedCornerShape(width * CORNER))
             .drawWithCache {
-                val face = faceCache(card, dimmed, measurer)
+                val face = faceCache(card, dimmed, measurer, dark)
                 onDrawBehind { drawFace(card, face, shapes) }
             },
     )
@@ -117,9 +125,22 @@ private class FaceCache(
     val quadrants: List<Color>,
     /** The little cards in the middle of a +2 or +4. */
     val fills: List<Color>,
+    /** The dark side's color ring around the oval, and the halo its marks are cut out of. Null on the light side. */
+    val rim: Color? = null,
 )
 
-private fun CacheDrawScope.faceCache(card: Card, dimmed: Boolean, measurer: TextMeasurer): FaceCache {
+/**
+ * A Flip card belongs to the side its color is on. A wild has no color: the two that only exist on
+ * one side are placed by their face, and a plain Wild takes whichever side the table is on.
+ */
+private fun Card.sideOn(inPlay: Side): Side = when {
+    color != null -> checkNotNull(color).side
+    face == Face.WILD_DRAW_COLOR -> Side.DARK
+    face == Face.WILD -> inPlay
+    else -> Side.LIGHT
+}
+
+private fun CacheDrawScope.faceCache(card: Card, dimmed: Boolean, measurer: TextMeasurer, dark: Boolean): FaceCache {
     val w = size.width
     val tint = Tint(dimmed)
     val number = card.face.number?.toString()
@@ -130,18 +151,23 @@ private fun CacheDrawScope.faceCache(card: Card, dimmed: Boolean, measurer: Text
 
     val base = GameTheme.cardColor(card.color)
     val inset = w * INSET
+    // The dark side keeps the color but turns the light down on it, so the marks glow off black.
     val body = Brush.radialGradient(
-        0f to tint(lighter(base, if (card.isWild) 0.12f else 0.22f)),
-        0.55f to tint(base),
-        1f to tint(darker(base, 0.28f)),
+        0f to tint(if (dark) darker(base, 0.42f) else lighter(base, if (card.isWild) 0.12f else 0.22f)),
+        0.55f to tint(if (dark) darker(base, 0.62f) else base),
+        1f to tint(darker(base, if (dark) 0.84f else 0.28f)),
         center = Offset(inset + (w - inset * 2) * 0.3f, inset + (size.height - inset * 2) * 0.22f),
         radius = w * 1.25f,
     )
     val oval = ovalBounds()
-    val shine = if (card.isWild) {
-        null
-    } else {
-        Brush.radialGradient(
+    val shine = when {
+        card.isWild -> null
+        dark -> Brush.radialGradient(
+            listOf(tint(GameTheme.darkCardOval), tint(GameTheme.darkCardOvalEdge)),
+            center = oval.topLeft + Offset(oval.width * 0.42f, oval.height * 0.36f),
+            radius = w * 0.62f,
+        )
+        else -> Brush.radialGradient(
             listOf(tint(GameTheme.cardPaper), tint(GameTheme.cardOvalEdge)),
             center = oval.topLeft + Offset(oval.width * 0.42f, oval.height * 0.36f),
             radius = w * 0.62f,
@@ -153,17 +179,24 @@ private fun CacheDrawScope.faceCache(card: Card, dimmed: Boolean, measurer: Text
     val near = Offset(nearX, w * 0.21f)
     return FaceCache(
         tint = tint,
-        paper = Brush.verticalGradient(listOf(tint(GameTheme.cardPaper), tint(GameTheme.cardPaperEdge))),
+        paper = Brush.verticalGradient(
+            if (dark) {
+                listOf(tint(GameTheme.darkCardPaper), tint(GameTheme.darkCardPaperEdge))
+            } else {
+                listOf(tint(GameTheme.cardPaper), tint(GameTheme.cardPaperEdge))
+            },
+        ),
         body = body,
         shine = shine,
         big = big,
         corner = corner,
-        ink = tint(base),
-        shade = tint(darker(base, 0.55f)),
-        cornerShade = tint(darker(base, 0.65f)),
+        // On black the marks go white and the color rings them instead.
+        ink = if (dark) tint(GameTheme.cardPaper) else tint(base),
+        shade = tint(darker(base, if (dark) 0.88f else 0.55f)),
+        cornerShade = tint(darker(base, if (dark) 0.9f else 0.65f)),
         white = tint(GameTheme.cardPaper),
         corners = listOf(near, Offset(w - near.x, size.height - near.y)),
-        quadrants = QUADRANTS.map { tint(it) },
+        quadrants = (if (dark) DARK_QUADRANTS else QUADRANTS).map { tint(it) },
         fills = when (card.face) {
             Face.DRAW_ONE -> listOf(tint(base))
             Face.DRAW_TWO -> listOf(tint(base), tint(base))
@@ -174,6 +207,7 @@ private fun CacheDrawScope.faceCache(card: Card, dimmed: Boolean, measurer: Text
             Face.WILD_DRAW_TWO -> DRAW_TWO_FANS.map { tint(it) }
             else -> emptyList()
         },
+        rim = if (dark) tint(base) else null,
     )
 }
 
@@ -376,16 +410,20 @@ private fun DrawScope.drawFace(card: Card, face: FaceCache, shapes: Boolean) {
             drawOval(face.white, topLeft, ovalSize, style = Stroke(w * 0.03f))
         } else {
             drawOval(shine, topLeft, ovalSize)
+            // The dark side's oval is nearly black, so the color becomes a ring around it.
+            face.rim?.let { drawOval(it, topLeft, ovalSize, style = Stroke(w * 0.032f)) }
         }
     }
 
+    // What the middle mark is cut out of: the color on a dark card, its own shadow on a light one.
+    val edge = face.rim ?: face.shade
     val mid = center
     when (card.face) {
-        Face.SKIP -> outlined(w, face.shade, face.ink, mid, w * 0.009f) { c, color, grow -> skipIcon(c, w * 0.25f, color, grow) }
+        Face.SKIP -> outlined(w, edge, face.ink, mid, w * 0.009f) { c, color, grow -> skipIcon(c, w * 0.25f, color, grow) }
         Face.SKIP_EVERYONE ->
-            outlined(w, face.shade, face.ink, mid, w * 0.009f) { c, color, grow -> skipEveryoneIcon(c, w * 0.19f, color, grow) }
-        Face.REVERSE -> outlined(w, face.shade, face.ink, mid, w * 0.009f) { c, color, grow -> reverseIcon(c, w * 0.25f, color, grow) }
-        Face.FLIP -> outlined(w, face.shade, face.ink, mid, w * 0.009f) { c, color, grow -> flipIcon(c, w * 0.22f, color, grow) }
+            outlined(w, edge, face.ink, mid, w * 0.009f) { c, color, grow -> skipEveryoneIcon(c, w * 0.19f, color, grow) }
+        Face.REVERSE -> outlined(w, edge, face.ink, mid, w * 0.009f) { c, color, grow -> reverseIcon(c, w * 0.25f, color, grow) }
+        Face.FLIP -> outlined(w, edge, face.ink, mid, w * 0.009f) { c, color, grow -> flipIcon(c, w * 0.22f, color, grow) }
         Face.DRAW_ONE, Face.DRAW_TWO, Face.DRAW_FOUR, Face.DRAW_FIVE -> miniCards(face.fills, face.shade, face.white)
         Face.DISCARD_ALL -> {
             translate(top = -w * 0.07f) { miniCards(face.fills, face.shade, face.white) }
@@ -412,7 +450,7 @@ private fun DrawScope.drawFace(card: Card, face: FaceCache, shapes: Boolean) {
             drawLabel(it, mid, face.white, face.cornerShade, w, outline = face.cornerShade, outlineWidth = w * 0.05f)
         }
         else -> if (face.big != null) {
-            drawLabel(face.big, mid, face.ink, face.shade, w, outline = face.shade)
+            drawLabel(face.big, mid, face.ink, face.shade, w, outline = edge)
             if (card.face == Face.SIX || card.face == Face.NINE) {
                 // Under the digit and a bit narrower, like a printed card.
                 underline(mid.x, mid.y + w * 0.27f, Size(face.big.size.width * 0.75f, w * 0.04f), face.ink, face.shade, w * 0.011f)
@@ -856,5 +894,6 @@ private const val DEG = 0.017453292f
 private val BACK_WORDS = listOf("COLOR", "CLASH")
 // Plain vals, not get(): a `get() = listOf(...)` rebuilt these four-element lists on every draw.
 private val QUADRANTS = listOf(GameTheme.red, GameTheme.blue, GameTheme.yellow, GameTheme.green)
+private val DARK_QUADRANTS = listOf(GameTheme.pink, GameTheme.teal, GameTheme.orange, GameTheme.purple)
 private val DRAW_FOUR_FANS = listOf(GameTheme.blue, GameTheme.green, GameTheme.red, GameTheme.yellow)
 private val DRAW_TWO_FANS = listOf(GameTheme.blue, GameTheme.red)

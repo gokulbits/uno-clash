@@ -58,6 +58,15 @@ class LooksTest {
     }
 
     @Test
+    fun `a flip deck's dark side is black stock the color still shows on`() {
+        // Black stock, so a dark card never reads as a light one in another color.
+        assertTrue(GameTheme.contrast(GameTheme.cardPaper, GameTheme.darkCardPaper) > 8f)
+        // The color rings the oval and the marks are white inside it: both have to carry.
+        GameTheme.darkCardColors.forEach { assertTrue(GameTheme.contrast(it, GameTheme.darkCardOval) >= 3f, "$it") }
+        assertTrue(GameTheme.contrast(GameTheme.cardPaper, GameTheme.darkCardOval) >= 7f)
+    }
+
+    @Test
     fun `the oled table is true black and text stays readable on its buttons`() {
         val oled = GameTheme.oledTable
         assertEquals(Color.Black, oled.top)

@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.colorclash.app.ui.components.RoundIconButton
@@ -42,7 +44,14 @@ import kotlin.math.sin
 
 /** Leave, round and game length, your score, the rules, settings. */
 @Composable
-internal fun TableTopBar(view: PlayerView, onLeave: () -> Unit, onRules: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
+internal fun TableTopBar(
+    view: PlayerView,
+    onLeave: () -> Unit,
+    onRules: () -> Unit,
+    onSettings: () -> Unit,
+    onScores: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val target = view.settings.rules.targetScore
     Row(
         modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
@@ -50,7 +59,7 @@ internal fun TableTopBar(view: PlayerView, onLeave: () -> Unit, onRules: () -> U
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         RoundIconButton("Leave game", onLeave) { exitIcon(it) }
-        RoundBadge(view.round, target, Modifier.weight(1f).wrapContentWidth())
+        RoundBadge(view.round, target, onScores, Modifier.weight(1f).wrapContentWidth())
         ScoreChip(view.seats[view.you].score, target)
         RoundIconButton("How to play", onRules) { infoIcon(it) }
         RoundIconButton("Settings", onSettings) { gearIcon(it) }
@@ -58,13 +67,14 @@ internal fun TableTopBar(view: PlayerView, onLeave: () -> Unit, onRules: () -> U
 }
 
 @Composable
-private fun RoundBadge(round: Int, target: Int, modifier: Modifier) {
+private fun RoundBadge(round: Int, target: Int, onScores: () -> Unit, modifier: Modifier) {
     Column(
         modifier
             .height(TOP_BAR_HEIGHT)
             .clip(GameTheme.pillShape)
             .background(GameTheme.panel)
             .border(1.dp, GameTheme.glassEdge, GameTheme.pillShape)
+            .clickable(onClickLabel = "Scores", role = Role.Button, onClick = onScores)
             .padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,

@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -147,7 +148,11 @@ fun GameScreen(
     // One heartbeat for the whole table. Each seat used to run its own two, a dozen animations ticking
     // every frame, nearly all of them for nothing.
     val pulse = rememberPulse()
-    CompositionLocalProvider(LocalColorShapes provides play.colorShapes, LocalPulse provides pulse) {
+    CompositionLocalProvider(
+        LocalColorShapes provides play.colorShapes,
+        LocalPulse provides pulse,
+        LocalCardSide provides view.side,
+    ) {
         GameTable(
             view, fx, log, history, notice, isHost, feedback, onFeedbackChange, play, onPlayChange, recentPlays,
             onIntent, onReact, onNextRound, onRematch, onResume, onBackToLobby, onLeave, onTick, onColorTap,
@@ -180,6 +185,7 @@ private fun GameTable(
 ) {
     val controls = tableControls(view)
     var showPeek by remember { mutableStateOf(false) }
+    var showScores by remember { mutableStateOf(false) }
     // Flip turns every hand outward, so a seat can be opened to see what it's facing you with.
     var facingSeat by remember { mutableStateOf<Int?>(null) }
     var showSettings by remember { mutableStateOf(false) }
@@ -201,7 +207,14 @@ private fun GameTable(
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().graphicsLayer { translationX = fx.shake.value }) {
-            TableTopBar(view, onLeave = onLeave, onRules = { showRules = true }, onSettings = { showSettings = true })
+            TableTopBar(
+                view,
+                onLeave = onLeave,
+                onRules = { showRules = true },
+                onSettings = { showSettings = true },
+                // At the end of a round the real scoreboard is the one to bring back.
+                onScores = { if (roundOver) scoresClosed = false else showScores = true },
+            )
 
             OpponentsArc(
                 view = view,
@@ -297,6 +310,7 @@ private fun GameTable(
         }
 
         if (showPeek) RecentPlays(view, recentPlays, onDismiss = { showPeek = false })
+        if (showScores && !roundOver) Standings(view, history, onDismiss = { showScores = false })
         // Gone the moment that hand stops facing outward, so it can't sit there showing a stale one.
         val peeking = facingSeat?.takeIf { view.seats.getOrNull(it)?.facing?.isNotEmpty() == true }
         LaunchedEffect(peeking) { if (peeking == null) facingSeat = null }
@@ -498,6 +512,17 @@ private fun CenterTable(
 ) {
     val pulse = LocalPulse.current
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        // Straight above the piles. Nothing to point at until the starter card is turned over.
+        if (!fx.pileCleared) {
+            Canvas(
+                Modifier
+                    .padding(bottom = 6.dp)
+                    .size(40.dp)
+                    .graphicsLayer { rotationZ = fx.arrowSpin.value },
+            ) {
+                directionIcon(GameTheme.text, view.direction == Direction.CLOCKWISE)
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Box(
                 Modifier
@@ -518,8 +543,8 @@ private fun CenterTable(
                 }
             }
 
-            val clockwise = view.direction == Direction.CLOCKWISE
-            Canvas(Modifier.size(40.dp).graphicsLayer { rotationZ = fx.arrowSpin.value }) { directionIcon(GameTheme.text, clockwise) }
+            // The mat reaches 35dp past the card, so the piles keep their distance.
+            Spacer(Modifier.size(40.dp))
 
             Box(
                 contentAlignment = Alignment.Center,

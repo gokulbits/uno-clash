@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -164,12 +165,16 @@ fun FacingHand(name: String, facing: List<CardSide>, onDismiss: () -> Unit) {
             },
         )
         val sorted = facing.sortedWith(compareBy({ it.color?.ordinal ?: Int.MAX_VALUE }, { it.face.ordinal }))
+        // These are the far sides, so they belong to the side the table isn't on.
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            val facingSide = if (LocalCardSide.current == Side.DARK) Side.LIGHT else Side.DARK
             sorted.chunked(FACING_PER_ROW).forEachIndexed { r, row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     row.forEachIndexed { i, side ->
                         // No id comes over the wire, so give each one of its own that can't collide with a real card.
-                        CardFace(Card(-1 - (r * FACING_PER_ROW + i), side.face, side.color), FACING_CARD_WIDTH, elevation = 1.dp)
+                        CompositionLocalProvider(LocalCardSide provides facingSide) {
+                            CardFace(Card(-1 - (r * FACING_PER_ROW + i), side.face, side.color), FACING_CARD_WIDTH, elevation = 1.dp)
+                        }
                     }
                 }
             }
@@ -409,53 +414,11 @@ fun ScoreBoard(
         SheetTitle(headline)
         view.roundPoints?.let { Text("+$it points", color = GameTheme.highlight, style = MaterialTheme.typography.titleMedium) }
 
-        view.seats.sortedByDescending { it.score }.forEachIndexed { rank, seat ->
-            val isWinner = seat.info.seat == view.winner
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(GameTheme.tileShape)
-                    .background(GameTheme.panelStrong)
-                    .then(if (isWinner) Modifier.border(2.dp, GameTheme.highlight, GameTheme.tileShape) else Modifier)
-                    .padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("${rank + 1}", Modifier.width(14.dp), color = GameTheme.mutedText, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
-                    AvatarBadge(seat.info, size = 34.dp)
-                    Text(
-                        seat.info.name + if (seat.info.seat == view.you) " (you)" else "",
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text("${seat.score}", style = MaterialTheme.typography.titleMedium)
-                }
-                // Progress to the target; a one-round game has none.
-                if (target > 0) {
-                    val filled = (seat.score.toFloat() / target).coerceIn(0f, 1f)
-                    val empty = GameTheme.panel
-                    Canvas(Modifier.fillMaxWidth().height(6.dp)) {
-                        val corner = CornerRadius(size.height / 2)
-                        drawRoundRect(empty, cornerRadius = corner)
-                        if (filled > 0f) {
-                            drawRoundRect(GameTheme.highlight, size = Size(size.width * filled * pop.value.coerceAtMost(1f), size.height), cornerRadius = corner)
-                        }
-                    }
-                }
-            }
-        }
+        ScoreRows(view, target) { pop.value.coerceAtMost(1f) }
         HintText(if (target > 0) "Playing to $target" else "One round game")
         NextRoundCountdown(view.nextRoundMillis, view.round)
 
-        if (history.isNotEmpty()) {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                history.takeLast(MAX_HISTORY_ROWS).forEach { result ->
-                    HintText("Round ${result.round}: ${view.nameOf(result.winner)} +${result.points}")
-                }
-            }
-        }
+        RoundHistory(view, history)
 
         when {
             isHost && gameOver -> {
@@ -473,6 +436,73 @@ fun ScoreBoard(
                 }
                 BigButton(if (gameOver) "Leave" else "Leave game", ButtonTone.QUIET, onLeave)
             }
+        }
+    }
+}
+
+/** The table's points, newest totals first. [grow] fills the progress bars as the sheet arrives. */
+@Composable
+private fun ScoreRows(view: PlayerView, target: Int, grow: () -> Float) {
+    view.seats.sortedByDescending { it.score }.forEachIndexed { rank, seat ->
+        val isWinner = seat.info.seat == view.winner
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(GameTheme.tileShape)
+                .background(GameTheme.panelStrong)
+                .then(if (isWinner) Modifier.border(2.dp, GameTheme.highlight, GameTheme.tileShape) else Modifier)
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("${rank + 1}", Modifier.width(14.dp), color = GameTheme.mutedText, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
+                AvatarBadge(seat.info, size = 34.dp)
+                Text(
+                    seat.info.name + if (seat.info.seat == view.you) " (you)" else "",
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text("${seat.score}", style = MaterialTheme.typography.titleMedium)
+            }
+            // Progress to the target; a one-round game has none.
+            if (target > 0) {
+                val filled = (seat.score.toFloat() / target).coerceIn(0f, 1f)
+                val empty = GameTheme.panel
+                Canvas(Modifier.fillMaxWidth().height(6.dp)) {
+                    val corner = CornerRadius(size.height / 2)
+                    drawRoundRect(empty, cornerRadius = corner)
+                    if (filled > 0f) {
+                        drawRoundRect(GameTheme.highlight, size = Size(size.width * filled * grow(), size.height), cornerRadius = corner)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The points as they stand, any time in a round: the round badge at the top opens it. */
+@Composable
+fun Standings(view: PlayerView, history: List<RoundResult>, onDismiss: () -> Unit) {
+    val target = view.settings.rules.targetScore
+    Overlay(onDismiss = onDismiss) {
+        SheetTitle("Scores")
+        HintText("Round ${view.round}")
+        ScoreRows(view, target) { 1f }
+        HintText(if (target > 0) "Playing to $target" else "One round game")
+        RoundHistory(view, history)
+        BigButton("Close", ButtonTone.QUIET, onDismiss)
+    }
+}
+
+/** What each round paid out, as far back as this phone has been watching. */
+@Composable
+private fun RoundHistory(view: PlayerView, history: List<RoundResult>) {
+    if (history.isEmpty()) return
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        history.takeLast(MAX_HISTORY_ROWS).forEach { result ->
+            HintText("Round ${result.round}: ${view.nameOf(result.winner)} +${result.points}")
         }
     }
 }
