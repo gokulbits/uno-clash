@@ -78,6 +78,41 @@ class ReleaseNotesTest {
     }
 
     @Test
+    fun `a bullet wrapped over several lines stays one bullet`() {
+        val blocks = parseReleaseNotes(
+            """
+            ## UNO Flip
+
+            - **112 double-sided cards.** The light side plays in red, yellow,
+              green and blue;
+            the dark side in pink, teal, orange and purple.
+            - Flip scores on its own ladder.
+
+            A paragraph of its own,
+            wrapped as well.
+            """.trimIndent(),
+        )
+        assertEquals(
+            listOf("UNO Flip", "112 double-sided cards. The light side plays in red, yellow, green and blue; the dark side in pink, teal, orange and purple.", "Flip scores on its own ladder.", "A paragraph of its own, wrapped as well."),
+            blocks.map { block ->
+                when (block) {
+                    is NoteBlock.Heading -> block.text.plain()
+                    is NoteBlock.Bullet -> block.text.plain()
+                    is NoteBlock.Paragraph -> block.text.plain()
+                    else -> error("unexpected $block")
+                }
+            },
+        )
+        assertEquals(1, (blocks[1] as NoteBlock.Bullet).text.count { it.bold })
+    }
+
+    @Test
+    fun `a wrapped numbered item keeps its continuation and loses the credit`() {
+        val blocks = parseReleaseNotes("1. Fix the thing\n   properly by @someone in https://github.com/x/y/pull/7")
+        assertEquals(listOf(NoteBlock.Numbered("1", 0, listOf(NoteSpan("Fix the thing properly")))), blocks)
+    }
+
+    @Test
     fun `the 1_0_9 notes read the way they were written`() {
         val blocks = parseReleaseNotes(
             """

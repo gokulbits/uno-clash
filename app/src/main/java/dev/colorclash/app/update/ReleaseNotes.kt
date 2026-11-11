@@ -28,10 +28,22 @@ private val HTML_COMMENT = Regex("""<!--.*?-->""", RegexOption.DOT_MATCHES_ALL)
 fun parseReleaseNotes(body: String): List<NoteBlock> {
     val lines = body.take(MAX_NOTE_CHARS).replace(HTML_COMMENT, "").replace("\r\n", "\n").lines()
     val blocks = mutableListOf<NoteBlock>()
-    val paragraph = StringBuilder()
-    fun endParagraph() {
-        if (paragraph.isNotBlank()) blocks += NoteBlock.Paragraph(parseInline(paragraph.toString().trim()))
-        paragraph.clear()
+    // The block being built. Notes come hard-wrapped, so a plain line carries on whatever is open:
+    // a bullet keeps its wrapped lines instead of shedding them as paragraphs of their own.
+    val open = StringBuilder()
+    var wrap: ((List<NoteSpan>) -> NoteBlock)? = null
+    fun endBlock() {
+        val text = open.toString().trim()
+        val make = wrap
+        open.clear()
+        wrap = null
+        if (text.isBlank()) return
+        blocks += if (make == null) NoteBlock.Paragraph(parseInline(text)) else make(parseInline(withoutCredit(text)))
+    }
+    fun startItem(item: String, make: (List<NoteSpan>) -> NoteBlock) {
+        endBlock()
+        wrap = make
+        open.append(item)
     }
 
     var i = 0
@@ -39,7 +51,7 @@ fun parseReleaseNotes(body: String): List<NoteBlock> {
         val raw = lines[i++]
         val line = raw.trimEnd()
         if (line.trimStart().startsWith("```")) {
-            endParagraph()
+            endBlock()
             val code = mutableListOf<String>()
             while (i < lines.size && !lines[i].trimStart().startsWith("```")) code += lines[i++].trimEnd()
             i++ // the closing fence
@@ -49,28 +61,31 @@ fun parseReleaseNotes(body: String): List<NoteBlock> {
         // A quote reads as plain text here.
         val text = line.trimStart().let { if (it.startsWith(">")) it.removePrefix(">").trimStart() else line }
         when {
-            text.isBlank() || RULE.matches(text) -> endParagraph()
+            text.isBlank() || RULE.matches(text) -> endBlock()
             // GitHub's generated footer; the dialog has no use for a compare link.
-            text.trimStart().startsWith("**Full Changelog**") -> endParagraph()
+            text.trimStart().startsWith("**Full Changelog**") -> endBlock()
             HEADING.matches(text.trimStart()) -> {
-                endParagraph()
+                endBlock()
                 val (hashes, title) = HEADING.find(text.trimStart())!!.destructured
                 blocks += NoteBlock.Heading(hashes.length, parseInline(title))
             }
             BULLET.matches(text) -> {
-                endParagraph()
                 val (indent, item) = BULLET.find(text)!!.destructured
-                blocks += NoteBlock.Bullet(depthOf(indent), parseInline(withoutCredit(item)))
+                val depth = depthOf(indent)
+                startItem(item) { NoteBlock.Bullet(depth, it) }
             }
             NUMBERED.matches(text) -> {
-                endParagraph()
                 val (indent, number, item) = NUMBERED.find(text)!!.destructured
-                blocks += NoteBlock.Numbered(number, depthOf(indent), parseInline(withoutCredit(item)))
+                val depth = depthOf(indent)
+                startItem(item) { NoteBlock.Numbered(number, depth, it) }
             }
-            else -> paragraph.append(text.trim()).append(' ')
+            else -> {
+                if (open.isNotEmpty()) open.append(' ')
+                open.append(text.trim())
+            }
         }
     }
-    endParagraph()
+    endBlock()
 
     // A heading with nothing under it (say, a generated "What's Changed" over no pull requests) says
     // nothing. One straight over a smaller heading is a section with subsections, so it stays.
