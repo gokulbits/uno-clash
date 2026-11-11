@@ -43,6 +43,26 @@ fun DrawScope.closeIcon(color: Color) {
 
 fun DrawScope.checkIcon(color: Color) = polyline(color, 0.14f, 0.54f, 0.4f, 0.8f, 0.88f, 0.24f)
 
+/** A padlock: the shackle, then the body. On a setting it means somebody else decided this one. */
+fun DrawScope.lockIcon(color: Color) {
+    val w = size.width
+    drawArc(
+        color,
+        startAngle = 180f,
+        sweepAngle = 180f,
+        useCenter = false,
+        topLeft = Offset(w * 0.28f, w * 0.12f),
+        size = Size(w * 0.44f, w * 0.44f),
+        style = line(),
+    )
+    drawRoundRect(
+        color,
+        topLeft = Offset(w * 0.16f, w * 0.42f),
+        size = Size(w * 0.68f, w * 0.46f),
+        cornerRadius = CornerRadius(w * 0.12f),
+    )
+}
+
 fun DrawScope.plusIcon(color: Color) {
     polyline(color, 0.5f, 0.14f, 0.5f, 0.86f)
     polyline(color, 0.14f, 0.5f, 0.86f, 0.5f)

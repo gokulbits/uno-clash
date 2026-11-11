@@ -63,6 +63,7 @@ object GameEngine {
             is ChooseColor -> when {
                 phase !is Phase.PickColor -> "Not picking a color"
                 !isCurrent -> "Not your pick"
+                action.color.side != state.side -> "That color isn't in play"
                 else -> null
             }
             is Draw -> when {
@@ -80,8 +81,8 @@ object GameEngine {
             is CallLastCard -> when {
                 // Like at a real table: you call it as you play your second-to-last card, not whenever.
                 !isCurrent -> "Call UNO on your turn"
-                state.hand(p).size > 2 -> "Too many cards to call"
                 state.players[p].calledLastCard -> "Already called"
+                !oneCardAway(state, p) -> "Too many cards to call"
                 else -> null
             }
             is CatchLastCard -> when {
@@ -111,6 +112,21 @@ object GameEngine {
 
     fun isPlayable(state: GameState, player: Int, card: Card): Boolean =
         validate(state, PlayCard(player, card.id)) == null
+
+    /**
+     * True when one play could leave them holding a single card. Normally that means two cards, but
+     * a Discard All takes its whole color out at once, so a bigger hand can get there in one go —
+     * and whoever holds one has to be able to call before they play it, not after.
+     */
+    private fun oneCardAway(state: GameState, p: Int): Boolean {
+        val hand = state.hand(p)
+        if (hand.size <= 2) return true
+        return hand.any { card ->
+            card.face == Face.DISCARD_ALL &&
+                hand.count { it.color != card.color } == 1 &&
+                isPlayable(state, p, card)
+        }
+    }
 
     private fun validatePlay(state: GameState, p: Int, cardId: Int): String? {
         val card = state.hand(p).find { it.id == cardId } ?: return "You don't have that card"

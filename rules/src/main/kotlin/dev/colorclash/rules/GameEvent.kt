@@ -18,6 +18,9 @@ sealed interface GameEvent {
     data class EveryoneSkipped(val player: Int) : GameEvent
     data class Reversed(val direction: Direction) : GameEvent
 
+    /** Flip: the whole game turned over, and [top] is the card everyone now has to match. */
+    data class SideFlipped(val side: Side, val top: Card) : GameEvent
+
     /** A Discard All: [cards] went onto the pile under it. */
     data class DiscardedAll(val player: Int, val color: CardColor, val cards: List<Card>) : GameEvent
 

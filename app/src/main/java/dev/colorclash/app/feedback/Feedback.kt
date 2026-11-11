@@ -22,6 +22,7 @@ fun cueFor(event: EventView, you: Int): Cue? = when (event) {
     is EventView.Skipped -> Cue(Sfx.SKIP, Buzz.BUMP.takeIf { event.player == you })
     is EventView.EveryoneSkipped -> Cue(Sfx.SKIP, Buzz.BUMP.takeIf { event.player != you })
     is EventView.Reversed -> Cue(Sfx.REVERSE)
+    is EventView.SideFlipped -> Cue(Sfx.FLIP, Buzz.BUMP)
     is EventView.DiscardedAll -> Cue(Sfx.SHUFFLE, Buzz.SUCCESS.takeIf { event.player == you })
     is EventView.ColorRoulette -> Cue(Sfx.WILD, Buzz.HEAVY.takeIf { event.player == you })
     is EventView.KnockedOut -> Cue(Sfx.LOSE, Buzz.HEAVY.takeIf { event.player == you })

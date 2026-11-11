@@ -19,12 +19,13 @@ class FuzzTest {
             val random = Random(game)
             val players = random.nextInt(GameEngine.MIN_PLAYERS, GameEngine.MAX_PLAYERS + 1)
             val rules = RuleSet(
-                mode = if (random.nextInt(3) == 0) GameMode.NO_MERCY else GameMode.CLASSIC,
+                mode = GameMode.entries[random.nextInt(GameMode.entries.size)],
                 targetScore = random.nextInt(100, 400),
                 challengeDrawFour = random.nextBoolean(),
                 stackDraws = random.nextBoolean(),
                 jumpIn = random.nextBoolean(),
                 sevenZero = random.nextBoolean(),
+                swapHandsWild = random.nextBoolean(),
                 drawUntilPlayable = random.nextBoolean(),
                 powerFinishPenalty = listOf(0, 2, 4).random(random),
             )
@@ -71,7 +72,7 @@ class FuzzTest {
     }
 
     private fun checkInvariants(s: GameState) {
-        val deckSize = if (s.rules.noMercy) Deck.NO_MERCY_SIZE else Deck.SIZE
+        val deckSize = Deck.sizeFor(s.rules)
         val ids = s.allCards().map { it.id }
         check(ids.size == deckSize) { "Card count is ${ids.size}" }
         check(ids.toSet() == (0 until deckSize).toSet()) { "Duplicate or missing cards" }
@@ -102,7 +103,10 @@ class FuzzTest {
         when (phase) {
             is Phase.PickColor -> check(s.topCard.isWild) { "Picking a color for a non-wild" }
             is Phase.DrewPlayable -> check(s.hand(s.current).any { it.id == phase.cardId }) { "Drawn card not in hand" }
-            Phase.PickSwapTarget -> check(s.topCard.face == Face.SEVEN && s.rules.swaps)
+            Phase.PickSwapTarget -> check(
+                (s.topCard.face == Face.SEVEN && s.rules.swaps) ||
+                    (s.topCard.face == Face.WILD_SWAP_HANDS && s.rules.swapHands),
+            ) { "Swapping on ${s.topCard}" }
             else -> Unit
         }
         if (s.pendingDraw > 0) {
@@ -112,7 +116,12 @@ class FuzzTest {
             check(!s.rules.noMercy || s.pendingDrawValue > 0) { "Pending draw with no value to beat" }
         }
         s.drawFourCheck?.let {
-            check(s.topCard.face == Face.WILD_DRAW_FOUR && s.pendingDraw == 4 && s.rules.challengeDrawFour) { "Stale draw four check" }
+            val card = s.topCard.face
+            val expected = if (card == Face.WILD_DRAW_TWO) 2 else 4
+            check(
+                card in setOf(Face.WILD_DRAW_FOUR, Face.WILD_DRAW_TWO) &&
+                    s.pendingDraw == expected && s.rules.challengeDrawFour,
+            ) { "Stale draw four check on $card with ${s.pendingDraw} pending" }
         }
         s.exposedPlayer?.let {
             check(s.hand(it).size == 1 && !s.players[it].calledLastCard) { "Exposed player isn't on one uncalled card" }

@@ -243,6 +243,7 @@ fun describe(event: EventView, view: PlayerView): String? {
         is EventView.Skipped -> "${who(event.player)} ${if (event.player == view.you) "are" else "is"} skipped"
         is EventView.EveryoneSkipped -> "${who(event.player)} skipped everyone and ${if (event.player == view.you) "go" else "goes"} again"
         is EventView.Reversed -> if (event.direction == Direction.CLOCKWISE) "Play goes clockwise" else "Play goes counter-clockwise"
+        is EventView.SideFlipped -> "The deck turned over to its ${event.side.name.lowercase()} side"
         is EventView.DiscardedAll ->
             "${who(event.player)} dumped ${plural(event.cards.size, "more ${event.color.name.lowercase()} card")}"
         is EventView.ColorRoulette -> "${who(event.player)} spun ${event.color.name.lowercase()}"

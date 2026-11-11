@@ -2,9 +2,11 @@ package dev.colorclash.protocol
 
 import dev.colorclash.rules.BotLevel
 import dev.colorclash.rules.Card
+import dev.colorclash.rules.CardBack
 import dev.colorclash.rules.CardColor
 import dev.colorclash.rules.Direction
 import dev.colorclash.rules.RuleSet
+import dev.colorclash.rules.Side
 import kotlinx.serialization.Serializable
 
 const val DEFAULT_TURN_SECONDS = 15
@@ -53,6 +55,12 @@ data class SeatView(
     val calledLastCard: Boolean,
     /** No Mercy: hit the mercy limit and they're out until the next round. */
     val knockedOut: Boolean = false,
+    /**
+     * Flip only: the side of this seat's cards that faces the table, which the printed game lets
+     * everyone see. Carries no card ids — an id would give the side they're holding away — and is
+     * empty for the viewer's own seat, whose hand they already have in full.
+     */
+    val facing: List<CardBack> = emptyList(),
 )
 
 enum class PhaseKind { TURN, PICK_COLOR, DREW_PLAYABLE, PICK_SWAP_TARGET, ROUND_OVER, GAME_OVER }
@@ -66,6 +74,8 @@ data class PlayerView(
     val seats: List<SeatView>,
     val topCard: Card,
     val activeColor: CardColor?,
+    /** Which side of a Flip deck is in play; always light in the other modes. */
+    val side: Side = Side.LIGHT,
     val direction: Direction,
     val current: Int,
     val phase: PhaseKind,

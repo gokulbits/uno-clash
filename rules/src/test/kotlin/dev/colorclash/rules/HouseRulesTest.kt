@@ -178,6 +178,41 @@ class HouseRulesTest {
         assertTrue(GameEvent.HandsSwapped(0, 2) in events)
     }
 
+    // The printed Wild Swap Hands card
+
+    private val swapWild = RuleSet(swapHandsWild = true)
+
+    @Test
+    fun `swap hands picks a color first, then takes a hand`() {
+        val swap = t.card(Face.WILD_SWAP_HANDS)
+        val mine = spare()
+        val theirs = listOf(t.green(TWO))
+        val s = t.state(mine + swap, spare(), theirs, top = t.red(NINE), rules = swapWild)
+        val (picking, _) = s.act(PlayCard(0, swap.id))
+        // The color comes first: until it's named there's nothing to play on.
+        assertEquals(Phase.PickColor(), picking.phase)
+        picking.rejects(SwapWith(0, 2))
+
+        val (choosing, _) = picking.act(ChooseColor(0, CardColor.GREEN))
+        assertEquals(Phase.PickSwapTarget, choosing.phase)
+        assertEquals(CardColor.GREEN, choosing.activeColor)
+        choosing.rejects(SwapWith(0, 0))
+
+        val (after, events) = choosing.act(SwapWith(0, 2))
+        assertEquals(theirs, after.hand(0))
+        assertEquals(mine, after.hand(2))
+        assertEquals(1, after.current)
+        assertTrue(GameEvent.HandsSwapped(0, 2) in events)
+    }
+
+    @Test
+    fun `swap hands can be your last card`() {
+        val swap = t.card(Face.WILD_SWAP_HANDS)
+        val after = t.state(listOf(swap), spare(), top = t.red(NINE), rules = swapWild)
+            .act(PlayCard(0, swap.id)).state
+        assertEquals(Phase.RoundOver(winner = 0, points = spare().points()), after.phase)
+    }
+
     @Test
     fun `zero passes every hand along the direction of play`() {
         val zero = t.red(ZERO)

@@ -46,7 +46,7 @@ class NoMercyTest {
         val deck = Deck.noMercy()
         assertEquals(Deck.NO_MERCY_SIZE, deck.size)
         assertEquals((0 until Deck.NO_MERCY_SIZE).toSet(), deck.map { it.id }.toSet())
-        for (color in CardColor.entries) {
+        for (color in CardColor.light) {
             val ofColor = deck.filter { it.color == color }
             assertEquals(37, ofColor.size, "$color")
             assertEquals(1, ofColor.count { it.face == ZERO })
@@ -231,6 +231,20 @@ class NoMercyTest {
         assertEquals(0, phase.winner)
         assertEquals(250, phase.points)
         assertEquals(250, after.players[0].score)
+    }
+
+    @Test
+    fun `the cards left in other hands count on top of the bonus`() {
+        val win = t.red(NINE)
+        val held = listOf(t.card(WILD), t.blue(FIVE), t.blue(DRAW_TWO))
+        val after = t.state(
+            listOf(win), held, top = t.red(TWO), rules = rules, drawPile = t.filler(10),
+        ).act(PlayCard(0, win.id)).state
+
+        val phase = after.phase
+        assertIs<Phase.RoundOver>(phase)
+        assertEquals(75, held.points())
+        assertEquals(75, phase.points)
     }
 
     @Test

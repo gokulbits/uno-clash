@@ -3,6 +3,7 @@ package dev.colorclash.app.ui.theme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import dev.colorclash.protocol.AUTO_AVATAR_COLOR
+import dev.colorclash.rules.CardColor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -43,9 +44,17 @@ class LooksTest {
 
     @Test
     fun `text on any game color is readable`() {
-        (GameTheme.cardColors + GameTheme.danger + GameTheme.highlight + GameTheme.wild).forEach { fill ->
+        val fills = GameTheme.cardColors + GameTheme.darkCardColors + GameTheme.danger + GameTheme.highlight + GameTheme.wild
+        fills.forEach { fill ->
             assertTrue(GameTheme.contrast(GameTheme.contentOn(fill), fill) >= 3f, "$fill")
         }
+    }
+
+    @Test
+    fun `every card color has a color of its own, in the deck's order`() {
+        assertEquals(CardColor.entries.size, CardColor.entries.map { GameTheme.cardColor(it) }.toSet().size)
+        assertEquals(GameTheme.cardColors, CardColor.light.map { GameTheme.cardColor(it) })
+        assertEquals(GameTheme.darkCardColors, CardColor.dark.map { GameTheme.cardColor(it) })
     }
 
     @Test

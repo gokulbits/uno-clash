@@ -3,6 +3,7 @@ package dev.colorclash.protocol
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.CardColor
 import dev.colorclash.rules.Direction
+import dev.colorclash.rules.Side
 import dev.colorclash.rules.DrawReason
 import dev.colorclash.rules.GameEvent
 import kotlinx.serialization.SerialName
@@ -70,18 +71,23 @@ sealed interface EventView {
 
     @Serializable @SerialName("gameWon")
     data class GameWon(val player: Int) : EventView
+
+    /** Flip: the table turned over, and [top] is what everyone has to match now. */
+    @Serializable @SerialName("sideFlipped")
+    data class SideFlipped(val side: Side, val top: Card) : EventView
 }
 
 fun GameEvent.toView(viewer: Int): EventView = when (this) {
     is GameEvent.RoundStarted -> EventView.RoundStarted(round, dealer)
-    is GameEvent.Dealt -> EventView.Dealt(player, cards.size, cards.takeIf { player == viewer })
-    is GameEvent.StarterFlipped -> EventView.StarterFlipped(card)
-    is GameEvent.CardPlayed -> EventView.CardPlayed(player, card, jumpIn)
-    is GameEvent.Drew -> EventView.Drew(player, cards.size, reason, cards.takeIf { player == viewer })
+    is GameEvent.Dealt -> EventView.Dealt(player, cards.size, cards.shown().takeIf { player == viewer })
+    is GameEvent.StarterFlipped -> EventView.StarterFlipped(card.shown())
+    is GameEvent.SideFlipped -> EventView.SideFlipped(side, top.shown())
+    is GameEvent.CardPlayed -> EventView.CardPlayed(player, card.shown(), jumpIn)
+    is GameEvent.Drew -> EventView.Drew(player, cards.size, reason, cards.shown().takeIf { player == viewer })
     is GameEvent.Skipped -> EventView.Skipped(player)
     is GameEvent.EveryoneSkipped -> EventView.EveryoneSkipped(player)
     is GameEvent.Reversed -> EventView.Reversed(direction)
-    is GameEvent.DiscardedAll -> EventView.DiscardedAll(player, color, cards)
+    is GameEvent.DiscardedAll -> EventView.DiscardedAll(player, color, cards.shown())
     is GameEvent.ColorRoulette -> EventView.ColorRoulette(player, color, cards)
     is GameEvent.KnockedOut -> EventView.KnockedOut(player, cards)
     is GameEvent.WildColorChosen -> EventView.WildColorChosen(player, color)

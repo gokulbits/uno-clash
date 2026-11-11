@@ -43,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -74,6 +75,7 @@ import dev.colorclash.app.ui.components.TextLink
 import dev.colorclash.app.ui.components.checkIcon
 import dev.colorclash.app.ui.components.closeIcon
 import dev.colorclash.app.ui.components.exitIcon
+import dev.colorclash.app.ui.components.lockIcon
 import dev.colorclash.app.ui.components.plusIcon
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.GameSettings
@@ -373,16 +375,27 @@ private fun AddBotTile(modifier: Modifier, onAdd: () -> Unit) {
 private fun RulesPanel(settings: GameSettings, editable: Boolean, onChange: (GameSettings) -> Unit, onHowToPlay: () -> Unit) {
     val rules = settings.rules
     val noMercy = rules.noMercy
+    val flip = rules.flip
+    // No Mercy decides these itself; the Flip deck has no card for them.
+    val houseRules = editable && !noMercy && !flip
     fun update(block: RuleSet.() -> RuleSet) = onChange(settings.copy(rules = rules.block()))
     // No Mercy brings its own rules, so the ones it decides are shown on and locked.
     val toggles = listOf(
-        RuleToggle("Stack draws", "Pass the pain along", rules.stacking, editable && !noMercy) { update { copy(stackDraws = it) } },
+        RuleToggle("Stack draws", "Pass the pain along", rules.stacking, houseRules) { update { copy(stackDraws = it) } },
         RuleToggle("Jump in", "Same card, out of turn", rules.jumpIn, editable) { update { copy(jumpIn = it) } },
-        RuleToggle("7-0", "7 swaps, 0 passes all", rules.swaps, editable && !noMercy) { update { copy(sevenZero = it) } },
-        RuleToggle("Draw till playable", "Draw until you can play", rules.drawsUntilPlayable, editable && !noMercy) {
+        RuleToggle("7-0", "7 swaps, 0 passes all", rules.swaps, houseRules) { update { copy(sevenZero = it) } },
+        RuleToggle("Swap hands", "A wild that takes a hand", rules.swapHands, houseRules) {
+            update { copy(swapHandsWild = it) }
+        },
+        RuleToggle("Draw till playable", "Draw until you can play", rules.drawsUntilPlayable, houseRules) {
             update { copy(drawUntilPlayable = it) }
         },
-        RuleToggle("Challenge +4", "Call out an illegal +4", rules.canChallenge, editable && !noMercy) {
+        RuleToggle(
+            if (flip) "Challenge wild" else "Challenge +4",
+            if (flip) "Call out an illegal wild" else "Call out an illegal +4",
+            rules.canChallenge,
+            editable && !noMercy,
+        ) {
             update { copy(challengeDrawFour = it) }
         },
     )
@@ -391,11 +404,15 @@ private fun RulesPanel(settings: GameSettings, editable: Boolean, onChange: (Gam
         SectionTitle(if (editable) "Game mode" else "Game mode (set by host)")
         SettingRow("Mode", GameMode.entries, rules.mode, editable, ::modeLabel) { onChange(settings.copy(rules = rules.switchTo(it))) }
         HintText(
-            if (noMercy) {
-                "168 cards with +4, +6, +10, Skip Everyone, Discard All and Color Roulette. " +
-                    "Reach ${rules.mercyLimit} cards and you're out of the round; the winner gets ${rules.knockoutBonus} for each."
-            } else {
-                "The 108-card game. Match by color or number, first to empty their hand wins the round."
+            when (rules.mode) {
+                GameMode.NO_MERCY ->
+                    "168 cards with +4, +6, +10, Skip Everyone, Discard All and Color Roulette. " +
+                        "Reach ${rules.mercyLimit} cards and you're out of the round; the winner gets ${rules.knockoutBonus} for each."
+                GameMode.FLIP ->
+                    "112 double-sided cards. A Flip card turns every hand and both piles over to their other side: " +
+                        "new colors, and harder cards on the dark one — +5, Skip Everyone and a wild that draws until your color shows."
+                GameMode.CLASSIC ->
+                    "The 108-card game. Match by color or number, first to empty their hand wins the round."
             },
         )
         TextLink("How to play with these rules", onHowToPlay)
@@ -443,41 +460,71 @@ private class RuleToggle(
     val set: (Boolean) -> Unit,
 )
 
-private fun modeLabel(mode: GameMode) = if (mode == GameMode.NO_MERCY) "No Mercy" else "Classic"
-
-/** No Mercy rounds pay out in hundreds, so it plays to bigger numbers. */
-private fun targetScores(mode: GameMode) = if (mode == GameMode.NO_MERCY) listOf(0, 500, 1000) else listOf(0, 100, 250, 500)
-
-/** Switching mode moves the target score onto the other mode's scale. */
-private fun RuleSet.switchTo(mode: GameMode): RuleSet = when {
-    mode == this.mode -> this
-    mode == GameMode.NO_MERCY -> copy(mode = mode, targetScore = 1000)
-    else -> copy(mode = mode, targetScore = if (targetScore == 1000) 500 else targetScore)
+private fun modeLabel(mode: GameMode) = when (mode) {
+    GameMode.NO_MERCY -> "No Mercy"
+    GameMode.FLIP -> "Flip"
+    GameMode.CLASSIC -> "Classic"
 }
 
-/** A house rule as a tile you tap on and off; outlined with a tick when it's on. */
+/**
+ * A No Mercy round pays out about five times a Classic one — hands run to the mercy limit and every
+ * knockout is worth 250 — so it plays to bigger numbers. At six players 1000 is a round or two and
+ * [NO_MERCY_TARGET] is the one that gives a game the shape Classic has.
+ */
+private fun targetScores(mode: GameMode) = when (mode) {
+    GameMode.NO_MERCY -> listOf(0, 1000, NO_MERCY_TARGET, 5000)
+    // Flip pays more per round than Classic: the dark side alone is worth up to 60 a card.
+    GameMode.FLIP -> listOf(0, 250, CLASSIC_TARGET, 1000)
+    GameMode.CLASSIC -> listOf(0, 100, 250, CLASSIC_TARGET)
+}
+
+private const val CLASSIC_TARGET = 500
+private const val NO_MERCY_TARGET = 3000
+
+/** Switching mode moves the target score onto the other mode's scale. One round means one round in both. */
+private fun RuleSet.switchTo(mode: GameMode): RuleSet = when {
+    mode == this.mode -> this
+    targetScore == 0 -> copy(mode = mode)
+    mode == GameMode.NO_MERCY -> copy(mode = mode, targetScore = NO_MERCY_TARGET)
+    else -> copy(mode = mode, targetScore = CLASSIC_TARGET)
+}
+
+/**
+ * A house rule as a tile you tap on and off; outlined with a tick when it's on. One you can't change
+ * — the mode forces it, or you're not the host — is greyed out and carries a padlock instead, so an
+ * off rule that's locked off never reads as one you could turn on.
+ */
 @Composable
 private fun RuleTile(title: String, detail: String, on: Boolean, editable: Boolean, modifier: Modifier, onToggle: () -> Unit) {
+    val tint = if (editable) GameTheme.text else GameTheme.mutedText
+    val mark = if (editable) GameTheme.highlight else GameTheme.mutedText
     Row(
         modifier
             .clip(GameTheme.tileShape)
             .background(if (on) GameTheme.panelStrong else GameTheme.panel)
-            .then(if (on) Modifier.border(2.dp, GameTheme.highlight.copy(alpha = if (editable) 1f else 0.5f), GameTheme.tileShape) else Modifier)
+            .then(if (on) Modifier.border(2.dp, mark.copy(alpha = if (editable) 1f else 0.5f), GameTheme.tileShape) else Modifier)
+            .then(if (editable) Modifier else Modifier.alpha(LOCKED_TILE_ALPHA))
             .clickable(enabled = editable, role = Role.Switch, onClick = onToggle)
-            .semantics { contentDescription = "$title, ${if (on) "on" else "off"}" }
+            .semantics { contentDescription = "$title, ${if (on) "on" else "off"}${if (editable) "" else ", locked"}" }
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, color = tint, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             HintText(detail)
         }
         Box(Modifier.size(14.dp)) {
-            if (on) Canvas(Modifier.fillMaxSize()) { checkIcon(GameTheme.highlight) }
+            when {
+                !editable -> Canvas(Modifier.fillMaxSize()) { lockIcon(mark) }
+                on -> Canvas(Modifier.fillMaxSize()) { checkIcon(mark) }
+            }
         }
     }
 }
+
+/** Enough to read as off limits without going so dim the words can't be read. */
+private const val LOCKED_TILE_ALPHA = 0.55f
 
 /** A setting on one line: its name, then the options side by side. */
 @Composable

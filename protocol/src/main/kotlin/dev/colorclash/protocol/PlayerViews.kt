@@ -1,9 +1,18 @@
 package dev.colorclash.protocol
 
 import dev.colorclash.rules.Action
+import dev.colorclash.rules.Card
 import dev.colorclash.rules.GameEngine
 import dev.colorclash.rules.GameState
 import dev.colorclash.rules.Phase
+
+/**
+ * A card as it goes over the wire. In Flip the side a card isn't showing belongs to whoever it faces,
+ * so it's stripped out: you learn your own cards' other side by watching what you're facing people with.
+ */
+internal fun Card.shown(): Card = if (back == null) this else copy(back = null)
+
+internal fun List<Card>.shown(): List<Card> = if (none { it.back != null }) this else map { it.shown() }
 
 /** Whether a view from the network can be drawn at all: every seat it points at exists. */
 fun PlayerView.isWellFormed(): Boolean {
@@ -27,11 +36,18 @@ fun GameState.viewFor(
 
     return PlayerView(
         you = you,
-        hand = hand,
+        hand = hand.shown(),
         playable = hand.filter { GameEngine.isPlayable(this, you, it) }.map { it.id }.toSet(),
-        seats = players.mapIndexed { i, p -> SeatView(seats[i], p.hand.size, p.score, p.calledLastCard, p.knockedOut) },
-        topCard = topCard,
+        seats = players.mapIndexed { i, p ->
+            SeatView(
+                seats[i], p.hand.size, p.score, p.calledLastCard, p.knockedOut,
+                // Flip turns every hand outward: the side facing the table is public, the ids aren't.
+                facing = if (rules.flip && i != you) p.hand.mapNotNull { it.back } else emptyList(),
+            )
+        },
+        topCard = topCard.shown(),
         activeColor = activeColor,
+        side = side,
         direction = direction,
         current = current,
         phase = when (phase) {

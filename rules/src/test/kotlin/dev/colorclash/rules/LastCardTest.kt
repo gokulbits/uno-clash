@@ -117,4 +117,60 @@ class LastCardTest {
         val (after, _) = called.act(Draw(0))
         assertFalse(after.players[0].calledLastCard)
     }
+
+    /** No Mercy's Discard All dumps a whole color, so a big hand can drop to one card in one play. */
+    private val noMercy = RuleSet(mode = GameMode.NO_MERCY)
+    private val dumpAll = t.red(Face.DISCARD_ALL)
+    private val fiveCards = { extra: List<Card> ->
+        t.state(
+            listOf(dumpAll, t.red(ONE), t.red(TWO), t.red(FIVE)) + extra, others(), others(),
+            top = t.red(NINE), rules = noMercy,
+        )
+    }
+
+    @Test
+    fun `a discard all that would leave one card lets you call early`() {
+        val s = fiveCards(listOf(t.blue(ONE)))
+        assertEquals(5, s.hand(0).size)
+        val (called, _) = s.act(CallLastCard(0))
+        assertTrue(called.players[0].calledLastCard)
+        val (after, _) = called.act(PlayCard(0, dumpAll.id))
+        assertEquals(1, after.hand(0).size)
+        assertNull(after.exposedPlayer)
+        after.rejects(CatchLastCard(1, 0))
+    }
+
+    @Test
+    fun `without the early call that same play exposes you`() {
+        val (after, _) = fiveCards(listOf(t.blue(ONE))).act(PlayCard(0, dumpAll.id))
+        assertEquals(1, after.hand(0).size)
+        assertEquals(0, after.exposedPlayer)
+    }
+
+    @Test
+    fun `a discard all that would leave two cards is still too many to call`() {
+        fiveCards(listOf(t.blue(ONE), t.green(TWO))).rejects(CallLastCard(0))
+    }
+
+    @Test
+    fun `a discard all you can't play yet doesn't let you call`() {
+        val blue = t.blue(Face.DISCARD_ALL)
+        t.state(
+            listOf(blue, t.blue(ONE), t.blue(TWO), t.red(FIVE)), others(), others(),
+            top = t.green(NINE), rules = noMercy,
+        ).rejects(CallLastCard(0))
+    }
+
+    @Test
+    fun `an early call lapses if you play something else`() {
+        val other = t.red(ONE)
+        val s = t.state(
+            listOf(dumpAll, other, t.red(TWO), t.red(FIVE), t.blue(ONE)), others(), others(),
+            top = t.red(NINE), rules = noMercy,
+        )
+        val (called, _) = s.act(CallLastCard(0))
+        val (after, _) = called.act(PlayCard(0, other.id))
+        assertEquals(4, after.hand(0).size)
+        assertFalse(after.players[0].calledLastCard, "The call only covers the play it was made for")
+    }
 }

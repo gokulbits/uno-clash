@@ -25,6 +25,12 @@ object GameTheme {
     val yellow = Color(0xFFFFC61A)
     val green = Color(0xFF1FD15C)
     val blue = Color(0xFF3B5BFF)
+    // The dark side of a Flip deck. Pink sits close to red, which is fine: a Flip game is on one
+    // side at a time, so the two sets never share a table.
+    val pink = Color(0xFFFF2E92)
+    val teal = Color(0xFF12C2D4)
+    val orange = Color(0xFFFF7A1A)
+    val purple = Color(0xFF8B3DFF)
     val wild = Color(0xFF1C1530)
 
     val tableTop = Color(0xFF3A1F8C)
@@ -47,6 +53,8 @@ object GameTheme {
     val qrInk = Color.Black
 
     val cardColors = listOf(red, yellow, green, blue)
+    /** The Flip deck's other four. Chrome keeps using [cardColors]; these only show on cards. */
+    val darkCardColors = listOf(pink, teal, orange, purple)
 
     // Every rounded thing in the chrome is one of these, smallest to largest.
     val tagShape = RoundedCornerShape(8.dp)
@@ -93,6 +101,10 @@ object GameTheme {
         CardColor.YELLOW -> yellow
         CardColor.GREEN -> green
         CardColor.BLUE -> blue
+        CardColor.PINK -> pink
+        CardColor.TEAL -> teal
+        CardColor.ORANGE -> orange
+        CardColor.PURPLE -> purple
         null -> wild
     }
 

@@ -96,6 +96,7 @@ import dev.colorclash.app.ui.components.SheetSurface
 import dev.colorclash.app.ui.components.SmallButton
 import dev.colorclash.app.ui.components.Tag
 import dev.colorclash.app.ui.components.Toast
+import dev.colorclash.app.ui.components.chevronIcon
 import dev.colorclash.app.ui.components.colorDotsIcon
 import dev.colorclash.app.ui.components.directionIcon
 import dev.colorclash.app.ui.components.offlineIcon
@@ -179,6 +180,8 @@ private fun GameTable(
 ) {
     val controls = tableControls(view)
     var showPeek by remember { mutableStateOf(false) }
+    // Flip turns every hand outward, so a seat can be opened to see what it's facing you with.
+    var facingSeat by remember { mutableStateOf<Int?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     var showRules by remember { mutableStateOf(false) }
     var showReactions by remember { mutableStateOf(false) }
@@ -206,6 +209,7 @@ private fun GameTable(
                 next = nextSeat(view),
                 catchTarget = controls.catchTarget,
                 onCatch = { onIntent(PlayerIntent.Catch(it)) },
+                onPeek = { facingSeat = it },
                 modifier = Modifier.fillMaxWidth().height(200.dp),
             )
 
@@ -293,7 +297,13 @@ private fun GameTable(
         }
 
         if (showPeek) RecentPlays(view, recentPlays, onDismiss = { showPeek = false })
-        if (controls.pickingColor) ColorPicker(view.hand, onPick = { onIntent(PlayerIntent.ChooseColor(it)) }, onTap = onColorTap)
+        // Gone the moment that hand stops facing outward, so it can't sit there showing a stale one.
+        val peeking = facingSeat?.takeIf { view.seats.getOrNull(it)?.facing?.isNotEmpty() == true }
+        LaunchedEffect(peeking) { if (peeking == null) facingSeat = null }
+        peeking?.let { seat ->
+            FacingHand(view.nameOf(seat), view.seats[seat].facing, onDismiss = { facingSeat = null })
+        }
+        if (controls.pickingColor) ColorPicker(view.hand, view.side, onPick = { onIntent(PlayerIntent.ChooseColor(it)) }, onTap = onColorTap)
         if (controls.pickingSwapTarget) SwapPicker(view, onPick = { onIntent(PlayerIntent.SwapWith(it)) })
         if (roundOver && !scoresClosed) {
             ScoreBoard(view, controls.headline, history, isHost, onNextRound, onRematch, onBackToLobby, onLeave, onClose = { scoresClosed = true })
@@ -311,7 +321,15 @@ private fun GameTable(
 }
 
 @Composable
-private fun OpponentsArc(view: PlayerView, fx: TableFx, next: Int?, catchTarget: Int?, onCatch: (Int) -> Unit, modifier: Modifier) {
+private fun OpponentsArc(
+    view: PlayerView,
+    fx: TableFx,
+    next: Int?,
+    catchTarget: Int?,
+    onCatch: (Int) -> Unit,
+    onPeek: (Int) -> Unit,
+    modifier: Modifier,
+) {
     val opponents = opponentOrder(view)
     val positions = arcPositions(opponents.size)
     BoxWithConstraints(modifier) {
@@ -330,6 +348,7 @@ private fun OpponentsArc(view: PlayerView, fx: TableFx, next: Int?, catchTarget:
                 turnSeconds = view.settings.turnTimerSeconds,
                 canCatch = catchTarget == seat,
                 onCatch = { onCatch(seat) },
+                onPeek = if (view.seats[seat].facing.isEmpty()) null else ({ onPeek(seat) }),
                 modifier = Modifier
                     .offset(x, y)
                     .width(seatWidth)
@@ -356,6 +375,8 @@ private fun OpponentSeat(
     turnSeconds: Int?,
     canCatch: Boolean,
     onCatch: () -> Unit,
+    /** Set when this hand faces outward: opens it in full, since the fan is too small to read. */
+    onPeek: (() -> Unit)?,
     modifier: Modifier,
 ) {
     val pulse = LocalPulse.current
@@ -370,7 +391,9 @@ private fun OpponentSeat(
     Column(
         modifier
             .alpha(if (seat.knockedOut) 0.5f else 1f)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showCount = true },
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                if (onPeek != null) onPeek() else showCount = true
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -398,7 +421,13 @@ private fun OpponentSeat(
                 !seat.info.connected -> SeatMark(Modifier.align(Alignment.BottomEnd)) { offlineIcon(it) }
             }
         }
-        HandFan(seat.cardCount, Modifier.offset(y = (-8).dp))
+        Box(contentAlignment = Alignment.Center) {
+            HandFan(seat.cardCount, Modifier.offset(y = (-8).dp), facing = seat.facing)
+            // The clip says the fan opens, and takes no height of its own: the seats are already tight.
+            if (onPeek != null) {
+                PeekClip(seat.cardCount, Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = (-6).dp), onPeek)
+            }
+        }
         // Dark so it reads over anything; yellow on their turn.
         Tag(
             seat.info.name,
@@ -420,6 +449,24 @@ private fun OpponentSeat(
             )
             seat.cardCount == 1 && seat.calledLastCard -> Tag("UNO", GameTheme.highlight)
         }
+    }
+}
+
+/** The tab on an outward-facing fan: the count, and a nudge that it opens. */
+@Composable
+private fun PeekClip(count: Int, modifier: Modifier, onClick: () -> Unit) {
+    Row(
+        modifier
+            .clip(GameTheme.tagShape)
+            .background(GameTheme.scrim)
+            .border(1.dp, GameTheme.glassEdge, GameTheme.tagShape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 5.dp, vertical = 1.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text("$count", color = GameTheme.highlight, style = MaterialTheme.typography.labelMedium)
+        Canvas(Modifier.size(8.dp)) { chevronIcon(GameTheme.mutedText) }
     }
 }
 

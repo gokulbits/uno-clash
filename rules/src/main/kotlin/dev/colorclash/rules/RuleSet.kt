@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 enum class BotLevel { EASY, NORMAL }
 
 @Serializable
-enum class GameMode { CLASSIC, NO_MERCY }
+enum class GameMode { CLASSIC, NO_MERCY, FLIP }
 
 @Serializable
 data class RuleSet(
@@ -23,6 +23,8 @@ data class RuleSet(
     val jumpIn: Boolean = false,
     /** 7 swaps hands with a chosen player, 0 passes every hand along the direction of play. */
     val sevenZero: Boolean = false,
+    /** Adds the printed Wild Swap Hands card: pick a color, then take someone's hand. */
+    val swapHandsWild: Boolean = false,
     val drawUntilPlayable: Boolean = false,
     /**
      * Cards drawn for playing a Skip, Reverse, +2 or wild as your last card. The card still
@@ -36,15 +38,20 @@ data class RuleSet(
 ) {
     val noMercy: Boolean get() = mode == GameMode.NO_MERCY
 
-    /** No Mercy stacks any draw card of equal or higher value, so it's always on. */
-    val stacking: Boolean get() = noMercy || stackDraws
+    val flip: Boolean get() = mode == GameMode.FLIP
 
-    /** The 7 swap and the 0 pass-along are compulsory in No Mercy. */
-    val swaps: Boolean get() = noMercy || sevenZero
+    /** No Mercy stacks any draw card of equal or higher value, so it's always on. Flip has no stacking at all. */
+    val stacking: Boolean get() = !flip && (noMercy || stackDraws)
 
-    val drawsUntilPlayable: Boolean get() = noMercy || drawUntilPlayable
+    /** The 7 swap and the 0 pass-along are compulsory in No Mercy. A Flip deck has no zeros to pass on. */
+    val swaps: Boolean get() = !flip && (noMercy || sevenZero)
 
-    /** No Mercy has no Wild +4, so there's nothing to challenge. */
+    /** The other modes bring their own decks, so the extra wild only goes in a Classic one. */
+    val swapHands: Boolean get() = mode == GameMode.CLASSIC && swapHandsWild
+
+    val drawsUntilPlayable: Boolean get() = noMercy || (!flip && drawUntilPlayable)
+
+    /** No Mercy has no Wild +4, so there's nothing to challenge. Flip challenges its own two wilds. */
     val canChallenge: Boolean get() = !noMercy && challengeDrawFour
 
     /** No Mercy lets you win on any card. */

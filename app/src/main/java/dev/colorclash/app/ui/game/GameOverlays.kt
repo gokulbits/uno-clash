@@ -70,6 +70,9 @@ import dev.colorclash.protocol.PhaseKind
 import dev.colorclash.protocol.PlayerView
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.CardColor
+import dev.colorclash.rules.Side
+// The same package holds the CardBack composable, so the card's own side goes by another name here.
+import dev.colorclash.rules.CardBack as CardSide
 import kotlin.math.PI
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -146,12 +149,44 @@ fun RecentPlays(view: PlayerView, plays: List<RecentPlay>, onDismiss: () -> Unit
 }
 
 /**
+ * What a player is holding, from the side of each card turned towards the table. Only Flip turns hands
+ * outward, and only those sides ever leave the host: the ids don't, so these are drawn from face and color.
+ */
+@Composable
+fun FacingHand(name: String, facing: List<CardSide>, onDismiss: () -> Unit) {
+    Overlay(onDismiss = onDismiss) {
+        SheetTitle("$name is holding")
+        HintText(
+            if (facing.size == 1) {
+                "1 card. This is the side facing you — they see the other one."
+            } else {
+                "${facing.size} cards. These are the sides facing you — they see the other ones."
+            },
+        )
+        val sorted = facing.sortedWith(compareBy({ it.color?.ordinal ?: Int.MAX_VALUE }, { it.face.ordinal }))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            sorted.chunked(FACING_PER_ROW).forEachIndexed { r, row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    row.forEachIndexed { i, side ->
+                        // No id comes over the wire, so give each one of its own that can't collide with a real card.
+                        CardFace(Card(-1 - (r * FACING_PER_ROW + i), side.face, side.color), FACING_CARD_WIDTH, elevation = 1.dp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private const val FACING_PER_ROW = 5
+private val FACING_CARD_WIDTH = 46.dp
+
+/**
  * The four colors as a wheel, spinning in over the dimmed table with your hand still in view below it.
  * A tap plays [onTap] straight away and a short effect, and the pick goes to the host partway through
  * so the effect has time to be seen.
  */
 @Composable
-fun ColorPicker(hand: List<Card>, onPick: (CardColor) -> Unit, onTap: () -> Unit) {
+fun ColorPicker(hand: List<Card>, side: Side, onPick: (CardColor) -> Unit, onTap: () -> Unit) {
     val counts = hand.mapNotNull { it.color }.groupingBy { it }.eachCount()
     val appear = remember { Animatable(0f) }
     LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow)) }
@@ -190,7 +225,8 @@ fun ColorPicker(hand: List<Card>, onPick: (CardColor) -> Unit, onTap: () -> Unit
             ) {
                 // Solid behind the slices, so the table's cards and text don't show through the gaps.
                 Box(Modifier.fillMaxSize().clip(CircleShape).background(hubColor))
-                CardColor.entries.forEachIndexed { i, color ->
+                // Only the four colors of the side in play: the engine turns the others down.
+                CardColor.of(side).forEachIndexed { i, color ->
                     WheelSlice(color, i, counts[color] ?: 0, wheel, picked, { burst.value }) {
                         if (picked == null) {
                             picked = color

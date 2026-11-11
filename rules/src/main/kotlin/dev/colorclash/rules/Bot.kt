@@ -35,7 +35,7 @@ class SimpleBot(
             Phase.Turn -> Draw(seat)
             // No Mercy has no pass: the card you drew has to go down.
             is Phase.DrewPlayable -> if (state.rules.noMercy) PlayCard(seat, phase.cardId) else Action.Pass(seat)
-            is Phase.PickColor -> ChooseColor(seat, favoriteColor(state.hand(seat)))
+            is Phase.PickColor -> ChooseColor(seat, favoriteColor(state.hand(seat), state.side))
             Phase.PickSwapTarget -> swapTarget(state, seat)?.let { SwapWith(seat, it) }
             else -> null
         }
@@ -57,7 +57,7 @@ class SimpleBot(
         if (seat != state.current || legal.isEmpty()) return null
         val hand = state.hand(seat)
         return when (state.phase) {
-            is Phase.PickColor -> ChooseColor(seat, if (level == BotLevel.EASY) randomColor() else favoriteColor(hand))
+            is Phase.PickColor -> ChooseColor(seat, if (level == BotLevel.EASY) randomColor(state.side) else favoriteColor(hand, state.side))
             Phase.PickSwapTarget -> swapTarget(state, seat)?.let { SwapWith(seat, it) }
             is Phase.DrewPlayable -> legal.first { it is PlayCard }
             Phase.Turn -> chooseTurn(state, seat, legal)
@@ -114,10 +114,11 @@ class SimpleBot(
         else -> 0
     }
 
-    private fun favoriteColor(hand: List<Card>): CardColor {
-        val counts = hand.mapNotNull { it.color }.groupingBy { it }.eachCount()
-        return counts.maxByOrNull { it.value }?.key ?: randomColor()
+    /** Whatever it holds most of, among the colors actually in play. */
+    private fun favoriteColor(hand: List<Card>, side: Side): CardColor {
+        val counts = hand.mapNotNull { it.color }.filter { it.side == side }.groupingBy { it }.eachCount()
+        return counts.maxByOrNull { it.value }?.key ?: randomColor(side)
     }
 
-    private fun randomColor() = CardColor.entries[random.nextInt(CardColor.entries.size)]
+    private fun randomColor(side: Side) = CardColor.of(side).let { it[random.nextInt(it.size)] }
 }

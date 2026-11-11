@@ -88,6 +88,23 @@ class ProtocolTest {
     }
 
     @Test
+    fun `flip shows the hands facing you and never your own cards' other side`() {
+        val flip = GameEngine.newGame(4, RuleSet(mode = GameMode.FLIP), seed = 3).state
+        for (seat in 0 until 4) {
+            val view = flip.viewFor(seat, seats, settings)
+            assertTrue(view.hand.all { it.back == null }, "own hand")
+            assertNull(view.topCard.back)
+            // Every other seat's hand is public from the side it faces the table with, and no further.
+            assertEquals(List(4) { if (it == seat) 0 else flip.hand(it).size }, view.seats.map { it.facing.size })
+            // The light side is in play, so every side facing you is a dark one or a wild.
+            assertTrue(view.seats.flatMap { it.facing }.all { it.color == null || it.color in CardColor.dark })
+            assertEquals(flip.hand((seat + 1) % 4).map { it.back }, view.seats[(seat + 1) % 4].facing)
+        }
+        val dealt = GameEvent.Dealt(1, flip.hand(1)).toView(1) as EventView.Dealt
+        assertTrue(dealt.cards!!.all { it.back == null })
+    }
+
+    @Test
     fun `playable cards match the engine`() {
         val view = game.viewFor(game.current, seats, settings)
         val expected = game.hand(game.current).filter { GameEngine.isPlayable(game, game.current, it) }.map { it.id }.toSet()

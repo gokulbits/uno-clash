@@ -44,9 +44,13 @@ import dev.colorclash.app.ui.theme.LocalCardBack
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.CardColor
 import dev.colorclash.rules.Face
+// The same package holds the CardBack composable, so the card's own side goes by another name here.
+import dev.colorclash.rules.CardBack as CardSide
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 
 const val CARD_ASPECT = 1.5f
 
@@ -161,10 +165,13 @@ private fun CacheDrawScope.faceCache(card: Card, dimmed: Boolean, measurer: Text
         corners = listOf(near, Offset(w - near.x, size.height - near.y)),
         quadrants = QUADRANTS.map { tint(it) },
         fills = when (card.face) {
+            Face.DRAW_ONE -> listOf(tint(base))
             Face.DRAW_TWO -> listOf(tint(base), tint(base))
             Face.DRAW_FOUR -> List(4) { tint(base) }
+            Face.DRAW_FIVE -> List(5) { tint(base) }
             Face.DISCARD_ALL -> List(3) { tint(base) }
             Face.WILD_DRAW_FOUR -> DRAW_FOUR_FANS.map { tint(it) }
+            Face.WILD_DRAW_TWO -> DRAW_TWO_FANS.map { tint(it) }
             else -> emptyList()
         },
     )
@@ -214,40 +221,58 @@ private fun CacheDrawScope.ovalBounds(): Rect {
     return Rect(Offset((size.width - ovalSize.width) / 2, (size.height - ovalSize.height) / 2), ovalSize)
 }
 
-/** An opponent's hand as fanned card backs, so the count reads at a glance. One canvas for the whole hand. */
+/**
+ * An opponent's hand as a fan, so the count reads at a glance. One canvas for the whole hand.
+ *
+ * [facing] is the side of each card turned towards the table, which Flip makes public: given it,
+ * the fan shows those colors instead of card backs. Too small for the faces, so the popup has those.
+ */
 @Composable
-fun HandFan(count: Int, modifier: Modifier = Modifier) {
+fun HandFan(count: Int, modifier: Modifier = Modifier, facing: List<CardSide> = emptyList()) {
     val style = LocalCardBack.current
+    val shapes = LocalColorShapes.current
     Canvas(modifier.size(FAN_WIDTH, FAN_HEIGHT)) {
-        if (count <= 0) return@Canvas
+        val cards = if (facing.isEmpty()) count else facing.size
+        if (cards <= 0) return@Canvas
         val cw = FAN_CARD_WIDTH.toPx()
         val cardSize = Size(cw, cw * CARD_ASPECT)
-        val step = if (count > 1) min(7.dp.toPx(), 36.dp.toPx() / (count - 1)) else 0f
-        val turn = if (count > 1) min(7f, 36f / (count - 1)) else 0f
+        val step = if (cards > 1) min(7.dp.toPx(), 36.dp.toPx() / (cards - 1)) else 0f
+        val turn = if (cards > 1) min(7f, 36f / (cards - 1)) else 0f
         val top = 4.dp.toPx()
         val drop = Offset(0.6.dp.toPx(), 0.9.dp.toPx())
         val inset = cw * INSET
         val body = lerp(style.glow, style.deep, 0.5f)
         val oval = lerp(style.oval, style.ovalDeep, 0.5f)
-        for (i in 0 until count) {
-            val t = i - (count - 1) / 2f
+        for (i in 0 until cards) {
+            val t = i - (cards - 1) / 2f
             val topLeft = Offset(center.x + t * step - cw / 2, top)
             val cardCenter = topLeft + Offset(cw / 2, cardSize.height / 2)
+            val show = facing.getOrNull(i)
+            val shown = show?.color
+            val innerTopLeft = topLeft + Offset(inset, inset)
+            val innerSize = Size(cardSize.width - inset * 2, cardSize.height - inset * 2)
             // Each card leans around a point well below the hand, like cards held in a fan.
             rotate(t * turn, pivot = Offset(cardCenter.x, top + cardSize.height * 1.8f)) {
                 drawRoundRect(GameTheme.shadow.copy(alpha = 0.3f), topLeft + drop, cardSize, CornerRadius(cw * CORNER))
                 drawRoundRect(GameTheme.cardPaper, topLeft, cardSize, CornerRadius(cw * CORNER))
-                drawRoundRect(
-                    body,
-                    topLeft + Offset(inset, inset),
-                    Size(cardSize.width - inset * 2, cardSize.height - inset * 2),
-                    CornerRadius(cw * 0.08f),
-                )
-                rotate(OVAL_TILT, pivot = cardCenter) {
-                    val ovalSize = Size(cw * 0.6f, cw * 0.96f)
-                    val ovalTopLeft = cardCenter - Offset(ovalSize.width / 2, ovalSize.height / 2)
-                    drawOval(oval, ovalTopLeft, ovalSize)
-                    drawOval(GameTheme.cardPaper, ovalTopLeft, ovalSize, style = Stroke(cw * 0.035f))
+                val fill = shown?.let { GameTheme.cardColor(it) } ?: body
+                drawRoundRect(fill, innerTopLeft, innerSize, CornerRadius(cw * 0.08f))
+                when {
+                    show == null -> rotate(OVAL_TILT, pivot = cardCenter) {
+                        val ovalSize = Size(cw * 0.6f, cw * 0.96f)
+                        val ovalTopLeft = cardCenter - Offset(ovalSize.width / 2, ovalSize.height / 2)
+                        drawOval(oval, ovalTopLeft, ovalSize)
+                        drawOval(GameTheme.cardPaper, ovalTopLeft, ovalSize, style = Stroke(cw * 0.035f))
+                    }
+                    // A wild has no color of its own, so it keeps the four-way mark it wears on the card.
+                    shown == null -> {
+                        val half = Size(innerSize.width / 2, innerSize.height / 2)
+                        QUADRANTS.forEachIndexed { q, color ->
+                            val at = innerTopLeft + Offset(half.width * (q % 2), half.height * (q / 2))
+                            drawRect(color, at, half)
+                        }
+                    }
+                    shapes -> colorShape(shown, cardCenter, cw * 0.2f, GameTheme.cardPaper, GameTheme.shadow, cw * 0.04f)
                 }
             }
         }
@@ -255,7 +280,9 @@ fun HandFan(count: Int, modifier: Modifier = Modifier) {
 }
 
 private fun Face.cornerText(): String? = when (this) {
-    Face.DRAW_TWO -> "+2"
+    Face.DRAW_ONE -> "+1"
+    Face.DRAW_TWO, Face.WILD_DRAW_TWO -> "+2"
+    Face.DRAW_FIVE -> "+5"
     Face.DRAW_FOUR, Face.WILD_DRAW_FOUR, Face.WILD_REVERSE_DRAW_FOUR -> "+4"
     Face.WILD_DRAW_SIX -> "+6"
     Face.WILD_DRAW_TEN -> "+10"
@@ -358,18 +385,28 @@ private fun DrawScope.drawFace(card: Card, face: FaceCache, shapes: Boolean) {
         Face.SKIP_EVERYONE ->
             outlined(w, face.shade, face.ink, mid, w * 0.009f) { c, color, grow -> skipEveryoneIcon(c, w * 0.19f, color, grow) }
         Face.REVERSE -> outlined(w, face.shade, face.ink, mid, w * 0.009f) { c, color, grow -> reverseIcon(c, w * 0.25f, color, grow) }
-        Face.DRAW_TWO, Face.DRAW_FOUR -> miniCards(face.fills, face.shade, face.white)
+        Face.FLIP -> outlined(w, face.shade, face.ink, mid, w * 0.009f) { c, color, grow -> flipIcon(c, w * 0.22f, color, grow) }
+        Face.DRAW_ONE, Face.DRAW_TWO, Face.DRAW_FOUR, Face.DRAW_FIVE -> miniCards(face.fills, face.shade, face.white)
         Face.DISCARD_ALL -> {
             translate(top = -w * 0.07f) { miniCards(face.fills, face.shade, face.white) }
             outlined(w, face.shade, face.ink, mid + Offset(0f, w * 0.27f), w * 0.009f) { c, color, grow ->
                 downArrow(c, w * 0.1f, color, grow)
             }
         }
-        Face.WILD_DRAW_FOUR -> miniCards(face.fills, face.tint(GameTheme.wild), face.white)
+        Face.WILD_DRAW_FOUR, Face.WILD_DRAW_TWO -> miniCards(face.fills, face.tint(GameTheme.wild), face.white)
+        // Draw until a color turns up: cards coming down onto the color you're waiting on.
+        Face.WILD_DRAW_COLOR -> {
+            outlined(w, face.cornerShade, face.white, mid - Offset(0f, w * 0.18f), w * 0.014f) { c, color, grow ->
+                downArrow(c, w * 0.13f, color, grow)
+            }
+            wildPip(mid + Offset(0f, w * 0.21f), w * 0.13f, face.quadrants, face.white, face.cornerShade)
+        }
         // White over the rainbow oval, like the corner marks: the card's own ink would vanish into it.
         Face.WILD_REVERSE_DRAW_FOUR ->
             outlined(w, face.cornerShade, face.white, mid, w * 0.014f) { c, color, grow -> reverseIcon(c, w * 0.22f, color, grow) }
         Face.WILD_COLOR_ROULETTE -> rouletteIcon(mid, w * 0.19f, face.quadrants, face.white, face.cornerShade)
+        Face.WILD_SWAP_HANDS ->
+            outlined(w, face.cornerShade, face.white, mid, w * 0.014f) { c, color, grow -> swapIcon(c, w * 0.22f, color, grow) }
         Face.WILD -> Unit // the oval says it all
         Face.WILD_DRAW_SIX, Face.WILD_DRAW_TEN -> face.big?.let {
             drawLabel(it, mid, face.white, face.cornerShade, w, outline = face.cornerShade, outlineWidth = w * 0.05f)
@@ -399,6 +436,8 @@ private fun DrawScope.drawFace(card: Card, face: FaceCache, shapes: Boolean) {
                     outlined(w * 0.9f, face.cornerShade, face.white, at, w * 0.022f) { c, color, grow -> skipIcon(c, w * 0.09f, color, grow) }
                 card.face == Face.REVERSE ->
                     outlined(w * 0.9f, face.cornerShade, face.white, at, w * 0.022f) { c, color, grow -> reverseIcon(c, w * 0.09f, color, grow) }
+                card.face == Face.FLIP ->
+                    outlined(w * 0.9f, face.cornerShade, face.white, at, w * 0.022f) { c, color, grow -> flipIcon(c, w * 0.08f, color, grow) }
                 card.face == Face.DISCARD_ALL ->
                     outlined(w * 0.9f, face.cornerShade, face.white, at, w * 0.022f) { c, color, grow -> downArrow(c, w * 0.085f, color, grow) }
                 else -> wildPip(at, w * 0.08f, face.quadrants, face.white, face.cornerShade)
@@ -414,7 +453,10 @@ private fun DrawScope.drawFace(card: Card, face: FaceCache, shapes: Boolean) {
     }
 }
 
-/** Colorblind shapes: red triangle, blue square, green circle, yellow diamond. */
+/**
+ * Colorblind shapes: red triangle, blue square, green circle, yellow diamond, and on a Flip deck's
+ * dark side pink cross, teal upside-down triangle, orange hexagon, purple dome.
+ */
 fun DrawScope.colorShape(color: CardColor, at: Offset, r: Float, fill: Color, edge: Color, edgeWidth: Float) {
     val path = Path().apply {
         when (color) {
@@ -431,6 +473,44 @@ fun DrawScope.colorShape(color: CardColor, at: Offset, r: Float, fill: Color, ed
                 lineTo(at.x, at.y + r * 1.15f)
                 lineTo(at.x - r, at.y)
             }
+            CardColor.PINK -> {
+                // Fat arms, so it still reads as a cross at corner-mark size.
+                val a = r * 0.4f
+                moveTo(at.x - a, at.y - r)
+                lineTo(at.x + a, at.y - r)
+                lineTo(at.x + a, at.y - a)
+                lineTo(at.x + r, at.y - a)
+                lineTo(at.x + r, at.y + a)
+                lineTo(at.x + a, at.y + a)
+                lineTo(at.x + a, at.y + r)
+                lineTo(at.x - a, at.y + r)
+                lineTo(at.x - a, at.y + a)
+                lineTo(at.x - r, at.y + a)
+                lineTo(at.x - r, at.y - a)
+                lineTo(at.x - a, at.y - a)
+            }
+            CardColor.TEAL -> {
+                moveTo(at.x, at.y + r)
+                lineTo(at.x - r * 1.05f, at.y - r * 0.8f)
+                lineTo(at.x + r * 1.05f, at.y - r * 0.8f)
+            }
+            CardColor.ORANGE -> {
+                // Flat top and bottom, which tells it from the circle better than points would.
+                val x = r * 0.95f
+                val y = r * 0.52f
+                moveTo(at.x - x * 0.52f, at.y - r)
+                lineTo(at.x + x * 0.52f, at.y - r)
+                lineTo(at.x + x, at.y - y * 0.1f)
+                lineTo(at.x + x * 0.52f, at.y + r)
+                lineTo(at.x - x * 0.52f, at.y + r)
+                lineTo(at.x - x, at.y - y * 0.1f)
+            }
+            CardColor.PURPLE -> arcTo(
+                Rect(at.x - r * 1.05f, at.y - r * 0.85f, at.x + r * 1.05f, at.y + r * 1.25f),
+                startAngleDegrees = 180f,
+                sweepAngleDegrees = 180f,
+                forceMoveTo = true,
+            )
         }
         close()
     }
@@ -619,6 +699,84 @@ private fun DrawScope.rouletteIcon(c: Offset, r: Float, quadrants: List<Color>, 
     drawCircle(white, spoke * 1.2f, c)
 }
 
+/** Swap Hands: two arrows passing each other, one hand going each way. */
+private fun DrawScope.swapIcon(c: Offset, r: Float, ink: Color, grow: Float) {
+    swapArrow(c - Offset(0f, r * 0.45f), r, ink, right = true, grow)
+    swapArrow(c + Offset(0f, r * 0.45f), r, ink, right = false, grow)
+}
+
+private fun DrawScope.swapArrow(at: Offset, r: Float, ink: Color, right: Boolean, grow: Float) {
+    val sw = r * 0.3f
+    val half = r * 1.05f
+    val head = r * 0.44f
+    val sign = if (right) 1f else -1f
+    val tip = Offset(at.x + half * sign, at.y)
+    drawLine(ink, Offset(at.x - half * sign, at.y), Offset(tip.x - head * sign, at.y), sw + grow * 2, StrokeCap.Round)
+    val point = Path().apply {
+        moveTo(tip.x, tip.y)
+        lineTo(tip.x - head * sign, tip.y - head * 0.78f)
+        lineTo(tip.x - head * sign, tip.y + head * 0.78f)
+        close()
+    }
+    drawPath(point, ink)
+    drawPath(point, ink, style = Stroke(sw * 0.3f + grow * 2, join = StrokeJoin.Round))
+}
+
+/**
+ * Flip: one card caught halfway over — the side going away behind, the side coming up in front —
+ * with an arrow round each end for which way it turns. The mode's signature card.
+ */
+private fun DrawScope.flipIcon(c: Offset, r: Float, ink: Color, grow: Float) {
+    val cw = r * 0.8f
+    val ch = cw * CARD_ASPECT
+    // Different leans, so the pair still reads as two cards once they overlap.
+    drawTurningCard(c + Offset(-r * 0.3f, -r * 0.12f), cw * 0.9f, ch * 0.9f, -26f, ink, grow)
+    drawTurningCard(c + Offset(r * 0.28f, r * 0.14f), cw, ch, 8f, ink, grow)
+    flipArrow(c, r * 1.25f, ink, from = 198f, grow)
+    flipArrow(c, r * 1.25f, ink, from = 18f, grow)
+}
+
+private fun DrawScope.drawTurningCard(at: Offset, cw: Float, ch: Float, turn: Float, ink: Color, grow: Float) {
+    rotate(turn, pivot = at) {
+        drawRoundRect(
+            ink,
+            topLeft = Offset(at.x - cw / 2 - grow, at.y - ch / 2 - grow),
+            size = Size(cw + grow * 2, ch + grow * 2),
+            cornerRadius = CornerRadius(cw * 0.26f + grow),
+        )
+    }
+}
+
+/** One of the flip arrows: an arc clockwise from [from], head on its end. */
+private fun DrawScope.flipArrow(c: Offset, r: Float, ink: Color, from: Float, grow: Float) {
+    val sw = r * 0.2f
+    val sweep = 86f
+    drawArc(
+        ink,
+        startAngle = from,
+        sweepAngle = sweep,
+        useCenter = false,
+        topLeft = Offset(c.x - r, c.y - r),
+        size = Size(r * 2, r * 2),
+        style = Stroke(sw + grow * 2, cap = StrokeCap.Round),
+    )
+    val a = (from + sweep) * DEG
+    val on = Offset(c.x + r * cos(a), c.y + r * sin(a))
+    // Along the circle for the tip, across it for the head's base.
+    val along = Offset(-sin(a), cos(a))
+    val across = Offset(cos(a), sin(a))
+    val head = r * 0.36f
+    val tip = on + along * head
+    val point = Path().apply {
+        moveTo(tip.x, tip.y)
+        lineTo(on.x + across.x * head * 0.7f, on.y + across.y * head * 0.7f)
+        lineTo(on.x - across.x * head * 0.7f, on.y - across.y * head * 0.7f)
+        close()
+    }
+    drawPath(point, ink)
+    drawPath(point, ink, style = Stroke(sw * 0.3f + grow * 2, join = StrokeJoin.Round))
+}
+
 private fun DrawScope.reverseIcon(c: Offset, r: Float, ink: Color, grow: Float) {
     reverseArrow(c, r, ink, flip = false, grow)
     reverseArrow(c, r, ink, flip = true, grow)
@@ -646,21 +804,24 @@ private fun DrawScope.reverseArrow(c: Offset, r: Float, ink: Color, flip: Boolea
     drawPath(head, ink, style = Stroke(sw * 0.3f + grow * 2, join = StrokeJoin.Round))
 }
 
-/** Little cards in the middle of a draw card: two stacked for +2, four fanned for +4. */
+/** Little cards in the middle of a draw card: one or two stacked, three or more fanned. */
 private fun DrawScope.miniCards(fills: List<Color>, shade: Color, white: Color) {
     val w = size.width
     val mw = w * 0.2f
     val mh = mw * CARD_ASPECT
     val n = fills.size
+    // Five lean tighter than four, so the fan stays inside the oval.
+    val spread = if (n >= 5) w * 0.072f else w * 0.094f
+    val turn = if (n >= 5) 11f else 14f
     fills.forEachIndexed { i, fill ->
         val t = i - (n - 1) / 2f
-        val c = if (n == 2) {
+        val c = if (n <= 2) {
             center + Offset(t * w * 0.06f, t * w * 0.07f)
         } else {
-            center + Offset(t * w * 0.094f, abs(t) * w * 0.03f)
+            center + Offset(t * spread, abs(t) * w * 0.03f)
         }
         val topLeft = c - Offset(mw / 2, mh / 2)
-        rotate(if (n == 2) -14f else t * 14f, pivot = c) {
+        rotate(if (n <= 2) -14f else t * turn, pivot = c) {
             val radius = CornerRadius(w * 0.035f)
             val edge = w * 0.012f
             drawRoundRect(shade.copy(alpha = 0.45f), topLeft + Offset(w * 0.015f, w * 0.022f), Size(mw, mh), radius)
@@ -691,7 +852,9 @@ private const val OVAL_RY = 0.54f
 private const val OVAL_TILT = 28f
 private const val CAP_HEIGHT = 0.71f
 private const val SQRT_HALF = 0.70710677f
+private const val DEG = 0.017453292f
 private val BACK_WORDS = listOf("COLOR", "CLASH")
 // Plain vals, not get(): a `get() = listOf(...)` rebuilt these four-element lists on every draw.
 private val QUADRANTS = listOf(GameTheme.red, GameTheme.blue, GameTheme.yellow, GameTheme.green)
 private val DRAW_FOUR_FANS = listOf(GameTheme.blue, GameTheme.green, GameTheme.red, GameTheme.yellow)
+private val DRAW_TWO_FANS = listOf(GameTheme.blue, GameTheme.red)

@@ -61,6 +61,26 @@ class RuleGuideTest {
     }
 
     @Test
+    fun `flip explains the two sides and only the cards its deck has`() {
+        val guide = ruleGuide(GameSettings(RuleSet(mode = GameMode.FLIP), turnTimerSeconds = null))
+        assertEquals("Flip", guide.mode)
+        assertEquals(
+            listOf(
+                Face.SKIP, Face.REVERSE, Face.DRAW_ONE, Face.DRAW_FIVE, Face.SKIP_EVERYONE, Face.FLIP,
+                Face.WILD, Face.WILD_DRAW_TWO, Face.WILD_DRAW_COLOR,
+            ),
+            guide.faces(),
+        )
+        assertEquals("Every card has two sides", guide.basics[0].title)
+        assertEquals(listOf("Flipping over", "Reading the table", "Challenge a wild draw"), guide.special.map { it.title })
+        assertTrue("Challenge wild" in guide.onRules)
+        assertTrue("Wild Draw Color 60" in guide.winning.first().text)
+        // Nothing from the other decks: no +2, no stacking, no mercy rule.
+        assertFalse("stack" in guide.all().lowercase())
+        assertFalse("mercy" in guide.all().lowercase())
+    }
+
+    @Test
     fun `a single round says so`() {
         assertEquals("Just one round: whoever goes out first wins.", ruleGuide(GameSettings(RuleSet(targetScore = 0))).winning[1].text)
     }

@@ -24,6 +24,7 @@ internal class Transition(state: GameState) {
     private val discard = state.discardPile.toMutableList()
     private val setAside = state.setAside.toMutableList()
     private var activeColor = state.activeColor
+    private var side = state.side
     private var direction = state.direction
     private var current = state.current
     private var phase = state.phase
@@ -50,6 +51,7 @@ internal class Transition(state: GameState) {
             drawPile = drawPile.toList(),
             discardPile = discard.toList(),
             activeColor = activeColor,
+            side = side,
             direction = direction,
             current = current,
             phase = phase,
@@ -99,11 +101,13 @@ internal class Transition(state: GameState) {
         hands.forEach { it.clear() }
         called.fill(false)
         knockedOut.fill(false)
+        // Every round opens on the light side, whatever side the last one ended on.
+        side = Side.LIGHT
         knockouts = 0
         setAside.clear()
         discard.clear()
         drawPile.clear()
-        drawPile += Deck.forMode(rules.mode)
+        drawPile += Deck.forRules(rules, rng)
         rng.shuffle(drawPile)
         events += GameEvent.RoundStarted(round, dealer)
 
@@ -119,7 +123,9 @@ internal class Transition(state: GameState) {
 
         // No Mercy opens on a number card; classic only refuses a Wild Draw 4.
         var starter = drawPile.removeAt(0)
-        while (if (rules.noMercy) starter.face.isAction else starter.face == Face.WILD_DRAW_FOUR) {
+        while (
+            if (rules.noMercy) starter.face.isAction else starter.face in setOf(Face.WILD_DRAW_FOUR, Face.WILD_DRAW_TWO)
+        ) {
             drawPile += starter
             rng.shuffle(drawPile)
             starter = drawPile.removeAt(0)
@@ -144,11 +150,19 @@ internal class Transition(state: GameState) {
                 }
                 current = dealer
             }
-            Face.DRAW_TWO -> {
-                drawCards(first, 2, DrawReason.DRAW_CARD)
+            Face.DRAW_TWO, Face.DRAW_ONE -> {
+                drawCards(first, starter.face.drawCount, DrawReason.DRAW_CARD)
                 current = seatAfter(first)
             }
-            Face.WILD -> phase = Phase.PickColor(keepTurn = true)
+            // Turned up first, a Flip turns the game over and the first player matches what it became.
+            Face.FLIP -> {
+                turnEverythingOver()
+                activeColor = top.color
+                events += GameEvent.SideFlipped(side, top)
+                // Its other side can be a wild, and then the first player names the color.
+                if (top.isWild) phase = Phase.PickColor(keepTurn = true)
+            }
+            Face.WILD, Face.WILD_SWAP_HANDS -> phase = Phase.PickColor(keepTurn = true)
             else -> Unit
         }
     }
@@ -171,6 +185,9 @@ internal class Transition(state: GameState) {
             drawCards(player, rules.powerFinish, DrawReason.POWER_FINISH)
         }
         if (hand.isEmpty()) return goOut(player, card)
+        // A call covers the play it was made for. Call early off a Discard All, play something else
+        // instead, and it lapses: otherwise one call would cover the rest of the round.
+        if (hand.size > 1) called[player] = false
         if (hand.size == 1 && !called[player]) exposed = player
 
         if (card.face.isDraw) pendingDrawValue = card.face.drawCount
@@ -185,11 +202,21 @@ internal class Transition(state: GameState) {
                 events += GameEvent.Reversed(direction)
                 advance()
             }
-            Face.DRAW_TWO, Face.DRAW_FOUR -> {
+            Face.DRAW_TWO, Face.DRAW_FOUR, Face.DRAW_ONE, Face.DRAW_FIVE -> {
                 pendingDraw += card.face.drawCount
                 passDrawPenalty()
             }
-            Face.WILD -> phase = Phase.PickColor()
+            Face.FLIP -> flipEverything(player)
+            Face.WILD_DRAW_TWO -> {
+                if (rules.canChallenge && pendingDraw == 0) {
+                    drawFourCheck = DrawFourCheck(player, guilty = hand.any { it.color == colorBefore })
+                }
+                pendingDraw += 2
+                phase = Phase.PickColor()
+            }
+            // You name the color; the next player draws until it turns up, however long that takes.
+            Face.WILD_DRAW_COLOR -> phase = Phase.PickColor()
+            Face.WILD, Face.WILD_SWAP_HANDS -> phase = Phase.PickColor()
             Face.WILD_DRAW_FOUR -> {
                 // Only a fresh +4 can be challenged, not one stacked on another draw.
                 if (rules.canChallenge && pendingDraw == 0) {
@@ -230,6 +257,15 @@ internal class Transition(state: GameState) {
         when {
             pick.roulette -> spinRoulette(player, color)
             pick.keepTurn -> Unit
+            // A wild the flip left on top: naming the color is the whole of it.
+            pick.afterFlip -> advance()
+            // Flip's Wild Draw Color: the next player keeps drawing until your color shows up.
+            top.face == Face.WILD_DRAW_COLOR -> {
+                current = seatAfter(player)
+                spinRoulette(current, color)
+            }
+            // The swap comes after the color, and whoever played it chooses who to take from.
+            top.face == Face.WILD_SWAP_HANDS -> phase = Phase.PickSwapTarget
             top.face.isDraw -> passDrawPenalty()
             else -> advance()
         }
@@ -246,6 +282,43 @@ internal class Transition(state: GameState) {
         events += GameEvent.ColorRoulette(player, color, revealed.size)
         receive(player, revealed, DrawReason.ROULETTE)
         advance()
+    }
+
+    /**
+     * Turns the whole game over. The discard pile is flipped as a stack, so it comes out in reverse
+     * order and the card just played ends up at the bottom — whatever was underneath is now the one
+     * to match. Its action doesn't fire; a wild there is colored by whoever flipped.
+     */
+    private fun flipEverything(player: Int) {
+        turnEverythingOver()
+        events += GameEvent.SideFlipped(side, top)
+        activeColor = top.color
+        if (top.isWild) {
+            // Nothing to match until the player who flipped names a color.
+            phase = Phase.PickColor(afterFlip = true)
+            current = player
+        } else {
+            advance()
+        }
+    }
+
+    /** The cards themselves: hands, both piles and the discard stack, which comes out reversed. */
+    private fun turnEverythingOver() {
+        side = if (side == Side.DARK) Side.LIGHT else Side.DARK
+        for (hand in hands) {
+            val turned = hand.map { it.flipped() }
+            hand.clear()
+            hand += turned
+        }
+        val turnedPile = drawPile.map { it.flipped() }
+        drawPile.clear()
+        drawPile += turnedPile
+        val turnedAside = setAside.map { it.flipped() }
+        setAside.clear()
+        setAside += turnedAside
+        val turnedDiscard = discard.map { it.flipped() }.reversed()
+        discard.clear()
+        discard += turnedDiscard
     }
 
     /** Everything else of that color goes under the Discard All card. */
@@ -372,7 +445,8 @@ internal class Transition(state: GameState) {
         pendingDraw = 0
         pendingDrawValue = 0
         drawFourCheck = null
-        val inHands = hands.indices.filter { it != winner && !knockedOut[it] }.sumOf { hands[it].points() }
+        // Flip scores the side the round ended on, which is the side every hand is showing.
+        val inHands = hands.indices.filter { it != winner && !knockedOut[it] }.sumOf { hands[it].pointsIn(rules.mode) }
         val bonus = if (rules.noMercy) knockouts * rules.knockoutBonus else 0
         val points = inHands + bonus
         scores[winner] += points

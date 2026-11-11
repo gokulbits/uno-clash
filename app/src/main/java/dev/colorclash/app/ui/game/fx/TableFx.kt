@@ -321,6 +321,7 @@ class TableFx {
                 val turn = if (event.direction == Direction.CLOCKWISE) 360f else -360f
                 arrowSpin.animateTo(arrowSpin.value + turn, tween(550, easing = FastOutSlowInEasing))
             }
+            is EventView.SideFlipped -> flash(Anchor.DiscardPile, "Flip!", GameTheme.cardColor(event.top.color))
             is EventView.WildColorChosen -> burst(Anchor.DiscardPile, GameTheme.cardColor(event.color))
             is EventView.LastCardCalled -> flash(Anchor.Seat(event.player), "UNO!", GameTheme.yellow)
             is EventView.PenaltyApplied -> coroutineScope {

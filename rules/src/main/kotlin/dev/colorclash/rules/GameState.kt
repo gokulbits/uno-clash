@@ -23,9 +23,14 @@ sealed interface Phase {
 
     /**
      * Current player picks a color for the wild on top. [keepTurn] is for a wild turned over at
-     * round start; [roulette] means they then reveal cards until that color turns up.
+     * round start; [roulette] means they then reveal cards until that color turns up; [afterFlip]
+     * is a wild left on top by a Flip, where naming the color is all that happens.
      */
-    data class PickColor(val keepTurn: Boolean = false, val roulette: Boolean = false) : Phase
+    data class PickColor(
+        val keepTurn: Boolean = false,
+        val roulette: Boolean = false,
+        val afterFlip: Boolean = false,
+    ) : Phase
 
     /** Current player just drew [cardId] and it's playable. They play it or pass. */
     data class DrewPlayable(val cardId: Int) : Phase
@@ -49,6 +54,8 @@ data class GameState(
     val discardPile: List<Card>,
     /** Null only while a wild turned over at round start waits for a color. */
     val activeColor: CardColor?,
+    /** Which side of a Flip deck is in play. Always [Side.LIGHT] in the other modes. */
+    val side: Side = Side.LIGHT,
     val direction: Direction,
     val current: Int,
     val phase: Phase,
