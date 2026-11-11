@@ -163,6 +163,13 @@ class TableFx {
      * play for hours. Every view is complete, so when the queue is full the oldest can simply go.
      */
     private val queue = Channel<ServerMessage.Game>(MAX_QUEUED, BufferOverflow.DROP_OLDEST) { pending.decrementAndGet() }
+    /**
+     * False while an update is queued or playing, so the table is behind what the host has already
+     * sent. Written only from [run] and [reset], both on the main thread.
+     */
+    var caughtUp by mutableStateOf(true)
+        private set
+
     /** For effects that shouldn't hold up the next event, like the pile settling. */
     private var sideEffects: CoroutineScope? = null
     private var bannerJob: Job? = null
@@ -200,6 +207,7 @@ class TableFx {
         sideEffects = this
         for (update in queue) {
             val backlog = pending.decrementAndGet()
+            caughtUp = false
             try {
                 if (backlog < MAX_BACKLOG && update.events.isNotEmpty()) {
                     play(update, feedback)
@@ -208,6 +216,7 @@ class TableFx {
                 // Even when cancelled partway (the activity was recreated), or the table stays on
                 // whatever the animation had got to, like the empty one from before a deal.
                 commit(update.view, feedback)
+                caughtUp = pending.get() == 0
             }
         }
     }
@@ -215,6 +224,7 @@ class TableFx {
     /** Back in the lobby: forget the last table so the next game doesn't flash the old one. */
     fun reset() {
         while (queue.tryReceive().isSuccess) pending.decrementAndGet()
+        caughtUp = true
         displayed = null
         hiddenCards.clear()
         incomingCards.clear()

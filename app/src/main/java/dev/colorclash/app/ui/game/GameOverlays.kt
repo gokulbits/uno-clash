@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,6 +83,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private const val MAX_HISTORY_ROWS = 5
@@ -95,7 +97,7 @@ private const val WHEEL_RING_REACH = 1.35f
 private const val WHEEL_BURST_MILLIS = 340
 private const val WHEEL_SEND_AFTER_MILLIS = 180L
 private const val WHEEL_LEAVE_MILLIS = 160
-private const val WHEEL_RETRY_MILLIS = 1_500L
+private const val WHEEL_RETRY_MILLIS = 4_000L
 
 /** Dims the table. Taps outside what's on it close it if it can be closed, and never reach the table underneath. */
 @Composable
@@ -191,7 +193,7 @@ private val FACING_CARD_WIDTH = 46.dp
  * so the effect has time to be seen.
  */
 @Composable
-fun ColorPicker(hand: List<Card>, side: Side, onPick: (CardColor) -> Unit, onTap: () -> Unit) {
+fun ColorPicker(hand: List<Card>, side: Side, caughtUp: () -> Boolean, onPick: (CardColor) -> Unit, onTap: () -> Unit) {
     val counts = hand.mapNotNull { it.color }.groupingBy { it }.eachCount()
     val appear = remember { Animatable(0f) }
     LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow)) }
@@ -206,8 +208,11 @@ fun ColorPicker(hand: List<Card>, side: Side, onPick: (CardColor) -> Unit, onTap
         latestOnPick(color)
         delay(WHEEL_BURST_MILLIS - WHEEL_SEND_AFTER_MILLIS)
         leave.animateTo(1f, tween(WHEEL_LEAVE_MILLIS))
-        // Normally gone by now. Still here means the pick was lost with the connection, so offer it again.
+        // Normally gone by now. Still here means the pick was lost with the connection, so offer it
+        // again — but never while the table is still playing out what the host sent, which it is
+        // for a second or two after a wild. That was putting the wheel back up over a pick that landed.
         delay(WHEEL_RETRY_MILLIS)
+        snapshotFlow(caughtUp).first { it }
         burst.snapTo(0f)
         leave.snapTo(0f)
         picked = null

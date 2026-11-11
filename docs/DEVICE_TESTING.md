@@ -108,6 +108,8 @@ Host on one phone; join from the others using each method once.
   it out loud ("Skip!", "Wild draw four!"). Picking a color says the color; calling UNO says "UNO!". The
   "Announce cards out loud" switch silences the voice but keeps the banners. On a phone with no speech engine
   installed, nothing breaks; there's just no voice.
+- [ ] Play a Wild and pick a color. **Expect:** the wheel bursts, goes, and stays gone while the card flies and
+  the call-out plays. It only comes back if the pick never reached the host, and then not for a few seconds.
 - [ ] With music on, play a few action cards. **Expect:** the music sits well under the voice, dips almost to
   silence while a call-out plays, and comes straight back after it.
 - [ ] Tap 😊 and send a few reactions. **Expect:** every phone sees the emoji pop out of your seat with a stream of

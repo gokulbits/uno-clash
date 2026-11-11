@@ -317,7 +317,15 @@ private fun GameTable(
         peeking?.let { seat ->
             FacingHand(view.nameOf(seat), view.seats[seat].facing, onDismiss = { facingSeat = null })
         }
-        if (controls.pickingColor) ColorPicker(view.hand, view.side, onPick = { onIntent(PlayerIntent.ChooseColor(it)) }, onTap = onColorTap)
+        if (controls.pickingColor) {
+            ColorPicker(
+                view.hand,
+                view.side,
+                caughtUp = { fx.caughtUp },
+                onPick = { onIntent(PlayerIntent.ChooseColor(it)) },
+                onTap = onColorTap,
+            )
+        }
         if (controls.pickingSwapTarget) SwapPicker(view, onPick = { onIntent(PlayerIntent.SwapWith(it)) })
         if (roundOver && !scoresClosed) {
             ScoreBoard(view, controls.headline, history, isHost, onNextRound, onRematch, onBackToLobby, onLeave, onClose = { scoresClosed = true })
