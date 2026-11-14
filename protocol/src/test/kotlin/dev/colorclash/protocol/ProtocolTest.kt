@@ -13,6 +13,7 @@ import dev.colorclash.rules.GameState
 import dev.colorclash.rules.Phase
 import dev.colorclash.rules.Player
 import dev.colorclash.rules.RuleSet
+import dev.colorclash.rules.Side
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -102,6 +103,13 @@ class ProtocolTest {
         }
         val dealt = GameEvent.Dealt(1, flip.hand(1)).toView(1) as EventView.Dealt
         assertTrue(dealt.cards!!.all { it.back == null })
+
+        // A bounced stack crosses the wire with the flip, and the new top card keeps its other side hidden.
+        val bounce = GameEvent.SideFlipped(Side.DARK, flip.topCard, bounced = 10).toView(2) as EventView.SideFlipped
+        assertEquals(10, bounce.bounced)
+        assertNull(bounce.top.back)
+        val message = ServerMessage.Game(flip.viewFor(0, seats, settings), listOf(bounce))
+        assertEquals(message, Codec.decodeServer(Codec.encode(message)))
     }
 
     @Test

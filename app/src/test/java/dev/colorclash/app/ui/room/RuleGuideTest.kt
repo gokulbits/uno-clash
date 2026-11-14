@@ -72,12 +72,26 @@ class RuleGuideTest {
             guide.faces(),
         )
         assertEquals("Every card has two sides", guide.basics[0].title)
-        assertEquals(listOf("Flipping over", "Reading the table", "Challenge a wild draw"), guide.special.map { it.title })
+        assertEquals(
+            listOf("Stacking", "Bounce it", "Flipping over", "Reading the table", "Challenge a wild draw"),
+            guide.special.map { it.title },
+        )
         assertTrue("Challenge wild" in guide.onRules)
+        assertTrue("Dark side stacks" in guide.onRules)
+        assertFalse("Light side stacks" in guide.onRules)
+        assertTrue("doesn't stack" in guide.special.first().text)
         assertTrue("Wild Draw Color 60" in guide.winning.first().text)
-        // Nothing from the other decks: no +2, no stacking, no mercy rule.
-        assertFalse("stack" in guide.all().lowercase())
+        // Nothing from the other decks: no +2, no mercy rule.
+        assertFalse("+2" in guide.all())
         assertFalse("mercy" in guide.all().lowercase())
+    }
+
+    @Test
+    fun `flip with stacking on says the light side stacks too`() {
+        val guide = ruleGuide(GameSettings(RuleSet(mode = GameMode.FLIP, stackDraws = true), turnTimerSeconds = null))
+        assertTrue("Light side stacks" in guide.onRules)
+        assertTrue("Draw One on a Draw One" in guide.special.first().text)
+        assertTrue("unless they stack" in guide.cards.first { it.card.face == Face.DRAW_ONE }.text)
     }
 
     @Test

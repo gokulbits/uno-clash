@@ -2,6 +2,7 @@ package dev.colorclash.app.ui.game.fx
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
@@ -38,6 +39,7 @@ import dev.colorclash.protocol.ServerMessage
 import dev.colorclash.rules.Card
 import dev.colorclash.rules.Direction
 import dev.colorclash.rules.Face
+import dev.colorclash.rules.Side
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
@@ -139,6 +141,10 @@ class TableFx {
 
     val arrowSpin = Animatable(0f)
     val shake = Animatable(0f)
+    /** Flip: the whole table turning over, in degrees about its vertical axis. */
+    val tableTurn = Animatable(0f)
+    /** Flip: 0 on the light side, 1 on the dark, in between while it turns. */
+    val darkness = Animatable(0f)
     val stamps = mutableStateListOf<StampFx>()
     /** The seat a bad stamp is knocking sideways (yours means your hand). */
     var joltedSeat by mutableStateOf<Int?>(null)
@@ -239,6 +245,8 @@ class TableFx {
             // Empty hands and table while the cards fly out, instead of last round's.
             displayed = preDeal(view)
             clearPile(cleared = true)
+            // Every round opens on the light side.
+            sideEffects?.launch { darkness.animateTo(0f, tween(600)) }
             anchors.keys.removeAll { it is Anchor.HandCard }
             awaitAnchor(Anchor.DrawPile)
         }
@@ -272,6 +280,10 @@ class TableFx {
         // A round whose effects were skipped still shouldn't leave last round's cards on the pile.
         if (before != null && before.round != view.round) clearPile(cleared = false)
         placeOnPile(view.topCard)
+        // Effects skipped or cut short still leave the table lit for the side it's on.
+        val lit = if (view.side == Side.DARK) 1f else 0f
+        if (darkness.value != lit && !darkness.isRunning) sideEffects?.launch { darkness.snapTo(lit) }
+        if (tableTurn.value != 0f && !tableTurn.isRunning) sideEffects?.launch { tableTurn.snapTo(0f) }
         val turnStarts = view.isYourTurn && view.phase == PhaseKind.TURN &&
             (before == null || !before.isYourTurn || before.round != view.round || before.phase != PhaseKind.TURN)
         if (turnStarts) feedback.cue(YOUR_TURN_CUE)
@@ -331,7 +343,7 @@ class TableFx {
                 val turn = if (event.direction == Direction.CLOCKWISE) 360f else -360f
                 arrowSpin.animateTo(arrowSpin.value + turn, tween(550, easing = FastOutSlowInEasing))
             }
-            is EventView.SideFlipped -> flash(Anchor.DiscardPile, "Flip!", GameTheme.cardColor(event.top.color))
+            is EventView.SideFlipped -> turnTableOver(event, view)
             is EventView.WildColorChosen -> burst(Anchor.DiscardPile, GameTheme.cardColor(event.color))
             is EventView.LastCardCalled -> flash(Anchor.Seat(event.player), "UNO!", GameTheme.yellow)
             is EventView.PenaltyApplied -> coroutineScope {
@@ -352,6 +364,41 @@ class TableFx {
             is EventView.GameWon -> celebrate(big = true)
             is EventView.Dealt -> Unit
         }
+    }
+
+    /**
+     * Flip: the whole table swings round edge-on like a card, swaps to the other side while nobody can
+     * see it, and swings back, while the lights go down (or come back up) around it.
+     */
+    private suspend fun turnTableOver(event: EventView.SideFlipped, view: PlayerView) = coroutineScope {
+        val toDark = event.side == Side.DARK
+        launch { darkness.animateTo(if (toDark) 1f else 0f, tween(TURN_MILLIS + 400, easing = FastOutSlowInEasing)) }
+        tableTurn.animateTo(90f, tween(TURN_MILLIS / 2, easing = FastOutLinearInEasing))
+        showOtherSide(event, view)
+        tableTurn.snapTo(-90f)
+        launch { burst(Anchor.DiscardPile, GameTheme.cardColor(event.top.color)) }
+        if (toDark || event.bounced > 0) launch { shakeTable() }
+        tableTurn.animateTo(0f, spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMediumLow))
+    }
+
+    /**
+     * What the table looks like the moment it's over: your cards' new faces, the sides the others now
+     * face you with, and the pile's new top. Cards still to be drawn in this update stay out of it.
+     */
+    private fun showOtherSide(event: EventView.SideFlipped, view: PlayerView) {
+        val shown = displayed ?: return
+        val turned = view.hand.associateBy { it.id }
+        displayed = shown.copy(
+            side = event.side,
+            activeColor = event.top.color,
+            hand = shown.hand.map { turned[it.id] ?: it },
+            seats = shown.seats.mapIndexed { i, seat ->
+                val facing = view.seats.getOrNull(i)?.facing.orEmpty()
+                if (facing.isEmpty()) seat else seat.copy(facing = facing.take(seat.cardCount))
+            },
+        )
+        clearPile(cleared = false)
+        placeOnPile(event.top)
     }
 
     /** A card to each player in turn; yours fly into their slots and turn over as they land. */
@@ -581,6 +628,7 @@ class TableFx {
         private const val STAMP_MILLIS = 1150
         private const val STAMP_IMPACT_MILLIS = 170L
         private const val MAX_REACTIONS = 12
+        private const val TURN_MILLIS = 560
         private val HAND_SCALE = HAND_CARD_WIDTH / TABLE_CARD_WIDTH
         private const val SEAT_SCALE = 0.42f
         /** Quick off the hand, gentle into place. */

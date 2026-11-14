@@ -142,9 +142,14 @@ object GameEngine {
 
     private fun canPlayOnTurn(state: GameState, card: Card): Boolean {
         if (state.pendingDraw > 0) {
-            if (!state.rules.stacking) return false
+            if (!state.stacking) return false
             // No Mercy stacks any draw card worth as much as the last one or more.
             if (state.rules.noMercy) return card.face.drawCount >= state.pendingDrawValue
+            // Flip does too, and a Flip in the color in play turns the table and throws the stack onward.
+            if (state.rules.flip) {
+                return (card.face.isDraw && card.face.drawCount >= state.pendingDrawValue) ||
+                    (card.face == Face.FLIP && card.color == state.activeColor)
+            }
             return card.face == Face.WILD_DRAW_FOUR ||
                 (card.face == Face.DRAW_TWO && state.topCard.face == Face.DRAW_TWO)
         }

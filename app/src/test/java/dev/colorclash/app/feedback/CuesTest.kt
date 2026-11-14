@@ -7,6 +7,7 @@ import dev.colorclash.rules.CardColor
 import dev.colorclash.rules.Direction
 import dev.colorclash.rules.DrawReason
 import dev.colorclash.rules.Face
+import dev.colorclash.rules.Side
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -50,6 +51,13 @@ class CuesTest {
         assertEquals(Cue(Sfx.REVERSE), cueFor(EventView.Reversed(Direction.COUNTER_CLOCKWISE), you = 0))
         assertEquals(Cue(Sfx.WILD), cueFor(EventView.WildColorChosen(1, CardColor.BLUE), you = 0))
         assertNull(cueFor(EventView.Dealt(0, 7), you = 0))
+    }
+
+    @Test
+    fun `the dark side lands heavy, the light side comes back bright`() {
+        val top = Card(1, Face.FIVE, CardColor.PINK)
+        assertEquals(Cue(Sfx.FLIP_DARK, Buzz.HEAVY), cueFor(EventView.SideFlipped(Side.DARK, top), you = 0))
+        assertEquals(Cue(Sfx.FLIP_LIGHT, Buzz.SUCCESS), cueFor(EventView.SideFlipped(Side.LIGHT, red5), you = 2))
     }
 
     @Test

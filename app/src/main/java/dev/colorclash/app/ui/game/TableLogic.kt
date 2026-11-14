@@ -8,6 +8,7 @@ import dev.colorclash.rules.CardColor
 import dev.colorclash.rules.Direction
 import dev.colorclash.rules.DrawReason
 import dev.colorclash.rules.Face
+import dev.colorclash.rules.Side
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -42,7 +43,10 @@ fun tableControls(view: PlayerView): TableControls {
         PhaseKind.PICK_SWAP_TARGET -> if (yourTurn) "Pick someone to swap hands with" else "$current is choosing who to swap with"
         PhaseKind.DREW_PLAYABLE -> if (yourTurn) "Play the card you drew, or keep it" else "$current's turn"
         PhaseKind.TURN -> when {
-            yourTurn && view.canChallenge -> "Wild +4 on you! Challenge it or take ${view.pendingDraw}"
+            yourTurn && view.canChallenge ->
+                "${if (view.settings.rules.flip) "Wild +2" else "Wild +4"} on you! Challenge it or take ${view.pendingDraw}"
+            yourTurn && view.pendingDraw > 0 && view.settings.rules.flip ->
+                "Stack a +${view.pendingDrawValue}, Flip it away, or take ${view.pendingDraw}"
             yourTurn && view.pendingDraw > 0 && view.pendingDrawValue > 0 ->
                 "Stack +${view.pendingDrawValue} or higher, or take ${view.pendingDraw}"
             yourTurn && view.pendingDraw > 0 -> "Stack a draw card or take ${view.pendingDraw}"
@@ -151,8 +155,17 @@ fun seatStampsFor(event: EventView, you: Int): List<SeatStamp> = when (event) {
     else -> emptyList()
 }
 
-/** A table-wide callout: an action card landing, a color picked, an UNO call. */
-data class Announcement(val title: String, val detail: String, val color: CardColor?, val spoken: String)
+/**
+ * A table-wide callout: an action card landing, a color picked, an UNO call. With no [color] it's
+ * filled with all four colors of [side].
+ */
+data class Announcement(
+    val title: String,
+    val detail: String,
+    val color: CardColor?,
+    val spoken: String,
+    val side: Side = Side.LIGHT,
+)
 
 /**
  * What a draw card in [events] leaves someone to take: the whole stack, not just its own face.
@@ -188,6 +201,11 @@ fun announcementFor(event: EventView, view: PlayerView, events: List<EventView> 
                 Face.WILD_DRAW_SIX -> Triple("+6", "Draw six!", "a Wild Draw Six")
                 Face.WILD_DRAW_TEN -> Triple("+10", "Draw ten!", "a Wild Draw Ten")
                 Face.WILD_COLOR_ROULETTE -> Triple("ROULETTE!", "Color roulette!", "a Color Roulette")
+                Face.DRAW_ONE -> Triple("+1", "Draw one!", "a Draw One")
+                Face.DRAW_FIVE -> Triple("+5", "Draw five!", "a Draw Five")
+                Face.WILD_DRAW_TWO -> Triple("+2", "Wild draw two!", "a Wild Draw Two")
+                Face.WILD_DRAW_COLOR -> Triple("DRAW COLOR!", "Draw color!", "a Wild Draw Color")
+                // The table turning over has its own, bigger callout.
                 else -> return null
             }
             Announcement(title, "${who(event.player)} played $name", event.card.color, spoken)
@@ -203,8 +221,31 @@ fun announcementFor(event: EventView, view: PlayerView, events: List<EventView> 
             Announcement("${event.color.name}!", "${who(event.player)} picked $name", event.color, name.replaceFirstChar { it.uppercase() } + "!")
         }
         is EventView.LastCardCalled -> Announcement("UNO!", "${who(event.player)} called UNO", null, "UNO!")
+        is EventView.SideFlipped -> sideAnnouncement(event, view, events)
         else -> null
     }
+}
+
+/**
+ * The table turning over. A Flip thrown against a stack says who it bounced onto, which is the
+ * Drew right behind it.
+ */
+private fun sideAnnouncement(event: EventView.SideFlipped, view: PlayerView, events: List<EventView>): Announcement {
+    val dark = event.side == Side.DARK
+    val name = if (dark) "DARK SIDE" else "LIGHT SIDE"
+    if (event.bounced > 0) {
+        val after = events.indexOf(event).takeIf { it >= 0 } ?: 0
+        val victim = events.drop(after + 1).firstOrNull { it is EventView.Drew && it.reason == DrawReason.DRAW_CARD } as EventView.Drew?
+        val onto = victim?.let { if (it.player == view.you) "onto you" else "onto ${view.nameOf(it.player)}" } ?: "onward"
+        return Announcement("BOUNCED +${event.bounced}!", "Flipped to the ${name.lowercase()}, stack thrown $onto", null, "Bounced!", event.side)
+    }
+    return Announcement(
+        "$name!",
+        if (dark) "Everything turned over. Draws stack in the dark" else "Everything turned back over",
+        null,
+        if (dark) "Dark side!" else "Light side!",
+        event.side,
+    )
 }
 
 /** A draw card piled onto others: the banner and the voice both give the running total. */
@@ -243,7 +284,11 @@ fun describe(event: EventView, view: PlayerView): String? {
         is EventView.Skipped -> "${who(event.player)} ${if (event.player == view.you) "are" else "is"} skipped"
         is EventView.EveryoneSkipped -> "${who(event.player)} skipped everyone and ${if (event.player == view.you) "go" else "goes"} again"
         is EventView.Reversed -> if (event.direction == Direction.CLOCKWISE) "Play goes clockwise" else "Play goes counter-clockwise"
-        is EventView.SideFlipped -> "The deck turned over to its ${event.side.name.lowercase()} side"
+        is EventView.SideFlipped -> if (event.bounced > 0) {
+            "The table flipped to the ${event.side.name.lowercase()} side, bouncing +${event.bounced}"
+        } else {
+            "The table flipped to the ${event.side.name.lowercase()} side"
+        }
         is EventView.DiscardedAll ->
             "${who(event.player)} dumped ${plural(event.cards.size, "more ${event.color.name.lowercase()} card")}"
         is EventView.ColorRoulette -> "${who(event.player)} spun ${event.color.name.lowercase()}"
@@ -252,7 +297,7 @@ fun describe(event: EventView, view: PlayerView): String? {
         is EventView.LastCardCalled -> "${who(event.player)} called UNO!"
         is EventView.PenaltyApplied -> "${who(event.caughtBy)} caught ${who(event.player).let { if (it == "You") "you" else it }}! +${event.cards}"
         is EventView.Challenged -> if (event.succeeded) {
-            "${who(event.challenger)} caught ${who(event.offender)} bluffing a +4"
+            "${who(event.challenger)} caught ${who(event.offender)} bluffing a ${if (view.settings.rules.flip) "Wild +2" else "+4"}"
         } else {
             "${who(event.challenger)} challenged and lost"
         }
@@ -279,6 +324,12 @@ fun Card.label(): String {
         Face.WILD_DRAW_SIX -> "Wild +6"
         Face.WILD_DRAW_TEN -> "Wild +10"
         Face.WILD_COLOR_ROULETTE -> "Color Roulette"
+        Face.WILD_SWAP_HANDS -> "Swap Hands"
+        Face.DRAW_ONE -> "+1"
+        Face.DRAW_FIVE -> "+5"
+        Face.FLIP -> "Flip"
+        Face.WILD_DRAW_TWO -> "Wild +2"
+        Face.WILD_DRAW_COLOR -> "Wild Draw Color"
         else -> face.number.toString()
     }
     return color?.let { "${it.name.lowercase()} $face" } ?: face

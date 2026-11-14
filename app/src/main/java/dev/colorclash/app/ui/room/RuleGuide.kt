@@ -30,7 +30,8 @@ fun ruleGuide(settings: GameSettings): RuleGuide {
     val flip = rules.flip
 
     val onRules = buildList {
-        if (rules.stacking) add("Stack draws")
+        if (flip) add("Dark side stacks")
+        if (rules.stacking) add(if (flip) "Light side stacks" else "Stack draws")
         if (rules.jumpIn) add("Jump in")
         if (rules.swaps) add("7-0")
         if (rules.drawsUntilPlayable) add("Draw till playable")
@@ -82,14 +83,22 @@ fun ruleGuide(settings: GameSettings): RuleGuide {
             add(GuideCard(Card(-3, Face.DRAW_TWO, CardColor.GREEN), "Draw Two", "The next player draws 2 and misses their turn$drawTail."))
         }
         if (flip) {
-            add(GuideCard(Card(-16, Face.DRAW_ONE, CardColor.GREEN), "Draw One", "Light side. The next player draws 1 and misses their turn."))
-            add(GuideCard(Card(-17, Face.DRAW_FIVE, CardColor.PINK), "Draw Five", "Dark side. The next player draws 5 and misses their turn."))
+            add(GuideCard(Card(-16, Face.DRAW_ONE, CardColor.GREEN), "Draw One", "Light side. The next player draws 1 and misses their turn$drawTail."))
+            add(
+                GuideCard(
+                    Card(-17, Face.DRAW_FIVE, CardColor.PINK),
+                    "Draw Five",
+                    "Dark side. The next player draws 5 and misses their turn, unless they stack another Draw Five on it " +
+                        "or flip it away. The stack keeps growing until someone can't answer it.",
+                ),
+            )
             add(GuideCard(Card(-18, Face.SKIP_EVERYONE, CardColor.TEAL), "Skip Everyone", "Dark side. Everyone else misses a turn and you go again straight away."))
             add(
                 GuideCard(
                     Card(-19, Face.FLIP, CardColor.BLUE),
                     "Flip",
-                    "Turn the game over. Every hand, the deck and the pile go onto their other side, and play carries on from the new top card.",
+                    "Turn the game over. Every hand, the deck and the pile go onto their other side, and play carries on from the new top card. " +
+                        "Hit by a stack? A Flip in the color in play turns the table and throws the whole stack onto the next player.",
                 ),
             )
         }
@@ -169,6 +178,25 @@ fun ruleGuide(settings: GameSettings): RuleGuide {
                         "Whoever can't stack draws everything.",
                 ),
             )
+        } else if (flip) {
+            add(
+                GuideItem(
+                    "Stacking",
+                    "On the dark side, a Draw Five can go on a Draw Five, and the next player takes the lot unless they stack again. " +
+                        if (rules.stacking) {
+                            "The light side stacks too: a Draw One on a Draw One, and a Wild Draw Two on either."
+                        } else {
+                            "The light side doesn't stack: draw cards there are taken straight away."
+                        },
+                ),
+            )
+            add(
+                GuideItem(
+                    "Bounce it",
+                    "Facing a stack, play a Flip in the color in play. The table turns over and the whole stack lands on the next player, " +
+                        "who misses their turn.",
+                ),
+            )
         } else if (rules.stacking) {
             add(
                 GuideItem(
@@ -186,7 +214,8 @@ fun ruleGuide(settings: GameSettings): RuleGuide {
                 GuideItem(
                     "Flipping over",
                     "A Flip card turns everything over at once: your hand, the other hands, the deck and the whole pile. " +
-                        "The dark side draws harder, and the colors are new ones. Every round starts back on the light side.",
+                        "The dark side hits harder, and its draws stack, so flip to it when it hurts someone else and back again when it's " +
+                        "about to hurt you. Every round starts back on the light side.",
                 ),
             )
             add(

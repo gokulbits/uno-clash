@@ -24,12 +24,14 @@ sealed interface Phase {
     /**
      * Current player picks a color for the wild on top. [keepTurn] is for a wild turned over at
      * round start; [roulette] means they then reveal cards until that color turns up; [afterFlip]
-     * is a wild left on top by a Flip, where naming the color is all that happens.
+     * is a wild left on top by a Flip, where naming the color is all that happens, and [bounced]
+     * means that Flip threw a stack onto the next player, who then misses their turn.
      */
     data class PickColor(
         val keepTurn: Boolean = false,
         val roulette: Boolean = false,
         val afterFlip: Boolean = false,
+        val bounced: Boolean = false,
     ) : Phase
 
     /** Current player just drew [cardId] and it's playable. They play it or pass. */
@@ -80,6 +82,9 @@ data class GameState(
     val activeSeats: List<Int> get() = players.indices.filter { !players[it].knockedOut }
 
     fun hand(seat: Int): List<Card> = players[seat].hand
+
+    /** Whether a draw card waits for the next player to answer it, which in Flip depends on the side. */
+    val stacking: Boolean get() = rules.stackingOn(side)
 
     /** Steps round the table [steps] times, passing over anyone knocked out. */
     fun seatAfter(seat: Int, steps: Int = 1): Int =

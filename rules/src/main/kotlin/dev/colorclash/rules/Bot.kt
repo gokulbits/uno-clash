@@ -76,6 +76,9 @@ class SimpleBot(
         // Drawing one beats a penalty for finishing on a power card.
         if (state.rules.powerFinish > 0 && hand.size == 1 && plays.all { it.face.isAction }) return Draw(seat)
 
+        // A Flip against a stack throws the whole thing onward without making it any bigger.
+        if (state.pendingDraw > 0) plays.firstOrNull { it.face == Face.FLIP }?.let { return PlayCard(seat, it.id) }
+
         // Skip a +4 we'd lose a challenge on, unless it's the only move or we're stacking.
         val honest = if (state.pendingDraw > 0) plays else plays.filter {
             it.face != Face.WILD_DRAW_FOUR || hand.none { c -> c.color == state.activeColor }
@@ -97,11 +100,11 @@ class SimpleBot(
     // Hit as hard as the hand allows; draw cards first, then the turn-stealers.
     private fun attackValue(face: Face) = when (face) {
         Face.WILD_DRAW_TEN -> 7
-        Face.WILD_DRAW_SIX -> 6
-        Face.WILD_REVERSE_DRAW_FOUR -> 5
+        Face.WILD_DRAW_SIX, Face.DRAW_FIVE -> 6
+        Face.WILD_REVERSE_DRAW_FOUR, Face.WILD_DRAW_COLOR -> 5
         Face.WILD_DRAW_FOUR, Face.DRAW_FOUR, Face.WILD_COLOR_ROULETTE -> 4
-        Face.DRAW_TWO -> 3
-        Face.SKIP, Face.SKIP_EVERYONE -> 2
+        Face.DRAW_TWO, Face.WILD_DRAW_TWO -> 3
+        Face.SKIP, Face.SKIP_EVERYONE, Face.DRAW_ONE -> 2
         Face.REVERSE -> 1
         else -> 0
     }

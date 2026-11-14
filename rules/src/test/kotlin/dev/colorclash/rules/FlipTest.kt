@@ -6,8 +6,10 @@ import dev.colorclash.rules.Action.PlayCard
 import dev.colorclash.rules.Face.DRAW_FIVE
 import dev.colorclash.rules.Face.DRAW_ONE
 import dev.colorclash.rules.Face.FLIP
+import dev.colorclash.rules.Face.FOUR
 import dev.colorclash.rules.Face.NINE
 import dev.colorclash.rules.Face.ONE
+import dev.colorclash.rules.Face.SEVEN
 import dev.colorclash.rules.Face.SKIP_EVERYONE
 import dev.colorclash.rules.Face.THREE
 import dev.colorclash.rules.Face.TWO
@@ -164,10 +166,120 @@ class FlipTest {
 
     @Test
     fun `flip forces its own rules on`() {
-        val house = RuleSet(mode = GameMode.FLIP, stackDraws = true, sevenZero = true, swapHandsWild = true)
-        assertFalse(house.stacking, "no stacking in Flip")
+        val house = RuleSet(mode = GameMode.FLIP, sevenZero = true, swapHandsWild = true)
         assertFalse(house.swaps, "no zeros to pass along")
         assertFalse(house.swapHands, "Flip brings its own 112")
         assertEquals(Deck.FLIP_SIZE, Deck.sizeFor(house))
+        // The light side stacks only if the host says so; the dark side always does.
+        assertFalse(house.stackingOn(Side.LIGHT))
+        assertTrue(house.stackingOn(Side.DARK))
+        assertTrue(house.copy(stackDraws = true).stackingOn(Side.LIGHT))
+        assertFalse(RuleSet(stackDraws = false).stackingOn(Side.DARK), "only Flip has a dark side")
+    }
+
+    /** A card with its dark side up and [light] on the back. */
+    private fun darkUp(face: Face, color: CardColor?, light: Card = t.blue(ONE)) =
+        Card(light.id, face, color, CardBack(light.face, light.color))
+
+    private fun darkFiller() = List(20) { darkUp(NINE, CardColor.ORANGE) }
+
+    @Test
+    fun `the light side doesn't stack unless the host turns it on`() {
+        val one = t.red(DRAW_ONE)
+        val s = t.state(listOf(one, t.blue(TWO)), listOf(t.red(DRAW_ONE), t.blue(THREE)), top = t.red(NINE), rules = rules)
+        val (after, _) = s.act(PlayCard(0, one.id))
+        assertEquals(0, after.pendingDraw, "taken straight away")
+        assertEquals(3, after.hand(1).size)
+        assertEquals(0, after.current)
+
+        val (stacked, _) = s.copy(rules = rules.copy(stackDraws = true)).act(PlayCard(0, one.id))
+        assertEquals(1, stacked.pendingDraw)
+        assertEquals(1, stacked.current, "with stacking on, the +1 waits for an answer")
+    }
+
+    @Test
+    fun `the dark side stacks draw fives`() {
+        val five = darkUp(DRAW_FIVE, CardColor.PINK)
+        val answer = darkUp(DRAW_FIVE, CardColor.TEAL)
+        val s = t.state(
+            listOf(five, darkUp(TWO, CardColor.PINK)),
+            listOf(answer, darkUp(TWO, CardColor.PURPLE)),
+            listOf(darkUp(THREE, CardColor.ORANGE)),
+            top = darkUp(NINE, CardColor.PINK), rules = rules, drawPile = darkFiller(),
+        ).copy(side = Side.DARK)
+
+        val (waiting, _) = s.act(PlayCard(0, five.id))
+        assertEquals(5, waiting.pendingDraw)
+        assertEquals(1, waiting.current)
+        waiting.rejects(PlayCard(1, waiting.hand(1)[1].id))
+
+        val (stacked, _) = waiting.act(PlayCard(1, answer.id))
+        assertEquals(10, stacked.pendingDraw)
+        assertEquals(2, stacked.current)
+
+        val (taken, _) = stacked.act(Draw(2))
+        assertEquals(11, taken.hand(2).size)
+        assertEquals(0, taken.current)
+    }
+
+    @Test
+    fun `a flip in the color in play throws the stack onto the next player`() {
+        val bounce = darkUp(FLIP, CardColor.PINK, light = t.red(FLIP))
+        val wrongColor = darkUp(FLIP, CardColor.TEAL, light = t.green(FLIP))
+        val under = darkUp(SEVEN, CardColor.TEAL, light = t.yellow(FOUR))
+        val s = t.state(
+            listOf(darkUp(TWO, CardColor.PINK)),
+            listOf(bounce, wrongColor, darkUp(TWO, CardColor.PURPLE)),
+            listOf(darkUp(THREE, CardColor.ORANGE)),
+            top = darkUp(DRAW_FIVE, CardColor.PINK), rules = rules, current = 1, drawPile = darkFiller(),
+            discardBelow = listOf(under),
+        ).copy(side = Side.DARK, pendingDraw = 10, pendingDrawValue = 5)
+
+        s.rejects(PlayCard(1, wrongColor.id))
+        val (after, events) = s.act(PlayCard(1, bounce.id))
+        assertEquals(Side.LIGHT, after.side)
+        assertEquals(0, after.pendingDraw)
+        assertEquals(1 + 10, after.hand(2).size, "the whole stack lands on the next player")
+        assertEquals(0, after.current, "and they miss their turn")
+        assertEquals(FOUR, after.topCard.face)
+        assertEquals(CardColor.YELLOW, after.activeColor)
+        val flipped = events.filterIsInstance<GameEvent.SideFlipped>().single()
+        assertEquals(10, flipped.bounced)
+        val drew = events.filterIsInstance<GameEvent.Drew>().single()
+        assertEquals(2, drew.player)
+        assertTrue(drew.cards.all { it.color?.side == Side.LIGHT }, "drawn from the new side")
+    }
+
+    @Test
+    fun `a bounced stack still skips the victim when the flip leaves a wild on top`() {
+        val bounce = darkUp(FLIP, CardColor.PINK, light = t.red(FLIP))
+        val under = darkUp(WILD_DRAW_COLOR, null, light = t.wild())
+        val s = t.state(
+            listOf(darkUp(TWO, CardColor.PINK)),
+            listOf(bounce, darkUp(TWO, CardColor.PURPLE)),
+            listOf(darkUp(THREE, CardColor.ORANGE)),
+            top = darkUp(DRAW_FIVE, CardColor.PINK), rules = rules, current = 1, drawPile = darkFiller(),
+            discardBelow = listOf(under),
+        ).copy(side = Side.DARK, pendingDraw = 5, pendingDrawValue = 5)
+
+        val (picking, _) = s.act(PlayCard(1, bounce.id))
+        assertEquals(Phase.PickColor(afterFlip = true, bounced = true), picking.phase)
+        assertEquals(1, picking.current)
+        assertEquals(6, picking.hand(2).size)
+
+        val (after, _) = picking.act(ChooseColor(1, CardColor.BLUE))
+        assertEquals(0, after.current, "the player who took the stack is skipped")
+    }
+
+    @Test
+    fun `bots answer a stack with a flip when they can`() {
+        val bounce = darkUp(FLIP, CardColor.PINK, light = t.red(FLIP))
+        val s = t.state(
+            listOf(darkUp(TWO, CardColor.PINK)),
+            listOf(darkUp(DRAW_FIVE, CardColor.TEAL), bounce, darkUp(TWO, CardColor.PURPLE)),
+            listOf(darkUp(THREE, CardColor.ORANGE)),
+            top = darkUp(DRAW_FIVE, CardColor.PINK), rules = rules, current = 1, drawPile = darkFiller(),
+        ).copy(side = Side.DARK, pendingDraw = 5, pendingDrawValue = 5)
+        assertEquals(PlayCard(1, bounce.id), SimpleBot(kotlin.random.Random(1)).chooseAction(s, 1))
     }
 }

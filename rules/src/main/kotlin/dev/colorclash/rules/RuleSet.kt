@@ -40,8 +40,11 @@ data class RuleSet(
 
     val flip: Boolean get() = mode == GameMode.FLIP
 
-    /** No Mercy stacks any draw card of equal or higher value, so it's always on. Flip has no stacking at all. */
-    val stacking: Boolean get() = !flip && (noMercy || stackDraws)
+    /** No Mercy stacks any draw card of equal or higher value, so it's always on. */
+    val stacking: Boolean get() = noMercy || stackDraws
+
+    /** Flip's dark side always stacks; its light side goes by the host's [stackDraws]. */
+    fun stackingOn(side: Side): Boolean = stacking || (flip && side == Side.DARK)
 
     /** The 7 swap and the 0 pass-along are compulsory in No Mercy. A Flip deck has no zeros to pass on. */
     val swaps: Boolean get() = !flip && (noMercy || sevenZero)
@@ -49,7 +52,7 @@ data class RuleSet(
     /** The other modes bring their own decks, so the extra wild only goes in a Classic one. */
     val swapHands: Boolean get() = mode == GameMode.CLASSIC && swapHandsWild
 
-    val drawsUntilPlayable: Boolean get() = noMercy || (!flip && drawUntilPlayable)
+    val drawsUntilPlayable: Boolean get() = noMercy || drawUntilPlayable
 
     /** No Mercy has no Wild +4, so there's nothing to challenge. Flip challenges its own two wilds. */
     val canChallenge: Boolean get() = !noMercy && challengeDrawFour

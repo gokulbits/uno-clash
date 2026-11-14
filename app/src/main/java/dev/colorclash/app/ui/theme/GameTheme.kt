@@ -87,6 +87,9 @@ object GameTheme {
     val darkCardPaperEdge = Color(0xFF0B0914)
     val darkCardOval = Color(0xFF171325)
     val darkCardOvalEdge = Color(0xFF0A0812)
+    // The table once a Flip game is on its dark side: near-black, lit from the edges by the dark colors.
+    val darkSideTop = Color(0xFF1A1030)
+    val darkSideBottom = Color(0xFF06040C)
 
     val cardBackGlow = Color(0xFF3A2A78)
     val cardBackDeep = Color(0xFF120C2C)

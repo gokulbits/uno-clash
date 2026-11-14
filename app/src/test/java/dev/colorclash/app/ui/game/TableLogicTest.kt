@@ -20,6 +20,7 @@ import dev.colorclash.rules.GameState
 import dev.colorclash.rules.Phase
 import dev.colorclash.rules.Player
 import dev.colorclash.rules.RuleSet
+import dev.colorclash.rules.Side
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -355,5 +356,35 @@ class TableLogicTest {
         assertEquals("Ben skipped everyone and goes again", describe(EventView.EveryoneSkipped(1), view))
         assertEquals("Ben dumped 3 more red cards", describe(EventView.DiscardedAll(1, CardColor.RED, List(3) { card(it, Face.ONE) }), view))
         assertEquals("Ben turned over 7 cards", describe(EventView.Drew(1, 7, DrawReason.ROULETTE), view))
+    }
+
+    @Test
+    fun `flip cards are named and called out, and a bounce says who took it`() {
+        assertEquals("green +1", card(9, Face.DRAW_ONE, CardColor.GREEN).label())
+        assertEquals("pink +5", card(9, Face.DRAW_FIVE, CardColor.PINK).label())
+        assertEquals("blue Flip", card(9, Face.FLIP, CardColor.BLUE).label())
+        assertEquals("Wild +2", card(9, Face.WILD_DRAW_TWO, null).label())
+        assertEquals("Wild Draw Color", card(9, Face.WILD_DRAW_COLOR, null).label())
+
+        val view = table(rules = RuleSet(mode = GameMode.FLIP)).view(0)
+        assertEquals("+5", announcementFor(EventView.CardPlayed(1, card(9, Face.DRAW_FIVE, CardColor.PINK)), view)?.title)
+        assertEquals("DRAW COLOR!", announcementFor(EventView.CardPlayed(1, card(9, Face.WILD_DRAW_COLOR, null)), view)?.title)
+
+        val top = card(5, Face.SEVEN, CardColor.TEAL)
+        val dark = assertNotNull(announcementFor(EventView.SideFlipped(Side.DARK, top), view))
+        assertEquals("DARK SIDE!", dark.title)
+        assertEquals(Side.DARK, dark.side)
+        assertEquals("The table flipped to the dark side", describe(EventView.SideFlipped(Side.DARK, top), view))
+
+        val flipped = EventView.SideFlipped(Side.LIGHT, card(6, Face.FOUR, CardColor.YELLOW), bounced = 10)
+        val bounce = assertNotNull(announcementFor(flipped, view, listOf(flipped, EventView.Drew(2, 10, DrawReason.DRAW_CARD))))
+        assertEquals("BOUNCED +10!", bounce.title)
+        assertTrue("onto Cy" in bounce.detail, bounce.detail)
+    }
+
+    @Test
+    fun `facing a flip stack you're told you can flip it away`() {
+        val state = table(rules = RuleSet(mode = GameMode.FLIP)).copy(side = Side.DARK, pendingDraw = 10, pendingDrawValue = 5)
+        assertEquals("Stack a +5, Flip it away, or take 10", tableControls(state.view(0)).headline)
     }
 }

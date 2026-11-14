@@ -206,7 +206,14 @@ private fun GameTable(
     BackHandler(enabled = roundOver && !scoresClosed) { scoresClosed = true }
 
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().graphicsLayer { translationX = fx.shake.value }) {
+        if (view.settings.rules.flip) DarkSideBackdrop(fx)
+        Column(
+            Modifier.fillMaxSize().graphicsLayer {
+                translationX = fx.shake.value
+                rotationY = fx.tableTurn.value
+                cameraDistance = 14f * density
+            },
+        ) {
             TableTopBar(
                 view,
                 onLeave = onLeave,
@@ -598,7 +605,8 @@ private fun CenterTable(
             )
         }
         if (view.pendingDraw > 0) {
-            Tag("+${view.pendingDraw} waiting", GameTheme.danger, Modifier.padding(top = 4.dp), style = MaterialTheme.typography.labelMedium)
+            // A stack that's still growing beats like the headline, so it reads as a threat.
+            Tag("+${view.pendingDraw} waiting", GameTheme.danger, Modifier.padding(top = 4.dp).pulsing(pulse, 1.1f), style = MaterialTheme.typography.labelMedium)
         }
         if (nextSeat(view) == view.you && !view.isYourTurn) {
             HintText("You're up next")
@@ -957,6 +965,35 @@ private fun ReactionTray(onPick: (Int) -> Unit, modifier: Modifier) {
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Flip's dark side: the table goes nearly black and the four dark colors smoulder at its edges,
+ * breathing with the pulse. All in the draw phase, and nothing at all on the light side.
+ */
+@Composable
+private fun DarkSideBackdrop(fx: TableFx) {
+    val pulse = LocalPulse.current
+    Canvas(Modifier.fillMaxSize()) {
+        val d = fx.darkness.value
+        if (d <= 0f) return@Canvas
+        drawRect(Brush.verticalGradient(listOf(GameTheme.darkSideTop, GameTheme.darkSideBottom)), alpha = d)
+        val breath = 0.75f + 0.25f * pulse.value
+        val glows = listOf(
+            GameTheme.purple to Offset(0f, size.height * 0.3f),
+            GameTheme.teal to Offset(size.width, size.height * 0.22f),
+            GameTheme.pink to Offset(size.width, size.height * 0.78f),
+            GameTheme.orange to Offset(0f, size.height * 0.9f),
+        )
+        val radius = size.width * 0.75f
+        for ((color, at) in glows) {
+            drawCircle(
+                Brush.radialGradient(listOf(color.copy(alpha = 0.32f * d * breath), Color.Transparent), center = at, radius = radius),
+                radius = radius,
+                center = at,
+            )
         }
     }
 }

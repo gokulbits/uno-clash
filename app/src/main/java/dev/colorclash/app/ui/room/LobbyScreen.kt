@@ -376,18 +376,24 @@ private fun RulesPanel(settings: GameSettings, editable: Boolean, onChange: (Gam
     val rules = settings.rules
     val noMercy = rules.noMercy
     val flip = rules.flip
-    // No Mercy decides these itself; the Flip deck has no card for them.
+    // No Mercy decides these itself; the Flip deck has no card for 7-0 or the swap.
     val houseRules = editable && !noMercy && !flip
+    val drawRules = editable && !noMercy
     fun update(block: RuleSet.() -> RuleSet) = onChange(settings.copy(rules = rules.block()))
     // No Mercy brings its own rules, so the ones it decides are shown on and locked.
     val toggles = listOf(
-        RuleToggle("Stack draws", "Pass the pain along", rules.stacking, houseRules) { update { copy(stackDraws = it) } },
+        RuleToggle(
+            if (flip) "Light side stacks" else "Stack draws",
+            if (flip) "The dark side always does" else "Pass the pain along",
+            rules.stacking,
+            drawRules,
+        ) { update { copy(stackDraws = it) } },
         RuleToggle("Jump in", "Same card, out of turn", rules.jumpIn, editable) { update { copy(jumpIn = it) } },
         RuleToggle("7-0", "7 swaps, 0 passes all", rules.swaps, houseRules) { update { copy(sevenZero = it) } },
         RuleToggle("Swap hands", "A wild that takes a hand", rules.swapHands, houseRules) {
             update { copy(swapHandsWild = it) }
         },
-        RuleToggle("Draw till playable", "Draw until you can play", rules.drawsUntilPlayable, houseRules) {
+        RuleToggle("Draw till playable", "Draw until you can play", rules.drawsUntilPlayable, drawRules) {
             update { copy(drawUntilPlayable = it) }
         },
         RuleToggle(
@@ -410,7 +416,8 @@ private fun RulesPanel(settings: GameSettings, editable: Boolean, onChange: (Gam
                         "Reach ${rules.mercyLimit} cards and you're out of the round; the winner gets ${rules.knockoutBonus} for each."
                 GameMode.FLIP ->
                     "112 double-sided cards. A Flip card turns every hand and both piles over to their other side: " +
-                        "new colors, and harder cards on the dark one — +5, Skip Everyone and a wild that draws until your color shows."
+                        "new colors, and harder cards on the dark one — +5s that stack, Skip Everyone and a wild that draws until your " +
+                        "color shows. Facing a stack? Flip it onto the next player."
                 GameMode.CLASSIC ->
                     "The 108-card game. Match by color or number, first to empty their hand wins the round."
             },

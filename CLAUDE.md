@@ -14,6 +14,9 @@ project, never published. See README.md for the player-facing overview.
   `canChallenge`, `powerFinish`) and never the raw toggles — that way flipping back to Classic restores what
   the host had set. A knocked-out seat keeps `knockedOut = true` with an empty hand and its cards in
   `GameState.setAside` until the next reshuffle; `seatAfter` steps over it, so nothing else has to know.
+- Flip (112 two-sided cards) stacks depending on the side: the dark side always does, the light side
+  only with the host's toggle. So the engine asks `GameState.stacking` (`rules.stackingOn(side)`), never
+  `rules.stacking`. A Flip in the color in play answers a stack and bounces it onto the next player.
 - `:protocol` — serializable messages and per-player views. `GameState.viewFor` and `GameEvent.toView`
   are where hidden information is stripped: other players' cards and their card ids must never reach a
   client (ids map to fixed cards, so an id is as good as the card). `ClientMessage.Hello` must stay

@@ -258,7 +258,7 @@ internal class Transition(state: GameState) {
             pick.roulette -> spinRoulette(player, color)
             pick.keepTurn -> Unit
             // A wild the flip left on top: naming the color is the whole of it.
-            pick.afterFlip -> advance()
+            pick.afterFlip -> advance(if (pick.bounced) 2 else 1)
             // Flip's Wild Draw Color: the next player keeps drawing until your color shows up.
             top.face == Face.WILD_DRAW_COLOR -> {
                 current = seatAfter(player)
@@ -288,17 +288,26 @@ internal class Transition(state: GameState) {
      * Turns the whole game over. The discard pile is flipped as a stack, so it comes out in reverse
      * order and the card just played ends up at the bottom — whatever was underneath is now the one
      * to match. Its action doesn't fire; a wild there is colored by whoever flipped.
+     *
+     * Played against a stack, the Flip throws it on: the next player takes the lot, on the new side,
+     * and misses their turn.
      */
     private fun flipEverything(player: Int) {
+        val bounced = pendingDraw
         turnEverythingOver()
-        events += GameEvent.SideFlipped(side, top)
+        events += GameEvent.SideFlipped(side, top, bounced)
         activeColor = top.color
+        if (bounced > 0) {
+            pendingDraw = 0
+            pendingDrawValue = 0
+            drawCards(seatAfter(player), bounced, DrawReason.DRAW_CARD)
+        }
         if (top.isWild) {
             // Nothing to match until the player who flipped names a color.
-            phase = Phase.PickColor(afterFlip = true)
+            phase = Phase.PickColor(afterFlip = true, bounced = bounced > 0)
             current = player
         } else {
-            advance()
+            advance(if (bounced > 0) 2 else 1)
         }
     }
 
@@ -339,7 +348,7 @@ internal class Transition(state: GameState) {
         } else {
             seatAfter(current)
         }
-        if (rules.stacking || drawFourCheck != null) {
+        if (rules.stackingOn(side) || drawFourCheck != null) {
             current = victim
             phase = Phase.Turn
             return

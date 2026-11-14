@@ -112,7 +112,7 @@ class FuzzTest {
         if (s.pendingDraw > 0) {
             check(s.topCard.face.isDraw) { "Pending draw without a draw card" }
             check(phase == Phase.Turn || phase is Phase.PickColor) { "Pending draw in $phase" }
-            check(s.rules.stacking || s.drawFourCheck != null || phase is Phase.PickColor) { "Pending draw nobody can respond to" }
+            check(s.stacking || s.drawFourCheck != null || phase is Phase.PickColor) { "Pending draw nobody can respond to" }
             check(!s.rules.noMercy || s.pendingDrawValue > 0) { "Pending draw with no value to beat" }
         }
         s.drawFourCheck?.let {

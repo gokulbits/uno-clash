@@ -474,6 +474,31 @@ def music_loop():
     return soft_clip(wet[n:2 * n], 1.1)
 
 
+def sfx_flip_dark():
+    # The table turning to its dark side: a big falling whoosh, a deep boom, a low minor chord ringing out.
+    t = Track(1.8)
+    t.add(swish(0.45, 4500, 260, q=0.8, attack=0.03), vol=0.7)
+    boom = env_ad(sine(78, 1.2, 34), 0.004, 3.2)
+    t.add(soft_clip(boom, 1.6), at=0.24, vol=1.0)
+    t.add(thud(60, 0.3), at=0.24, vol=0.8)
+    for i, semis in enumerate([-21, -18, -14, -9]):
+        t.add(bell(semis, 1.2, decay=2.4, index=3.2, ratio=2.01), at=0.26 + i * 0.03, vol=0.32)
+    rumble = env_shape(biquad(noise(1.0), "lowpass", 220), 0.05, 0.25, 0.7)
+    t.add(rumble, at=0.22, vol=0.35)
+    return reverb(t.buf, room=0.85, wet=0.32, tail=1.1)
+
+
+def sfx_flip_light():
+    # Back to the light: a rising whoosh opening onto a bright major chord and a sparkle.
+    t = Track(1.5)
+    t.add(swish(0.4, 300, 5200, q=0.8, attack=0.05), vol=0.6)
+    for i, semis in enumerate([3, 7, 10, 15, 19, 22]):
+        t.add(bell(semis, 0.9, decay=3.5, index=1.8), at=0.3 + i * 0.045, vol=0.45)
+    shimmer = env_shape(biquad(noise(0.9), "highpass", 6500), 0.08, 0.3, 0.5)
+    t.add(shimmer, at=0.3, vol=0.09)
+    return reverb(t.buf, wet=0.35, tail=0.9)
+
+
 if __name__ == "__main__":
     write("sfx_shuffle", sfx_shuffle(), peak=0.8)
     write("sfx_deal", sfx_deal(), peak=0.55)
@@ -492,3 +517,5 @@ if __name__ == "__main__":
     # New sounds go last: they share the seeded generator, so this keeps the files above unchanged.
     write("sfx_pop", sfx_pop(), peak=0.55)
     write("sfx_tick", sfx_tick(), peak=0.5)
+    write("sfx_flip_dark", sfx_flip_dark(), peak=0.85)
+    write("sfx_flip_light", sfx_flip_light(), peak=0.75)

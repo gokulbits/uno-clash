@@ -38,6 +38,8 @@ enum class Sfx(
     SHUFFLE(R.raw.sfx_shuffle),
     DEAL(R.raw.sfx_deal),
     FLIP(R.raw.sfx_flip),
+    FLIP_DARK(R.raw.sfx_flip_dark),
+    FLIP_LIGHT(R.raw.sfx_flip_light),
     LAND(R.raw.sfx_land),
     DRAW(R.raw.sfx_draw),
     SKIP(R.raw.sfx_skip),

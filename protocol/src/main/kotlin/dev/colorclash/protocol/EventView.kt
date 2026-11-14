@@ -72,16 +72,16 @@ sealed interface EventView {
     @Serializable @SerialName("gameWon")
     data class GameWon(val player: Int) : EventView
 
-    /** Flip: the table turned over, and [top] is what everyone has to match now. */
+    /** Flip: the table turned over, and [top] is what everyone has to match now. [bounced] is a stack it threw on. */
     @Serializable @SerialName("sideFlipped")
-    data class SideFlipped(val side: Side, val top: Card) : EventView
+    data class SideFlipped(val side: Side, val top: Card, val bounced: Int = 0) : EventView
 }
 
 fun GameEvent.toView(viewer: Int): EventView = when (this) {
     is GameEvent.RoundStarted -> EventView.RoundStarted(round, dealer)
     is GameEvent.Dealt -> EventView.Dealt(player, cards.size, cards.shown().takeIf { player == viewer })
     is GameEvent.StarterFlipped -> EventView.StarterFlipped(card.shown())
-    is GameEvent.SideFlipped -> EventView.SideFlipped(side, top.shown())
+    is GameEvent.SideFlipped -> EventView.SideFlipped(side, top.shown(), bounced)
     is GameEvent.CardPlayed -> EventView.CardPlayed(player, card.shown(), jumpIn)
     is GameEvent.Drew -> EventView.Drew(player, cards.size, reason, cards.shown().takeIf { player == viewer })
     is GameEvent.Skipped -> EventView.Skipped(player)

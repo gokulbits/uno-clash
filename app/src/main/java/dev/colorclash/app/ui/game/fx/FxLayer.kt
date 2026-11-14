@@ -52,6 +52,7 @@ import dev.colorclash.app.ui.game.CardFace
 import dev.colorclash.app.ui.game.StampMark
 import dev.colorclash.app.ui.game.TABLE_CARD_WIDTH
 import dev.colorclash.app.ui.theme.GameTheme
+import dev.colorclash.rules.Side
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -265,7 +266,8 @@ private fun StampView(fx: StampFx) {
 @Composable
 private fun BannerView(banner: Banner) {
     val a = banner.announcement
-    val fill = a.color?.let { SolidColor(GameTheme.cardColor(it)) } ?: Brush.linearGradient(GameTheme.cardColors)
+    val fill = a.color?.let { SolidColor(GameTheme.cardColor(it)) }
+        ?: Brush.linearGradient(if (a.side == Side.DARK) GameTheme.darkCardColors else GameTheme.cardColors)
     val shape = GameTheme.sheetShape
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(

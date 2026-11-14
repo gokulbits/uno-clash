@@ -3,6 +3,7 @@ package dev.colorclash.app.feedback
 import dev.colorclash.app.ui.theme.GameTheme
 import dev.colorclash.protocol.EventView
 import dev.colorclash.rules.DrawReason
+import dev.colorclash.rules.Side
 
 data class Cue(val sfx: Sfx?, val buzz: Buzz? = null)
 
@@ -22,7 +23,7 @@ fun cueFor(event: EventView, you: Int): Cue? = when (event) {
     is EventView.Skipped -> Cue(Sfx.SKIP, Buzz.BUMP.takeIf { event.player == you })
     is EventView.EveryoneSkipped -> Cue(Sfx.SKIP, Buzz.BUMP.takeIf { event.player != you })
     is EventView.Reversed -> Cue(Sfx.REVERSE)
-    is EventView.SideFlipped -> Cue(Sfx.FLIP, Buzz.BUMP)
+    is EventView.SideFlipped -> if (event.side == Side.DARK) Cue(Sfx.FLIP_DARK, Buzz.HEAVY) else Cue(Sfx.FLIP_LIGHT, Buzz.SUCCESS)
     is EventView.DiscardedAll -> Cue(Sfx.SHUFFLE, Buzz.SUCCESS.takeIf { event.player == you })
     is EventView.ColorRoulette -> Cue(Sfx.WILD, Buzz.HEAVY.takeIf { event.player == you })
     is EventView.KnockedOut -> Cue(Sfx.LOSE, Buzz.HEAVY.takeIf { event.player == you })
